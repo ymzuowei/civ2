@@ -888,9 +888,12 @@ void hd_map_grid_contrast(void *bits, int x, int y, int w, int h, int radius_til
 {
     Bitmap *b;
     int d = hd_density, l, t, r, bot, ix, iy, edge;
-    double path[10], stroke = 0.84, limit = stroke * stroke;
+    /* Ordinary revealed-tile borders should be a quiet guide over the HD
+       terrain, not a second visual focal point. City-radius lines retain
+       their existing emphasis for gameplay readability. */
+    double path[10], stroke = radius_tile ? 0.84 : 0.66, limit = stroke * stroke;
     unsigned color = radius_tile ? 0xf2eee4u : 0x0b1815u;
-    unsigned strength = radius_tile ? 184u : 166u;
+    unsigned strength = radius_tile ? 184u : 104u;
     if (!hd_art || !bits || w < 2 || h < 2 ||
         !(b = bmp_of_bits(bits)) || !plane(b))
         return;

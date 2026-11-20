@@ -8,7 +8,7 @@ import {unzip} from './zip.js';
 import {exportSaves, importSaves} from './saves.js';
 import {findDisc} from './setup_run.js';
 import {packFrom, keepPack, loadPack, download, siteArt} from './hdpack.js';
-import {hdWanted, iniGet, iniSet, skipBrowserOpening, openingVideoPresent} from './options.js';
+import {hdWanted, iniGet, iniSet, skipBrowserOpening, openingVideoPresent, resumeOpeningAudioContext} from './options.js';
 import {t, languages, pageLanguage, urlLanguage, withLanguage, useLanguage, langFile, parseLang, match} from './i18n.js';
 
 const GAME = '/civ2', DATA = '/data';
@@ -557,15 +557,25 @@ function unlockOpeningAudio() {
     $('loading').hidden = true;
     button.focus();
     return new Promise((resolve) => {
-        button.onclick = () => {
-            let audio = null;
+        button.onclick = async () => {
+            button.disabled = true;
+            let audio = null, ready = false;
             try {
                 audio = new AudioContext();
-                audio.resume().catch((e) => console.warn('Opening audio:', e));
+                // resume() is invoked during the actual button click. Do not
+                // start an audio-clocked AVI until WebAudio is RUNNING.
+                ready = await resumeOpeningAudioContext(audio);
             } catch (e) {
                 console.warn('Opening audio unavailable:', e);
             }
+            if (!ready) {
+                console.warn('Opening audio did not start: playing the original movie using its wall clock without sound');
+                if (audio)
+                    audio.close().catch(() => {});
+                audio = null;
+            }
             button.onclick = null;
+            button.disabled = false;
             gate.hidden = true;
             resolve(audio);
         };
@@ -704,14 +714,19 @@ async function play(store) {
     // A movie with sound needs a real browser activation. Do not consume
     // its first click on the canvas: the native AVI handler would skip it.
     // No gate is shown when the locally imported OPENING.AVI is absent.
-    const introAudio = !skipBrowserOpening(location.search) && openingVideoPresent(entries)
-        ? await unlockOpeningAudio() : null;
+    const introHasMovie = !skipBrowserOpening(location.search) && openingVideoPresent(entries);
+    const introAudio = introHasMovie ? await unlockOpeningAudio() : null;
     status(t('web.starting', Math.round(performance.now() - t0)));
     const canvas = $('screen');
     canvas.focus();
     // (the platform's log: ?log, in the console)
     // (Auto, the system's language: English)
     const env = {CIV2_DATA: DATA, CIV2_SYSTEM_LANG: 'en'};
+    // If the user's browser denied the Play gesture, do not give the AVI a
+    // permanently suspended audio clock. The existing native no-sound
+    // fallback keeps the *movie* running on wall time (no silent movie skip).
+    if (introHasMovie && !introAudio)
+        env.CIV2_NOSOUND = '1';
     // Browser-only explicit escape hatch; playable opening is the goal.
     // ?intro=diagnose logs local decode/presentation failures to DevTools.
     if (skipBrowserOpening(location.search))

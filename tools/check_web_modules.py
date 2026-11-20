@@ -17,6 +17,10 @@ _STATIC = re.compile(
 _DYNAMIC = re.compile(r"""\bimport\s*\(\s*["']([^"'\n]+\.js)["']\s*\)""")
 _WORKER = re.compile(r"""\bnew\s+(?:SharedWorker|Worker)\s*\(\s*["']([^"'\n]+\.js)["']""")
 
+# tools/build_web.py.write_languages() generates build/web/texts.js from
+# src/host/texts.h. It deliberately has no src/web/texts.js counterpart.
+GENERATED_MODULES = {"texts.js"}
+
 
 def page_manifest(build_script):
     tree = ast.parse(Path(build_script).read_text(encoding="utf-8"))
@@ -66,7 +70,7 @@ def missing_modules(source_dir, manifest):
                 posixpath.dirname(name), ref))
             if resolved.startswith("../") or resolved == "..":
                 missing.append("Module escapes browser root: " + name + " -> " + ref)
-            elif resolved not in entries:
+            elif resolved not in entries and resolved not in GENERATED_MODULES:
                 missing.append("Unpackaged browser dependency: " + name + " -> " + resolved)
     return sorted(set(missing))
 

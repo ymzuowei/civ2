@@ -6,6 +6,7 @@ their *exact* pre-existing Git blob bytes before the seven new ASCII-safe keys.
 """
 import hashlib
 import re
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -72,6 +73,24 @@ class GraphicsLanguageContract(unittest.TestCase):
                 if code in ("de", "eo"):
                     with self.assertRaises(UnicodeDecodeError):
                         original.decode("utf-8")
+
+    def test_git_checkout_preserves_all_locale_blobs(self):
+        # Git for Windows may have core.autocrlf=true globally. These
+        # multi-codepage source files must stay byte-for-byte identical
+        # to HEAD even in the checkout (not just inside Git objects).
+        attrs = (LANG / ".gitattributes").read_text(encoding="ascii")
+        self.assertIn("*.txt -text", attrs.splitlines())
+        for code in CODEPAGES:
+            with self.subTest(locale=code):
+                rel = f"data/native/lang/{code}.txt"
+                git_blob = subprocess.run(
+                    ["git", "show", f"HEAD:{rel}"], cwd=ROOT,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    check=True,
+                ).stdout
+                self.assertEqual((ROOT / rel).read_bytes(), git_blob,
+                                 f"{rel}: checkout converted original bytes; "
+                                 "restore with attributes, do not recode")
 
     def test_english_graphics_keys_have_original_export_order(self):
         text = (LANG / "en.txt").read_text(encoding="cp1252")

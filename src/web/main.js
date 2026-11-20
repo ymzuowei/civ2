@@ -9,7 +9,7 @@ import {unzip} from './zip.js';
 import {exportSaves, importSaves} from './saves.js';
 import {findDisc} from './setup_run.js';
 import {packFrom, keepPack, loadPack, download, siteArt} from './hdpack.js';
-import {hdWanted, iniGet, iniSet, skipBrowserOpening, openingVideoPresent, openingVideoNeedsGesture, resumeOpeningAudioContext} from './options.js';
+import {hdWanted, iniGet, iniSet, skipBrowserOpening, openingVideoPresent, openingVideoNeedsGesture, resumeOpeningAudioContext, siteBundlesGame} from './options.js';
 import {t, languages, pageLanguage, urlLanguage, withLanguage, useLanguage, langFile, parseLang, match} from './i18n.js';
 
 const GAME = '/civ2', DATA = '/data';
@@ -515,7 +515,7 @@ let siteGameP = null;
 // stamps this bit in index.html so the browser never generates a harmless
 // but noisy 404 merely to discover that there is no bundled game.
 const siteGame = () => siteGameP || (siteGameP =
-    document.querySelector('meta[name="openciv2-bundled-game"]')?.content === '1'
+    siteBundlesGame(document)
         ? fetch('game/index.json', {cache: 'no-cache'})
             .then((r) => (r.ok ? r.json() : null)).catch(() => null)
         : Promise.resolve(null));

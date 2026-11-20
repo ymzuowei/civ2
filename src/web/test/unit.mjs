@@ -47,16 +47,24 @@ assert.equal(w.notches(30, 0), 0);          // turned back: the half notch forgo
 assert.equal(w.notches(70, 0), -1);
 assert.equal(w.notches(3, 1), -1);          // lines: 3 a notch
 
-// Browser startup should show the first menu without requiring a click
-// to dismiss the opening movie. Never skip non-startup videos globally.
-assert.equal(skipBrowserOpening(''), true);
-assert.equal(skipBrowserOpening('?lang=zh-CN&display=fit'), true);
+// The original startup movie is no longer removed silently. When locally
+// present, it is unlocked by a click outside the AVI window; an explicit
+// URL escape hatch still exists for recovery from unsupported codecs.
+assert.equal(skipBrowserOpening(''), false);
+assert.equal(skipBrowserOpening('?lang=zh-CN&display=fit'), false);
 assert.equal(skipBrowserOpening('?intro=skip'), true);
 assert.equal(skipBrowserOpening('?intro=play'), false);
 assert.equal(skipBrowserOpening('?lang=zh-TW&intro=play&display=fit'), false);
-assert.equal(skipBrowserOpening('?intro=other'), true);
+assert.equal(skipBrowserOpening('?intro=diagnose'), false);
 const startupSource = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
 assert.match(startupSource, /env\.CIV2_SKIP_OPENING = '1'/);
+assert.match(startupSource, /openingVideoPresent\(entries\)/);
+assert.match(startupSource, /await unlockOpeningAudio\(\)/);
+assert.match(startupSource, /env\.CIV2_LOG_VIDEO = '1'/);
+const hostSource = readFileSync(new URL('../host.js', import.meta.url), 'utf8');
+assert.match(hostSource, /opts\.audioContext \|\| null/);
+const gamePage = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+assert.match(gamePage, /id="intro-start"/);
 
 // // the desktop's scale (host.h's examples)
 assert.equal(desktopScale(1920, 1080, 0), 1);

@@ -78,9 +78,9 @@ export function hdWanted(ini, query) {
     return parseInt(iniGet(ini, SECTION, 'GraphicsDensity') || '0', 10) || 0;
 }
 
-// In the browser an imported OPENING.AVI may be black, yet its native modal
-// movie window keeps the main menu hidden until the player clicks to skip.
-// Prefer a usable first launch. An explicit URL opt-in preserves the movie.
+// Never silently remove the original opening movie from a player's licensed
+// game. ?intro=skip is an explicit escape hatch for diagnostics/recovery;
+// browser audio must first be unlocked with a real user gesture (main.js).
 export function skipBrowserOpening(search = '') {
-    return new URLSearchParams(search).get('intro') !== 'play';
+    return new URLSearchParams(search).get('intro') === 'skip';
 }

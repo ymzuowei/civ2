@@ -547,6 +547,37 @@ async function installFromSite(store, g, first) {
     keep(files.length, files.length);
 }
 
+// Only the owner's local, installed movie triggers the intro audio gate.
+// Missing original media must still reach the main menu without interaction.
+export function openingVideoPresent(entries) {
+    return entries.some(([name]) => /(?:^|\/)video\/opening\.avi$/i.test(name.replace(/\\/g, '/')));
+}
+
+// The first click goes to a browser button, never to the game's movie window
+// (which treats a click as SKIP). A running WebAudio context is passed into the
+// later WASM host; constructing it only after asynchronous startup is too late
+// for Chrome/Edge autoplay restrictions.
+function unlockOpeningAudio() {
+    const gate = $('intro-gate'), button = $('intro-start');
+    gate.hidden = false;
+    $('loading').hidden = true;
+    button.focus();
+    return new Promise((resolve) => {
+        button.onclick = () => {
+            let audio = null;
+            try {
+                audio = new AudioContext();
+                audio.resume().catch((e) => console.warn('Opening audio:', e));
+            } catch (e) {
+                console.warn('Opening audio unavailable:', e);
+            }
+            button.onclick = null;
+            gate.hidden = true;
+            resolve(audio);
+        };
+    });
+}
+
 async function play(store) {
     // (the game files and saved games kept for good: without this the browser
     // may clear them when disk space runs low, Safari after a week unused)
@@ -676,17 +707,23 @@ async function play(store) {
     running = fs;
     window.civ2Flush = () => (timer ? (clearTimeout(timer), flush()) : Promise.resolve());
     window.addEventListener('pagehide', () => window.civ2Flush());
+    // A movie with sound needs a real browser activation. Do not consume
+    // its first click on the canvas: the native AVI handler would skip it.
+    // No gate is shown when the locally imported OPENING.AVI is absent.
+    const introAudio = !skipBrowserOpening(location.search) && openingVideoPresent(entries)
+        ? await unlockOpeningAudio() : null;
     status(t('web.starting', Math.round(performance.now() - t0)));
     const canvas = $('screen');
     canvas.focus();
     // (the platform's log: ?log, in the console)
     // (Auto, the system's language: English)
     const env = {CIV2_DATA: DATA, CIV2_SYSTEM_LANG: 'en'};
-    // Browser-only startup policy; do not send a fake mouse click to the
-    // game or alter its modal input. This env is runtime-only: no CIV.INI,
-    // imported E: media or IndexedDB save changes.
+    // Browser-only explicit escape hatch; playable opening is the goal.
+    // ?intro=diagnose logs local decode/presentation failures to DevTools.
     if (skipBrowserOpening(location.search))
         env.CIV2_SKIP_OPENING = '1';
+    if (new URLSearchParams(location.search).get('intro') === 'diagnose')
+        env.CIV2_LOG_VIDEO = '1';
     if (!new URLSearchParams(location.search).has('log'))
         env.CIV2_HOOK_LOG = '/dev/null';
     // (tests, src/web/test/smoke.mjs: files and settings of a replay)
@@ -695,7 +732,7 @@ async function play(store) {
     let code;
     try {
         window.civ2Stats = {};
-        code = await runGame({wasm: site.wasm, fs,
+        code = await runGame({wasm: site.wasm, fs, audioContext: introAudio,
                               onFrame: () => {
                                   timing.frame = Math.round(performance.now());
                                   $('loading').hidden = true;
@@ -722,6 +759,8 @@ async function play(store) {
         status(t('web.stopped', e.message));
     }
     await window.civ2Flush();
+    if (introAudio)
+        await introAudio.close().catch(() => {});
     running = null;
     $('game').hidden = true;
     showSetup(store, true);

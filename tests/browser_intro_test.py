@@ -19,12 +19,17 @@ class BrowserOpeningTests(unittest.TestCase):
         self.assertNotIn("setPointerCapture", intro)
         self.assertEqual(game.count('getenv("CIV2_SKIP_OPENING")'), 1)
 
-    def test_browser_runtime_skips_without_storage_or_pointer_mutation(self):
+    def test_browser_original_movie_has_gesture_gate_and_explicit_skip(self):
         main = (ROOT / "src/web/main.js").read_text(encoding="utf-8")
         options = (ROOT / "src/web/options.js").read_text(encoding="utf-8")
+        host = (ROOT / "src/web/host.js").read_text(encoding="utf-8")
         self.assertIn("skipBrowserOpening(location.search)", main)
         self.assertIn("env.CIV2_SKIP_OPENING = '1'", main)
-        self.assertIn("get('intro') !== 'play'", options)
+        self.assertIn("get('intro') === 'skip'", options)
+        self.assertIn("openingVideoPresent(entries)", main)
+        self.assertIn("unlockOpeningAudio()", main)
+        self.assertIn("audioContext: introAudio", main)
+        self.assertIn("opts.audioContext || null", host)
         self.assertNotIn("civ2ClickToSkip", main)
         self.assertNotIn("store.clear()", main[main.index("const env = {CIV2_DATA:"):main.index("if (window.civ2Test)", main.index("const env = {CIV2_DATA:"))])
 

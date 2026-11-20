@@ -84,6 +84,13 @@
   #loading { position: fixed; z-index: 3; left: 0; right: 0; top: 45%; margin: 0; padding: 0 1rem; text-align: center;
              font: 1.2rem var(--serif); color: #f4f0e6; text-shadow: 1px 1px 0 #000; pointer-events: none; }
   #game { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #000; }
+  /* Only when the locally imported original OPENING.AVI exists: a real
+     user gesture unlocks WebAudio before the movie's modal loop starts.
+     Keep this gate outside the original game canvas/input surface. */
+  #intro-gate { position: absolute; z-index: 2; display: flex; flex-direction: column; align-items: center;
+                gap: 0.4rem; padding: 1rem 1.5rem; text-align: center; background: var(--face) var(--marble);
+                border: 3px solid; border-color: var(--hi) var(--dark) var(--dark) var(--hi); }
+  #intro-gate small { font: 0.75rem/1.2 var(--serif); }
   [hidden] { display: none !important; }
   /* Compact, keyboard-accessible display controls above, not inside, the
      original game canvas. Never reflow the native game-window geometry. */
@@ -173,6 +180,10 @@
  </section>
 </div>
 <div id="game" hidden><canvas id="screen" tabindex="0"></canvas>
+  <div id="intro-gate" hidden role="group" aria-label="OPENING.AVI">
+    <small>OPENING.AVI</small>
+    <button id="intro-start" type="button" data-t="web.play">Play</button>
+  </div>
   <div id="game-controls" role="group" aria-labelledby="display-label">
     <label><span id="display-label" data-t="web.display">Display</span>
       <select id="display-mode">

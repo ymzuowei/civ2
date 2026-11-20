@@ -10,7 +10,7 @@ import {deflateRawSync, inflateRawSync} from 'node:zlib';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {sha256, sha256js, packFrom, keepPack, loadPack, packIndex, prunePack, drawn} from '../hdpack.js';
-import {iniGet, iniSet, hdWanted, skipBrowserOpening} from '../options.js';
+import {iniGet, iniSet, hdWanted, skipBrowserOpening, openingVideoPresent} from '../options.js';
 import {match} from '../locale.js';
 
 // Native and web language aliases distinguish Taiwan's traditional from
@@ -56,11 +56,17 @@ assert.equal(skipBrowserOpening('?intro=skip'), true);
 assert.equal(skipBrowserOpening('?intro=play'), false);
 assert.equal(skipBrowserOpening('?lang=zh-TW&intro=play&display=fit'), false);
 assert.equal(skipBrowserOpening('?intro=diagnose'), false);
+assert.equal(openingVideoPresent([]), false);
+assert.equal(openingVideoPresent([['Video/OPENING.AVI']]), true);
+assert.equal(openingVideoPresent([['civ2\\VIDEO\\opening.avi']]), true);
+assert.equal(openingVideoPresent([['video/OTHER.AVI']]), false);
+assert.equal(openingVideoPresent([['OPENING.AVI']]), false);
 const startupSource = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
 assert.match(startupSource, /env\.CIV2_SKIP_OPENING = '1'/);
 assert.match(startupSource, /openingVideoPresent\(entries\)/);
 assert.match(startupSource, /await unlockOpeningAudio\(\)/);
 assert.match(startupSource, /env\.CIV2_LOG_VIDEO = '1'/);
+assert.match(startupSource, /!introDiagnose && !new URLSearchParams/);
 const hostSource = readFileSync(new URL('../host.js', import.meta.url), 'utf8');
 assert.match(hostSource, /opts\.audioContext \|\| null/);
 const gamePage = readFileSync(new URL('../index.html', import.meta.url), 'utf8');

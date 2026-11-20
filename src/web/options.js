@@ -84,3 +84,10 @@ export function hdWanted(ini, query) {
 export function skipBrowserOpening(search = '') {
     return new URLSearchParams(search).get('intro') === 'skip';
 }
+
+// Only the owner's local, installed movie triggers the intro audio gate.
+// Missing original media must still reach the main menu without interaction.
+export function openingVideoPresent(entries) {
+    return entries.some(([name]) => /(?:^|\/)video\/opening\.avi$/i.test(name.replace(/\\/g, '/')));
+}
+

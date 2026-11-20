@@ -8,7 +8,7 @@ import {unzip} from './zip.js';
 import {exportSaves, importSaves} from './saves.js';
 import {findDisc} from './setup_run.js';
 import {packFrom, keepPack, loadPack, download, siteArt} from './hdpack.js';
-import {hdWanted, iniGet, iniSet, skipBrowserOpening} from './options.js';
+import {hdWanted, iniGet, iniSet, skipBrowserOpening, openingVideoPresent} from './options.js';
 import {t, languages, pageLanguage, urlLanguage, withLanguage, useLanguage, langFile, parseLang, match} from './i18n.js';
 
 const GAME = '/civ2', DATA = '/data';
@@ -547,12 +547,6 @@ async function installFromSite(store, g, first) {
     keep(files.length, files.length);
 }
 
-// Only the owner's local, installed movie triggers the intro audio gate.
-// Missing original media must still reach the main menu without interaction.
-export function openingVideoPresent(entries) {
-    return entries.some(([name]) => /(?:^|\/)video\/opening\.avi$/i.test(name.replace(/\\/g, '/')));
-}
-
 // The first click goes to a browser button, never to the game's movie window
 // (which treats a click as SKIP). A running WebAudio context is passed into the
 // later WASM host; constructing it only after asynchronous startup is too late
@@ -722,9 +716,11 @@ async function play(store) {
     // ?intro=diagnose logs local decode/presentation failures to DevTools.
     if (skipBrowserOpening(location.search))
         env.CIV2_SKIP_OPENING = '1';
-    if (new URLSearchParams(location.search).get('intro') === 'diagnose')
+    const introDiagnose = new URLSearchParams(location.search).get('intro') === 'diagnose';
+    if (introDiagnose)
         env.CIV2_LOG_VIDEO = '1';
-    if (!new URLSearchParams(location.search).has('log'))
+    // A diagnostic trace must not be redirected to /dev/null.
+    if (!introDiagnose && !new URLSearchParams(location.search).has('log'))
         env.CIV2_HOOK_LOG = '/dev/null';
     // (tests, src/web/test/smoke.mjs: files and settings of a replay)
     if (window.civ2Test)

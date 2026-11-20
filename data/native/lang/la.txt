@@ -14566,3 +14566,13 @@ Editor &eventuum|Ctrl+Shift+8
 Notiones &ludi
 @@menu.9f0
 &De Civilization II
+@@openciv2.web.display
+Aspectus
+@@openciv2.web.display_integer
+Puncta integra
+@@openciv2.web.display_fit
+Ad fenestram aptare
+@@openciv2.web.enter_fullscreen
+Plena tegmen
+@@openciv2.web.exit_fullscreen
+Exire e pleno tegmine

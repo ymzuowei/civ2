@@ -116,6 +116,19 @@ static inline void language_alias(const char *code, char *out, unsigned size)
         out[i] = 0;
         return;
     }
+    /* China, Singapore and explicit Hans locales use the separate UTF-8
+       Simplified Chinese translation, not Taiwan's traditional locale. */
+    if (low[0] == 'z' && low[1] == 'h' && low[2] == '-' &&
+        (((low[3] == 'c' && low[4] == 'n') || (low[3] == 's' && low[4] == 'g')) &&
+             (!low[5] || low[5] == '-') ||
+         (low[3] == 'h' && low[4] == 'a' && low[5] == 'n' && low[6] == 's' &&
+             (!low[7] || low[7] == '-')))) {
+        const char *z = "zh-Hans";
+        for (i = 0; z[i] && i + 1 < size; i++)
+            out[i] = z[i];
+        out[i] = 0;
+        return;
+    }
     for (i = 0; code[i] && code[i] != '.' && code[i] != '@' && i + 1 < size; i++)
         out[i] = code[i] == '_' ? '-' : code[i];
     out[i] = 0;

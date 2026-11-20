@@ -57,7 +57,7 @@ normalize_toolchain_archive_dir() {
                 *) echo "Invalid converted toolchain archive path" >&2; return 1 ;;
             esac ;;
     esac
-    printf '%s\\n' "$raw_dir"
+    printf '%s\n' "$raw_dir"
 }
 archive_path=
 fetch_archive() {

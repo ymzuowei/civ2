@@ -879,6 +879,56 @@ void hd_dc_polygon(DC *dc, const double *xy, int n, unsigned int c)
 
 /* A scroll bar arrow's chevron, centred at (cx, cy), pointing up, down,
    left or right (0 to 3), on the arrow's white (as scroll_theme.h's). */
+
+/* The original black grid and white city-radius sprites already render in
+   HD, but their contrast is faint over textured terrain. Enhance only the
+   same tile diamond on the HD plane; retain original grid option, visibility,
+   game pixels and hitboxes. */
+void hd_map_grid_contrast(void *bits, int x, int y, int w, int h, int radius_tile)
+{
+    Bitmap *b;
+    int d = hd_density, l, t, r, bot, ix, iy, edge;
+    double path[10], stroke = 0.84, limit = stroke * stroke;
+    unsigned color = radius_tile ? 0xf2eee4u : 0x0b1815u;
+    unsigned strength = radius_tile ? 184u : 166u;
+    if (!hd_art || !bits || w < 2 || h < 2 ||
+        !(b = bmp_of_bits(bits)) || !plane(b))
+        return;
+    l = x; t = y; r = x + w; bot = y + h;
+    if (!clip_rect(b, &l, &t, &r, &bot))
+        return;
+    sync_rect(b, l, t, r, bot);
+    path[0] = x; path[1] = y + h / 2.0;
+    path[2] = x + w / 2.0; path[3] = y;
+    path[4] = x + w; path[5] = y + h / 2.0;
+    path[6] = x + w / 2.0; path[7] = y + h;
+    path[8] = path[0]; path[9] = path[1];
+    for (iy = t * d; iy < bot * d; iy++)
+        for (ix = l * d; ix < r * d; ix++) {
+            double px = (ix + .5) / d, py = (iy + .5) / d, best = limit;
+            unsigned a;
+            uint32_t old, *dst;
+            for (edge = 0; edge < 4; edge++) {
+                double z = seg_dist2(px, py, path[2 * edge], path[2 * edge + 1],
+                                     path[2 * edge + 2], path[2 * edge + 3]);
+                if (z < best)
+                    best = z;
+            }
+            if (best >= limit)
+                continue;
+            a = best < .12 ? strength : (unsigned)(strength * (limit - best) / (limit - .12));
+            if (!a)
+                continue;
+            dst = b->hd + (size_t)iy * b->w * d + ix;
+            old = *dst;
+            *dst = 0xff000000u |
+                   (((color >> 16 & 255) * a + (old >> 16 & 255) * (255 - a)) / 255) << 16 |
+                   (((color >> 8 & 255) * a + (old >> 8 & 255) * (255 - a)) / 255) << 8 |
+                   (((color & 255) * a + (old & 255) * (255 - a)) / 255);
+        }
+    commit_rect(b, l, t, r, bot);
+}
+
 void hd_dc_chevron(DC *dc, double cx, double cy, int dir, unsigned int c, unsigned int face)
 {
     static const double up[6] = {-3.3, 1.3, 0, -1.9, 3.3, 1.3};

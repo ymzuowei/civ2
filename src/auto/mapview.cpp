@@ -2217,6 +2217,11 @@ void MapView::draw_tile(int x,int y,int civ)
       else {
         ((Sprite *)((i8 *)&icons_pair_sprites_block.city_radius_grid_sprite))->draw((RECT *)radius_rect,this,screen_x,screen_y);
       }
+      /* Only boost the existing overlay's HD contrast on revealed map
+         tiles; retain the game's OPT_MAP_GRID, radius and fog decisions. */
+      if (hd_art && (civ < 0 || game.reveal_map != 0 || tile_visible_to(x,y,civ) != 0))
+        hd_map_grid_contrast((void *)this->bits,screen_x,screen_y,
+                             (int)tile_width_u,(int)tile_height_u,near_city);
       gfx_reset_zoom_scale();
     }
   }

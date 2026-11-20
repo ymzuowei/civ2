@@ -489,3 +489,7 @@ repeated PNG once; the whole pack holds 2,105, 250 MB):
   kind drawn here must be added there.  The page
   cannot download the art from GitHub itself (no CORS on release downloads): the player chooses
   the downloaded `.zip`, or the site serves it (`make web HD=1`).
+
+### CIV2-T006 — improve the existing HD grid's contrast (2026-11-20)
+
+Owner correction: HD already renders the map grid and city-radius sprites; the issue is low contrast over textured terrain. Preserve `OPT_MAP_GRID`, original `map_grid_sprite` and `city_radius_grid_sprite` selection, native fog and tile coordinates. After those original sprites draw, `hd_map_grid_contrast` modestly enhances only the existing tile diamond in the HD true-colour plane, using dark green-black or brighter ivory (near city) at the same zoom-scaled tile geometry. Original 8-bit game pixels and `hd=0` do not change. The result is pending owner wasm32 compile and visual acceptance.

@@ -77,3 +77,10 @@ export function hdWanted(ini, query) {
         return -1;
     return parseInt(iniGet(ini, SECTION, 'GraphicsDensity') || '0', 10) || 0;
 }
+
+// In the browser an imported OPENING.AVI may be black, yet its native modal
+// movie window keeps the main menu hidden until the player clicks to skip.
+// Prefer a usable first launch. An explicit URL opt-in preserves the movie.
+export function skipBrowserOpening(search = '') {
+    return new URLSearchParams(search).get('intro') !== 'play';
+}

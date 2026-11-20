@@ -8,7 +8,7 @@ import {unzip} from './zip.js';
 import {exportSaves, importSaves} from './saves.js';
 import {findDisc} from './setup_run.js';
 import {packFrom, keepPack, loadPack, download, siteArt} from './hdpack.js';
-import {hdWanted, iniGet, iniSet, skipBrowserOpening, openingVideoNeedsGesture, resumeOpeningAudioContext} from './options.js';
+import {hdWanted, iniGet, iniSet, skipBrowserOpening, openingVideoPresent, openingVideoNeedsGesture, resumeOpeningAudioContext} from './options.js';
 import {t, languages, pageLanguage, urlLanguage, withLanguage, useLanguage, langFile, parseLang, match} from './i18n.js';
 
 const GAME = '/civ2', DATA = '/data';
@@ -719,7 +719,19 @@ async function play(store) {
     // it still needs the audio activation gate.
     const hdArtAvailable = hd && !!window.civ2Hd?.packBytes;
     const introNeedsGesture = openingVideoNeedsGesture(entries, hdArtAvailable, location.search);
+    // Diagnostics record booleans/states only: no game filenames, bytes, save
+    // names or local E: paths. The owner can inspect window.civ2Intro in
+    // DevTools even if a modal AVI remains black before the main menu.
+    window.civ2Intro = {
+        ownedOpeningPresent: openingVideoPresent(entries),
+        hdArtAvailable,
+        skipRequested: skipBrowserOpening(location.search),
+        gestureRequired: introNeedsGesture,
+        audio: introNeedsGesture ? 'pending' : 'not-required'
+    };
     const introAudio = introNeedsGesture ? await unlockOpeningAudio() : null;
+    window.civ2Intro.audio = !introNeedsGesture ? 'not-required'
+        : introAudio ? 'running' : 'silent-fallback';
     status(t('web.starting', Math.round(performance.now() - t0)));
     const canvas = $('screen');
     canvas.focus();

@@ -215,3 +215,10 @@ options: `tools/webrelay.py --help`.
   allow a page of another site to fetch them.
 - HD graphics need memory: about 300 MB of the browser's storage with the game, and some 175 MB for
   the game's module on the map at density 2 (more at 3 or 4).
+
+
+## Resizing browser viewport during animated playback
+
+The original game runs with a logical desktop chosen at startup. On browser-window resize the Web host defaults to **presentation-only resizing**: it fits the existing canvas inside the new viewport without changing the game's logical desktop or rearranging maximized/modal windows during AVI/animated playback. It preserves aspect ratio and the canvas-based pointer coordinate mapping. This is a deliberate compatibility policy for the browser; the native desktop's logical resolution stays the same until the game is restarted. For live native desktop reflow behavior during debugging, opt in with `?desktopResize=live` (may disturb animation windows).
+
+A bigger screen available **when the game starts** is still detected by `desktopScale`. Reloading after changing browser size adopts the new physical window dimensions, using previously retained game saves. Verify with owner in Chrome and Edge at 1080p/1440p/4K including animation playback; JavaScript tests alone cannot prove the visual regression is fixed.

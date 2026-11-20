@@ -714,7 +714,11 @@ async function play(store) {
     // A movie with sound needs a real browser activation. Do not consume
     // its first click on the canvas: the native AVI handler would skip it.
     // No gate is shown when the locally imported OPENING.AVI is absent.
-    const introNeedsGesture = openingVideoNeedsGesture(entries, hd, location.search);
+    // HD art is enabled only after the local HD pack successfully loads.
+    // A requested-but-missing pack reverts to the original AVI path, so
+    // it still needs the audio activation gate.
+    const hdArtAvailable = hd && !!window.civ2Hd?.packBytes;
+    const introNeedsGesture = openingVideoNeedsGesture(entries, hdArtAvailable, location.search);
     const introAudio = introNeedsGesture ? await unlockOpeningAudio() : null;
     status(t('web.starting', Math.round(performance.now() - t0)));
     const canvas = $('screen');

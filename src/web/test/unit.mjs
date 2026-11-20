@@ -2,7 +2,7 @@
 // desktop's scale, pixels, the WASI file system, .zip reading and writing, the player's saves.
 //   tools/toolchain/node/bin/node src/web/test/unit.mjs
 import assert from 'node:assert/strict';
-import {vkOf, Wheel, desktopScale, argbToRgba, liveDesktopResize, canvasFitSize} from '../host.js';
+import {vkOf, Wheel, desktopScale, argbToRgba, liveDesktopResize, canvasFitSize, displayModeFromSearch} from '../host.js';
 import {MemFS, makeWasi, normalize} from '../wasi.js';
 import {unzip, zip as makeZip, crc32} from '../zip.js';
 import {savesKind, playerFiles, importPath, savesToImport} from '../saves.js';
@@ -53,7 +53,15 @@ assert.equal(desktopScale(3840, 2160, 0), 3);
 assert.equal(desktopScale(2940, 1782, 0), 3);
 assert.equal(desktopScale(800, 600, 2), 1);
 
-// Browser resize during animations is paint-only by default; dynamic game
+// Display toolbar can switch between the existing modes without creating
+// another game desktop or restarting it; URL parameters remain orthogonal.
+assert.equal(displayModeFromSearch(''), 'integer');
+assert.equal(displayModeFromSearch('?display=integer'), 'integer');
+assert.equal(displayModeFromSearch('?display=fit'), 'fit');
+assert.equal(displayModeFromSearch('?lang=zh-CN&display=fit'), 'fit');
+assert.equal(displayModeFromSearch('?display=unsupported'), 'integer');
+
+// // Browser resize during animations is paint-only by default; dynamic game
 // desktop reflow is a legacy opt-in for comparisons.
 assert.equal(liveDesktopResize(''), false);
 assert.equal(liveDesktopResize('?hd=0'), false);

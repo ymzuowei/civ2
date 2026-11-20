@@ -511,8 +511,14 @@ function fromSite() {
 
 // The site's copy of the game, or null: {core: {size, files}, files: [[path, size]]}
 let siteGameP = null;
-const siteGame = () => siteGameP || (siteGameP = fetch('game/index.json', {cache: 'no-cache'})
-    .then((r) => (r.ok ? r.json() : null)).catch(() => null));
+// BYO-only static builds deliberately have no game/ directory. The build
+// stamps this bit in index.html so the browser never generates a harmless
+// but noisy 404 merely to discover that there is no bundled game.
+const siteGame = () => siteGameP || (siteGameP =
+    document.querySelector('meta[name="openciv2-bundled-game"]')?.content === '1'
+        ? fetch('game/index.json', {cache: 'no-cache'})
+            .then((r) => (r.ok ? r.json() : null)).catch(() => null)
+        : Promise.resolve(null));
 
 // A first visit to such a site: its copy kept in this browser, without
 // asking (the set-up page's choice is not shown: ?setup shows it), on one

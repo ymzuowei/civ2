@@ -106,6 +106,21 @@ export function desktopUiScale(w, h, scale = 0, search = '') {
     return Math.max(normal, most);
 }
 
+// A large original game UI still needs room for native city/advisor dialogs.
+// Increasing the integer UI scale without a minimum logical desktop can
+// reduce 1440p to only 480 lines, clipping original modal windows. Allocate
+// at least 800x560 logical pixels before fitting the canvas uniformly (the
+// resulting side bars are intentional). This runs only once at startup.
+export function initialDesktopGeometry(w, h, scale = 0, search = '') {
+    const k = desktopUiScale(w, h, scale, search);
+    const large = scale < 1 && new URLSearchParams(search).get('ui') === 'large';
+    return {
+        width: Math.max(large ? 800 : 0, Math.floor(w / k)),
+        height: Math.max(large ? 560 : 0, Math.floor(h / k)),
+        scale: k
+    };
+}
+
 export function canvasFitSize(w, h, vw, vh, dpr = 1, mode = 'integer') {
     const available = Math.min(Math.max(1, vw) / w, Math.max(1, vh) / h);
     const scale = mode === 'fit' || available < 1 ? available : Math.floor(available);
@@ -378,12 +393,12 @@ export async function runGame(opts) {
                 cw = 1024;
                 ch = 768;
             }
-            const k = desktopUiScale(cw, ch, scale, window.location.search);
-            setDesktop(Math.floor(cw / k), Math.floor(ch / k));
+            const size = initialDesktopGeometry(cw, ch, scale, window.location.search);
+            setDesktop(size.width, size.height);
             follows = true;
             dv().setInt32(pw, screenW, true);
             dv().setInt32(ph, screenH, true);
-            return k;
+            return size.scale;
         },
         host_open_native_window: () => 0,
         host_display_size: (pw, ph) => {

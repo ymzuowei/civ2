@@ -2,7 +2,7 @@
 // desktop's scale, pixels, the WASI file system, .zip reading and writing, the player's saves.
 //   tools/toolchain/node/bin/node src/web/test/unit.mjs
 import assert from 'node:assert/strict';
-import {vkOf, Wheel, desktopScale, desktopUiScale, argbToRgba, liveDesktopResize, canvasFitSize, displayModeFromSearch} from '../host.js';
+import {vkOf, Wheel, desktopScale, desktopUiScale, initialDesktopGeometry, argbToRgba, liveDesktopResize, canvasFitSize, displayModeFromSearch} from '../host.js';
 import {MemFS, makeWasi, normalize} from '../wasi.js';
 import {unzip, zip as makeZip, crc32} from '../zip.js';
 import {savesKind, playerFiles, importPath, savesToImport} from '../saves.js';
@@ -98,6 +98,17 @@ assert.equal(desktopUiScale(1920, 1080, 0, '?ui=large'), 2);
 assert.equal(desktopUiScale(3840, 2160, 0, '?ui=large'), 4);
 assert.equal(desktopUiScale(2560, 1440, 2, '?ui=large'), 2);
 assert.equal(desktopUiScale(1280, 720, 0, '?ui=large'), 1);
+assert.deepEqual(initialDesktopGeometry(2560, 1440, 0, ''), {width: 1280, height: 720, scale: 2});
+assert.deepEqual(initialDesktopGeometry(2560, 1440, 0, '?ui=large'), {width: 853, height: 560, scale: 3});
+assert.deepEqual(initialDesktopGeometry(1920, 1080, 0, '?ui=large'), {width: 960, height: 560, scale: 2});
+assert.deepEqual(initialDesktopGeometry(3840, 2160, 0, '?ui=large'), {width: 960, height: 560, scale: 4});
+assert.deepEqual(initialDesktopGeometry(2560, 1440, 2, '?ui=large'), {width: 1280, height: 720, scale: 2});
+assert.deepEqual(initialDesktopGeometry(1280, 720, 0, '?ui=large'), {width: 1280, height: 720, scale: 1});
+const largeGeometry = initialDesktopGeometry(2560, 1440, 0, '?ui=large');
+const safeFrame = canvasFitSize(largeGeometry.width, largeGeometry.height, 2560, 1440, 1, 'fit');
+assert.ok(safeFrame.width <= 2560 && safeFrame.height <= 1440);
+assert.ok(largeGeometry.height >= 560 && largeGeometry.width >= 800);
+assert.ok(Math.abs(safeFrame.width / safeFrame.height - largeGeometry.width / largeGeometry.height) < 1e-12);
 
 
 

@@ -10,7 +10,7 @@ import {deflateRawSync, inflateRawSync} from 'node:zlib';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {sha256, sha256js, packFrom, keepPack, loadPack, packIndex, prunePack, drawn} from '../hdpack.js';
-import {iniGet, iniSet, hdWanted} from '../options.js';
+import {iniGet, iniSet, hdWanted, skipBrowserOpening} from '../options.js';
 import {match} from '../locale.js';
 
 // Native and web language aliases distinguish Taiwan's traditional from
@@ -47,7 +47,18 @@ assert.equal(w.notches(30, 0), 0);          // turned back: the half notch forgo
 assert.equal(w.notches(70, 0), -1);
 assert.equal(w.notches(3, 1), -1);          // lines: 3 a notch
 
-// the desktop's scale (host.h's examples)
+// Browser startup should show the first menu without requiring a click
+// to dismiss the opening movie. Never skip non-startup videos globally.
+assert.equal(skipBrowserOpening(''), true);
+assert.equal(skipBrowserOpening('?lang=zh-CN&display=fit'), true);
+assert.equal(skipBrowserOpening('?intro=skip'), true);
+assert.equal(skipBrowserOpening('?intro=play'), false);
+assert.equal(skipBrowserOpening('?lang=zh-TW&intro=play&display=fit'), false);
+assert.equal(skipBrowserOpening('?intro=other'), true);
+const startupSource = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
+assert.match(startupSource, /env\.CIV2_SKIP_OPENING = '1'/);
+
+// // the desktop's scale (host.h's examples)
 assert.equal(desktopScale(1920, 1080, 0), 1);
 assert.equal(desktopScale(2560, 1440, 0), 2);
 assert.equal(desktopScale(3840, 2160, 0), 3);

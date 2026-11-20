@@ -233,3 +233,18 @@ The Web host can calculate a fitted canvas in either of two **presentation-only*
 Example: with a 1024×768 logical desktop inside a 2560×1440 physical viewport, default integer displays at 1024×768, while `?display=fit` uses 1920×1440. With Windows devicePixelRatio 1.25, CSS dimensions are divided by the DPR consistently. No game engine/desktop resize event is emitted by this setting.
 
 This is an experimental option for P1 high-resolution acceptance; not the final visible display-mode UI. Test Chrome/Edge, native game dialogs, animation, mouse cursors and game focus before making the new mode the default. See [CIV2-T006](https://github.com/ymzuowei/civ2-web/issues/23).
+
+## In-game Display toolbar (PC browser)
+
+While the game is running, the small upper-right toolbar has **Display**, **Fullscreen** and **Saves** controls. It remains outside the game's canvas and uses the same translated text keys as the browser setup and OpenCiv2 options (including **简体中文** / **繁體中文**). The toolbar supports normal keyboard tabbing; when it has focus, keyboard shortcuts are not forwarded into the game. After selecting a display mode, focus returns to the canvas.
+
+- **Pixel perfect** (default): current integer upscaling, with unused margins when the browser dimensions do not fit exact multiples.
+- **Fit viewport**: the current uniform fractional scale that uses more window space without stretching or cropping the original game image; fractional scale may soften retro pixel art.
+- **Fullscreen**: toggles the browser Fullscreen API on a direct button click; **Exit fullscreen** restores the window. Unsupported browsers disable the button. Browser F11 behavior is unchanged.
+- **Saves**: existing import/export dialog; game and stored saves are unaffected by display changes.
+
+The selected presentation mode is written to the address (`?display=fit` for Fit and no `display` parameter for Pixel perfect). Changing it triggers an immediate HTML canvas re-fit **without reloading**, resetting IndexedDB, reimporting the CD image, or issuing `HOST_EV_RESIZE` to the native game. It keeps other URL parameters, including `?lang=zh-CN`. This preserves the separately owner-accepted animation resize behavior, native window coordinates, pointer mapping, and video geometry.
+
+Example starting address: `http://127.0.0.1:8000/?lang=zh-CN&display=fit`. To check crispness against scaling on a 2560×1440 PC, choose the Pixel-perfect option in the toolbar, then return to Fit viewport during the same game. Fullscreen enter/exit should not change the game resolution.
+
+**Acceptance:** manually test Chrome and Edge at 1920×1080 / 2560×1440 / 4K with Windows DPI 100/125/150%, during animation and with save dialogs, city windows, advisor panels and cursor hit testing. The UI implementation and CI tests do not by themselves prove all monitor/DPI combinations; do not close [CIV2-T006](https://github.com/ymzuowei/civ2-web/issues/23) before owner visual acceptance.

@@ -2,12 +2,13 @@
 // desktop's scale, pixels, the WASI file system, .zip reading and writing, the player's saves.
 //   tools/toolchain/node/bin/node src/web/test/unit.mjs
 import assert from 'node:assert/strict';
-import {vkOf, Wheel, desktopScale, argbToRgba, liveDesktopResize, canvasFitSize} from '../host.js';
+import {vkOf, Wheel, desktopScale, argbToRgba, liveDesktopResize, canvasFitSize, displayModeFromSearch} from '../host.js';
 import {MemFS, makeWasi, normalize} from '../wasi.js';
 import {unzip, zip as makeZip, crc32} from '../zip.js';
 import {savesKind, playerFiles, importPath, savesToImport} from '../saves.js';
 import {deflateRawSync, inflateRawSync} from 'node:zlib';
 import {createHash} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {sha256, sha256js, packFrom, keepPack, loadPack, packIndex, prunePack, drawn} from '../hdpack.js';
 import {iniGet, iniSet, hdWanted} from '../options.js';
 import {match} from '../locale.js';
@@ -52,6 +53,27 @@ assert.equal(desktopScale(2560, 1440, 0), 2);
 assert.equal(desktopScale(3840, 2160, 0), 3);
 assert.equal(desktopScale(2940, 1782, 0), 3);
 assert.equal(desktopScale(800, 600, 2), 1);
+
+// The visible controls must be in the actual shipped page, outside the
+// canvas, and labels must go through the standard game's translations.
+const displayHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+for (const name of ['game-controls', 'display-mode', 'fullscreen', 'saves-open'])
+    assert.match(displayHtml, new RegExp('id="' + name + '"'));
+for (const key of ['web.display', 'web.display_integer', 'web.display_fit', 'web.enter_fullscreen'])
+    assert.match(displayHtml, new RegExp('data-t="' + key.replace('.', '\\.') + '"'));
+const pageSource = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
+assert.match(pageSource, /addEventListener\('change',/);
+assert.match(pageSource, /dispatchEvent\(new Event\('civ2-display-change'\)\)/);
+assert.match(pageSource, /requestFullscreen\(\)/);
+assert.match(pageSource, /controls\.addEventListener\('keydown'/);
+
+// Display toolbar can switch between the existing modes without creating
+// another game desktop or restarting it; URL parameters remain orthogonal.
+assert.equal(displayModeFromSearch(''), 'integer');
+assert.equal(displayModeFromSearch('?display=integer'), 'integer');
+assert.equal(displayModeFromSearch('?display=fit'), 'fit');
+assert.equal(displayModeFromSearch('?lang=zh-CN&display=fit'), 'fit');
+assert.equal(displayModeFromSearch('?display=unsupported'), 'integer');
 
 // Browser resize during animations is paint-only by default; dynamic game
 // desktop reflow is a legacy opt-in for comparisons.

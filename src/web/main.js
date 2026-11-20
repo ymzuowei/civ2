@@ -339,6 +339,49 @@ function savesControls(store) {
     d.addEventListener('close', () => $('screen').focus());
 }
 
+// Browser presentation controls: apply canvas fit without changing the
+// game's logical desktop or its stored game files. The query string also
+// makes a chosen mode easy to share/reproduce across browser refreshes.
+function displayControls() {
+    const controls = $('game-controls'), mode = $('display-mode');
+    const fullscreen = $('fullscreen'), game = $('game'), canvas = $('screen');
+    mode.value = new URLSearchParams(location.search).get('display') === 'fit' ? 'fit' : 'integer';
+    mode.addEventListener('change', () => {
+        const url = new URL(location.href);
+        if (mode.value === 'fit')
+            url.searchParams.set('display', 'fit');
+        else
+            url.searchParams.delete('display');
+        history.replaceState(history.state, '', url.href);
+        window.dispatchEvent(new Event('civ2-display-change'));
+        canvas.focus();
+    });
+    // While focus is on a toolbar control, keys belong to the browser UI,
+    // not to the running Civilization II engine's keyboard event handler.
+    controls.addEventListener('keydown', (e) => e.stopPropagation());
+    controls.addEventListener('keyup', (e) => e.stopPropagation());
+    const syncFullscreen = () => {
+        const on = document.fullscreenElement === game;
+        fullscreen.textContent = t(on ? 'web.exit_fullscreen' : 'web.enter_fullscreen');
+        fullscreen.setAttribute('aria-pressed', String(on));
+    };
+    fullscreen.disabled = !document.fullscreenEnabled || typeof game.requestFullscreen !== 'function';
+    fullscreen.addEventListener('click', async () => {
+        try {
+            if (document.fullscreenElement)
+                await document.exitFullscreen();
+            else
+                await game.requestFullscreen();
+        } catch (e) {
+            console.warn('Fullscreen request denied:', e);
+        }
+        syncFullscreen();
+        canvas.focus();
+    });
+    document.addEventListener('fullscreenchange', syncFullscreen);
+    syncFullscreen();
+}
+
 // ---- the HD graphics' art (hdpack.js), as CIV.INI asks for it (options.js) ----
 
 let pinP = null;
@@ -736,6 +779,7 @@ async function showSetup(store, ended = false) {
 async function main() {
     pageLang = await pageLanguage();
     await useLanguage(pageLang);
+    displayControls();
     await languageChoice();
     if (!window.WebAssembly || !window.indexedDB || !window.DecompressionStream) {
         status(t('web.no_browser'));

@@ -22,7 +22,7 @@ class BrowserModulePackagingTests(unittest.TestCase):
         # copied from src/web or declared in PAGE.
         manifest = page_manifest(ROOT / "tools/build_web.py")
         self.assertNotIn("texts.js", manifest)
-        self.assertIn("out = os.path.join(OUT, 'texts.js')",
+        self.assertIn("with open(os.path.join(OUT, 'texts.js')",
                       (ROOT / "tools/build_web.py").read_text(encoding="utf-8"))
         with tempfile.TemporaryDirectory(prefix="civ2-generated-js-") as tmp:
             src = Path(tmp)

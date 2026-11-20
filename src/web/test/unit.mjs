@@ -10,6 +10,19 @@ import {deflateRawSync, inflateRawSync} from 'node:zlib';
 import {createHash} from 'node:crypto';
 import {sha256, sha256js, packFrom, keepPack, loadPack, packIndex, prunePack, drawn} from '../hdpack.js';
 import {iniGet, iniSet, hdWanted} from '../options.js';
+import {match} from '../locale.js';
+
+// Native and web language aliases distinguish Taiwan's traditional from
+// Mainland/Singapore's simplified Chinese without changing existing saves.
+const languageChoices = [{code:'zh-Hant',name:'繁體中文'},{code:'zh-Hans',name:'简体中文'},{code:'de',name:'Deutsch'}];
+assert.equal(match('zh-CN',languageChoices),'zh-Hans');
+assert.equal(match('zh_SG',languageChoices),'zh-Hans');
+assert.equal(match('zh-Hans',languageChoices),'zh-Hans');
+assert.equal(match('zh-TW',languageChoices),'zh-Hant');
+assert.equal(match('zh-HK',languageChoices),'zh-Hant');
+assert.equal(match('zh-MO',languageChoices),'zh-Hant');
+assert.equal(match('de-AT',languageChoices),'de');
+assert.equal(match('zh-CN',[]),'en');
 
 // keys
 assert.equal(vkOf({code: 'KeyA', key: 'a'}), 0x41);

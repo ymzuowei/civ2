@@ -15,8 +15,8 @@ OpenCiv2 has two kinds of text:
   machine-drafted, need review by a native speaker): German (`de.txt`, Deutsch) and
   Latin (`la.txt`, Latina: classical, with Vicipaedia's words for modern things), in
   Windows-1252, Greek (`el.txt`, Ελληνικά, monotonic) and Traditional Chinese (`zh-Hant.txt`,
-  繁體中文, Taiwan usage), in UTF-8, and Esperanto (`eo.txt`); all of them translate the game's
-  texts too.
+  繁體中文, Taiwan usage), in UTF-8, and Esperanto (`eo.txt`), plus Simplified Chinese (`zh-Hans.txt`, Mainland Chinese usage) in UTF-8; all of them translate the game's
+  texts too. The Simplified Chinese translation is machine-assisted from the existing Traditional Chinese corpus with Mainland terminology post-editing; it is **not** yet fully native-speaker reviewed (see [ZH-HANS-LOCALIZATION.md](ZH-HANS-LOCALIZATION.md)).
 
 ## OpenCiv2's own English of the game's texts
 
@@ -54,7 +54,7 @@ without its text files.
 A code is a file's name: `eo` reads `lang/eo.txt`; a system's `pt_BR` reads `lang/pt-BR.txt`,
 else `lang/pt.txt`. Chinese in traditional characters (a system's or browser's `zh_TW`, `zh-HK`,
 `zh_MO`, `zh-Hant...`) reads `lang/zh-Hant.txt` (`src/host/codepages.h`: `language_alias`);
-other Chinese (`zh_CN`, `zh-Hans`) is not taken for it. The file is looked for in the game's folder (`lang/` beside its files: a
+Mainland and Singapore Chinese (`zh_CN`, `zh-SG`, `zh-Hans`) now use the distinct Simplified Chinese `zh-Hans.txt` translation, not the Traditional Chinese one. Both versions are displayed in the same language list. The file is looked for in the game's folder (`lang/` beside its files: a
 player's own) first, then in OpenCiv2's data directory (`data/lang/` beside the program;
 `data/native/lang/` in the source tree; in the macOS app `Contents/Resources/data/lang`; on
 Windows the program writes its own into `data\lang` beside it). The Language choice lists the
@@ -297,3 +297,10 @@ A translation of OpenCiv2's own texts is welcome: `data/native/lang/<code>.txt`,
 saying who wrote it, or *machine-drafted, needs review by a native speaker* until a speaker has
 reviewed it. It may translate the game's texts too (as above): only the translation, never
 the game's English.
+
+
+## Simplified Chinese (China / Singapore)
+
+`zh-Hans.txt` contains the same complete game/text translation keys as `zh-Hant.txt`, generated with OpenCC Taiwan-to-Mainland vocabulary conversion and then revised for familiar Simplified Chinese UX phrasing (e.g. 文件夹, 软件, 服务器, 存档, 导入/导出, 光盘镜像, 分辨率). `?lang=zh-CN` or `?lang=zh-Hans` uses it in the browser, `zh_TW` continues to use Traditional Chinese. See [Mainland glossary & review checklist](ZH-HANS-LOCALIZATION.md).
+
+WASM uses its **own** OpenType glyph subsets, not only the computer's Chinese UI fonts. When adding new Simplified characters run `python tools/lang_fonts.py` and `python tests/lang_test.py` under an isolated D-drive build cache to verify font coverage, then preserve the generated OFL subsets in the build. The first Web build uses an isolated D: font preparation step and restores the pinned Git checkout afterwards to keep long-lived runner caches clean. Text translation and full on-device proofreading remain distinct acceptance gates.

@@ -6,6 +6,7 @@
 // ?lang=CODE, else English.
 
 import {EN} from './texts.js';
+import {match} from './locale.js';
 
 let texts = {};             // the translation's, by key (without "openciv2.")
 let current = 'en';
@@ -61,15 +62,7 @@ export function languages() {
 
 // Among the site's languages, the one a code asks for ("pt-BR": pt-BR,
 // else pt); 'en' if none.
-export function match(code, list) {
-    let c = (code || '').replace('_', '-').toLowerCase();
-    // Chinese in traditional characters (zh-TW, zh-HK, zh-MO, zh-Hant...): zh-Hant
-    // (as src/host/codepages.h's language_alias)
-    if (/^zh-(tw|hk|mo|hant)(-|$)/.test(c))
-        c = 'zh-hant';
-    const codes = list.map((l) => l.code);
-    return codes.find((k) => k.toLowerCase() === c) || codes.find((k) => k.toLowerCase() === c.split('-')[0]) || 'en';
-}
+export {match};
 
 // The page's language: the URL's ?lang=CODE (as match finds it: zh-TW
 // zh-Hant, de-AT de, one the site has not English), else English

@@ -49,6 +49,44 @@ class HdGridContrastContract(unittest.TestCase):
         self.assertIn("strength = radius_tile ? 184u : 118u", helper)
         self.assertIn("radius_tile ? 0xf2eee4u : 0x0b1815u", helper)
         self.assertIn("best < .12 ? strength", helper)
+        # Radius-only drawing may extend one pixel across a shared edge
+        # for anti-alias coverage. Ordinary dark grid still obeys the
+        # original tile rectangle; the bitmap is clipped by clip_rect().
+        self.assertIn("l = x - (radius_tile ? 1 : 0)", helper)
+        self.assertIn("t = y - (radius_tile ? 1 : 0)", helper)
+        self.assertIn("r = x + w + (radius_tile ? 1 : 0)", helper)
+        self.assertIn("bot = y + h + (radius_tile ? 1 : 0)", helper)
+
+    def test_city_radius_postpass_follows_all_neighbor_terrain_draws(self):
+        # A thin pale city boundary used to be partially overpainted by
+        # later neighboring terrain or ordinary dark grid. Source-order
+        # contracts protect both full redraw and movement/partial redraw.
+        shared = self.game.split(
+            "static bool hd_radius_tile_for_postpass(", 1
+        )[1].split("void MapView::draw_tile_radius(", 1)[0]
+        self.assertIn("OPT_MAP_GRID", shared)
+        self.assertIn("tile_visible_to(tx,ty,civ)", shared)
+        self.assertIn("cities[c].owner == civ", shared)
+        self.assertIn("map_distance_diag(tx,ty,", shared)
+        self.assertIn("map_in_bounds(tx,ty)", shared)
+        self.assertIn("return true;", shared)
+        for name, next_name in (
+            ("draw_tile_radius", "draw_all_tiles"),
+            ("draw_all_tiles", "blit_tile_radius"),
+        ):
+            region = self.game.split(
+                "void MapView::" + name + "(", 1
+            )[1].split("void MapView::" + next_name + "(", 1)[0]
+            self.assertIn("hd_radius_tile_for_postpass(", region)
+            self.assertIn("hd_map_grid_contrast((void *)this->bits", region)
+            self.assertIn("tile_to_screen(&sx,&sy", region)
+            self.assertIn("apply_zoom();", region)
+            self.assertIn("gfx_reset_zoom_scale();", region)
+            self.assertLess(region.index("draw_tile(x,"),
+                            region.index("hd_radius_tile_for_postpass("))
+            self.assertLess(region.index("hd_radius_tile_for_postpass("),
+                            region.index("draw_city_names("))
+            self.assertNotIn("game.game_options |=", region)
 
 
 if __name__ == "__main__":

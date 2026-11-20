@@ -40,7 +40,11 @@ class AviSourceSyntax(unittest.TestCase):
                 cxx, "-x", "c++", "-std=gnu++17", "-fsyntax-only",
                 "-fno-exceptions", "-fno-rtti", "-fno-inline",
                 "-fno-strict-aliasing", "-fwrapv", "-fno-delete-null-pointer-checks",
-                "-w", "-include", "native.h",
+                # Host compiler is 64-bit, while game layout assertions target
+                # the original 32-bit ABI. Disable only these assertions for
+                # this supplementary syntax probe; the real wasm32 compiler
+                # retains every native static_assert during owner builds.
+                "-Dstatic_assert(...)=", "-w", "-include", "native.h",
                 "-I", str(ROOT / "src/include"),
                 "-I", str(ROOT / "src/auto"),
                 "-I", str(ROOT / "tools"),

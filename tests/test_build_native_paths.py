@@ -28,7 +28,7 @@ class FlatObjectNameTests(unittest.TestCase):
         )
 
     def test_windows_third_party_c_gets_gnu99(self):
-        for path in (r"D:\\CIV2\\src\\third_party\\indeo4\\vlc.c",
+        for path in (r"D:\CIV2\src\third_party\indeo4\vlc.c",
                      "/work/src/third_party/indeo4/vlc.c"):
             with self.subTest(path=path):
                 with patch.object(build_native.subprocess, "run",
@@ -40,7 +40,7 @@ class FlatObjectNameTests(unittest.TestCase):
                 self.assertNotIn("-std=gnu89", flags)
 
     def test_windows_platform_c_has_portable_c_flags(self):
-        for path in (r"D:\\CIV2\\src\\platform\\controls.c",
+        for path in (r"D:\CIV2\src\platform\controls.c",
                      "/work/src/platform/controls.c"):
             with self.subTest(path=path):
                 with patch.object(build_native.subprocess, "run",

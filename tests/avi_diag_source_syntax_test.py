@@ -22,7 +22,11 @@ class AviSourceSyntax(unittest.TestCase):
         parser = argparse.ArgumentParser(add_help=False)
         parser.add_argument("--require-compiler", action="store_true")
         args, _ = parser.parse_known_args()
-        cxx = shutil.which("clang++") or shutil.which("g++")
+        # GNU C++ -fpermissive can parse the legacy 32-bit pointer-to-int
+        # casts under a 64-bit host without treating them as fatal errors.
+        # Undeclared identifiers (the actual CIV2-B006 failure) still fail.
+        # The real wasm32 build continues to use strict upstream flags.
+        cxx = shutil.which("g++") or shutil.which("clang++")
         if not cxx:
             if args.require_compiler:
                 self.fail("required host C++ compiler unavailable")
@@ -38,6 +42,7 @@ class AviSourceSyntax(unittest.TestCase):
             self.assertTrue((gen / "thunks.h").is_file())
             cmd = [
                 cxx, "-x", "c++", "-std=gnu++17", "-fsyntax-only",
+                *(["-fpermissive"] if Path(cxx).name.startswith("g++") else []),
                 "-fno-exceptions", "-fno-rtti", "-fno-inline",
                 "-fno-strict-aliasing", "-fwrapv", "-fno-delete-null-pointer-checks",
                 # Host compiler is 64-bit, while game layout assertions target

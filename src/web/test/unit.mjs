@@ -2,7 +2,7 @@
 // desktop's scale, pixels, the WASI file system, .zip reading and writing, the player's saves.
 //   tools/toolchain/node/bin/node src/web/test/unit.mjs
 import assert from 'node:assert/strict';
-import {vkOf, Wheel, desktopScale, argbToRgba} from '../host.js';
+import {vkOf, Wheel, desktopScale, argbToRgba, liveDesktopResize} from '../host.js';
 import {MemFS, makeWasi, normalize} from '../wasi.js';
 import {unzip, zip as makeZip, crc32} from '../zip.js';
 import {savesKind, playerFiles, importPath, savesToImport} from '../saves.js';
@@ -40,7 +40,15 @@ assert.equal(desktopScale(3840, 2160, 0), 3);
 assert.equal(desktopScale(2940, 1782, 0), 3);
 assert.equal(desktopScale(800, 600, 2), 1);
 
-// pixels: ARGB words -> RGBA bytes, opaque
+// Browser resize during animations is paint-only by default; dynamic game
+// desktop reflow is a legacy opt-in for comparisons.
+assert.equal(liveDesktopResize(''), false);
+assert.equal(liveDesktopResize('?hd=0'), false);
+assert.equal(liveDesktopResize('?desktopResize=fit'), false);
+assert.equal(liveDesktopResize('?desktopResize=live'), true);
+assert.equal(liveDesktopResize('?desktopResize=live&hd=0'), true);
+
+// // pixels: ARGB words -> RGBA bytes, opaque
 const dst = new Uint32Array(1);
 argbToRgba(new Uint32Array([0x00112233]), dst, 1);
 assert.deepEqual([...new Uint8Array(dst.buffer)], [0x11, 0x22, 0x33, 0xff]);

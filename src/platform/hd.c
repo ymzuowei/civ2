@@ -898,7 +898,14 @@ void hd_map_grid_contrast(void *bits, int x, int y, int w, int h, int radius_til
     if (!hd_art || !bits || w < 2 || h < 2 ||
         !(b = bmp_of_bits(bits)) || !plane(b))
         return;
-    l = x; t = y; r = x + w; bot = y + h;
+    /* A thin diagonal edge spans the shared tile boundary. For a city
+       radius, sample one native pixel beyond the old tile rectangle so
+       neither half of its antialiasing gets clipped at the seam. Ordinary
+       dark grid retains the original tight tile bounds. */
+    l = x - (radius_tile ? 1 : 0);
+    t = y - (radius_tile ? 1 : 0);
+    r = x + w + (radius_tile ? 1 : 0);
+    bot = y + h + (radius_tile ? 1 : 0);
     if (!clip_rect(b, &l, &t, &r, &bot))
         return;
     sync_rect(b, l, t, r, bot);

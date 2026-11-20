@@ -14577,3 +14577,17 @@ G
 全螢幕
 @@openciv2.web.exit_fullscreen
 離開全螢幕
+@@openciv2.web.graphics_label
+畫面
+@@openciv2.web.graphics_choose_title
+選擇遊戲畫面
+@@openciv2.web.graphics_choose_note
+首次進入遊戲請選擇原版或高清畫面。之後可以從右上角畫面選單切換；切換時會重新載入遊戲。
+@@openciv2.web.graphics_classic
+原版
+@@openciv2.web.graphics_hd
+高清
+@@openciv2.web.graphics_unavailable
+尚未安裝高清地圖素材，可以先使用原版畫面。
+@@openciv2.web.graphics_switch_confirm
+請先在文明帝國 II 中儲存目前回合。切換畫面會重新載入遊戲，未儲存的操作將遺失。是否繼續？

@@ -185,6 +185,12 @@
     <button id="intro-start" type="button" data-t="web.play">Play</button>
   </div>
   <div id="game-controls" role="group" aria-labelledby="display-label">
+    <label><span data-t="web.graphics_label">Graphics</span>
+      <select id="graphics-mode" aria-label="Graphics">
+        <option value="classic" data-t="web.graphics_classic">Original</option>
+        <option value="hd" data-t="web.graphics_hd">High resolution</option>
+      </select>
+    </label>
     <label><span id="display-label" data-t="web.display">Display</span>
       <select id="display-mode">
         <option value="integer" data-t="web.display_integer">Pixel perfect</option>
@@ -196,6 +202,15 @@
   </div>
 </div>
 <input id="import-saves" type="file" multiple accept=".sav,.zip,.scn,.mp,.ini,.dat">
+<dialog id="graphics-choice-dialog" aria-labelledby="graphics-first-title">
+  <h2 id="graphics-first-title" class="dialog-title" data-t="web.graphics_choose_title">Choose map graphics</h2>
+  <p class="dialog-text" data-t="web.graphics_choose_note">Choose once before entering the game. Later you can change Graphics in the toolbar; switching reloads the game.</p>
+  <p class="dialog-text" id="graphics-first-unavailable" hidden data-t="web.graphics_unavailable">The HD texture pack is not installed. Original graphics remain available.</p>
+  <div class="dialog-buttons">
+    <button id="graphics-first-classic" type="button" data-t="web.graphics_classic">Original</button>
+    <button id="graphics-first-hd" type="button" data-t="web.graphics_hd">High resolution</button>
+  </div>
+</dialog>
 <dialog id="saves-dialog">
   <h2 data-t="web.saves_heading">Saved games</h2>
   <p class="dim" data-t="web.saves_note">Your saved games, scenarios you made, <code>CIV.INI</code>, <code>CIV2.DAT</code> and

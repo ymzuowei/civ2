@@ -41,11 +41,12 @@ class HdGridContrastContract(unittest.TestCase):
         self.assertIn("b->hd +", helper)
         self.assertNotRegex(helper, r"\bbmp_row\([^)]*\)\s*=")
         self.assertIn("void hd_map_grid_contrast(", self.header)
-        # Owner approved the overall 1440p visual composition but requested
-        # softer ordinary visible-grid outlines. Keep the city-radius white
-        # treatment, original game sprites and hidden-grid behavior intact.
-        self.assertIn("stroke = radius_tile ? 0.84 : 0.66", helper)
-        self.assertIn("strength = radius_tile ? 184u : 104u", helper)
+        # Both revealed tile types use one thin outline, so bright city
+        # radius cannot be thicker than ordinary terrain grid. Only the
+        # ordinary dark overlay is slightly deeper; city color/alpha stay.
+        self.assertIn("stroke = 0.56, limit = stroke * stroke", helper)
+        self.assertNotIn("stroke = radius_tile ?", helper)
+        self.assertIn("strength = radius_tile ? 184u : 118u", helper)
         self.assertIn("radius_tile ? 0xf2eee4u : 0x0b1815u", helper)
         self.assertIn("best < .12 ? strength", helper)
 

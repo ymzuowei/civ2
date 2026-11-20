@@ -500,3 +500,13 @@ the files
 This browser lacks what the game needs (WebAssembly, IndexedDB, DecompressionStream).
 @@openciv2.web.other_tab
 Waiting for another OpenCiv2 tab (from before an update) to close: close it, or reload it.
+@@openciv2.web.display
+Display
+@@openciv2.web.display_integer
+Pixel perfect
+@@openciv2.web.display_fit
+Fit viewport
+@@openciv2.web.enter_fullscreen
+Fullscreen
+@@openciv2.web.exit_fullscreen
+Exit fullscreen

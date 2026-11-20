@@ -189,7 +189,7 @@ def fetch(name, url, sha):
 
 def git_blob_sha(data):
     """SHA-1 of the Git blob object (the official upstream tree's content ID)."""
-    return hashlib.sha1(b'blob ' + str(len(data)).encode('ascii') + b'\\0' + data).hexdigest()
+    return hashlib.sha1(b'blob ' + str(len(data)).encode('ascii') + bytes([0]) + data).hexdigest()
 
 
 def fetch_git_blob(name, url, git_sha):

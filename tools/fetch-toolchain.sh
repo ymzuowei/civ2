@@ -142,7 +142,10 @@ if [ -n "$wasm" ] && [ ! -d wabt ]; then
     wabt_name="wabt-1.0.41-$wabt"
     fetch_archive "$wabt_name.tar.gz" \
         "https://github.com/WebAssembly/wabt/releases/download/1.0.41/$wabt_name.tar.gz" ""
-    install_archive "$wabt_name" wabt
+    # Release archive filename is platform-specific, but its top-level
+    # extracted directory is always wabt-1.0.41 (without -windows-x64).
+    # Original fetch-toolchain.sh also renamed wabt-1.0.41 to wabt.
+    install_archive "wabt-1.0.41" wabt
 fi
 if [ -n "$mingw" ] && [ ! -d SDL2-mingw ]; then
     fetch_archive "SDL2-devel-2.30.9-mingw.tar.gz" \

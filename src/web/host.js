@@ -100,6 +100,10 @@ export function canvasFitSize(w, h, vw, vh, dpr = 1, mode = 'integer') {
     return {width: w * scale / dpr, height: h * scale / dpr, scale};
 }
 
+export function displayModeFromSearch(search = '') {
+    return new URLSearchParams(search).get('display') === 'fit' ? 'fit' : 'integer';
+}
+
 // ARGB (the game's 0xAARRGGBB words) -> the canvas's RGBA bytes, opaque
 export function argbToRgba(src, dst, n) {
     for (let i = 0; i < n; i++) {
@@ -158,10 +162,10 @@ export async function runGame(opts) {
     const rendering = () => {
         canvas.style.imageRendering = shown >= density && shown % density === 0 ? '' : 'auto';
     };
-    const displayMode = new URLSearchParams(window.location.search).get('display') === 'fit' ? 'fit' : 'integer';
+    const displayMode = () => displayModeFromSearch(window.location.search);
     const fit = () => {
         const [vw, vh] = viewport();
-        const size = canvasFitSize(screenW, screenH, vw, vh, dpr(), displayMode);
+        const size = canvasFitSize(screenW, screenH, vw, vh, dpr(), displayMode());
         shown = size.scale;
         canvas.style.width = size.width + 'px';
         canvas.style.height = size.height + 'px';
@@ -187,6 +191,10 @@ export async function runGame(opts) {
     // windows, leaving their contents in an inconsistent coordinate system.
     // Keep native reflow available as an explicit legacy-mode escape hatch.
     const dynamicDesktopResize = liveDesktopResize(window.location.search);
+    // The Display control changes presentation immediately without a native
+    // desktop resize, restarting the game, or modifying its save data.
+    window.addEventListener('civ2-display-change', fit);
+    document.addEventListener('fullscreenchange', fit);
     window.addEventListener('resize', () => {
         fit();
         if (follows && dynamicDesktopResize) {

@@ -113,7 +113,10 @@ export function desktopUiScale(w, h, scale = 0, search = '') {
 // resulting side bars are intentional). This runs only once at startup.
 export function initialDesktopGeometry(w, h, scale = 0, search = '') {
     const k = desktopUiScale(w, h, scale, search);
-    const large = scale < 1 && new URLSearchParams(search).get('ui') === 'large';
+    // On sub-1080p/small screens no extra native UI scale is available.
+    // Preserve the original desktop rather than increasing its logical
+    // dimensions and unnecessarily shrinking the canvas.
+    const large = scale < 1 && k > 1 && new URLSearchParams(search).get('ui') === 'large';
     return {
         width: Math.max(large ? 800 : 0, Math.floor(w / k)),
         height: Math.max(large ? 560 : 0, Math.floor(h / k)),

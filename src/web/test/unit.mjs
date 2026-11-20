@@ -104,6 +104,8 @@ assert.deepEqual(initialDesktopGeometry(1920, 1080, 0, '?ui=large'), {width: 960
 assert.deepEqual(initialDesktopGeometry(3840, 2160, 0, '?ui=large'), {width: 960, height: 560, scale: 4});
 assert.deepEqual(initialDesktopGeometry(2560, 1440, 2, '?ui=large'), {width: 1280, height: 720, scale: 2});
 assert.deepEqual(initialDesktopGeometry(1280, 720, 0, '?ui=large'), {width: 1280, height: 720, scale: 1});
+assert.deepEqual(initialDesktopGeometry(640, 480, 0, '?ui=large'), {width: 640, height: 480, scale: 1});
+assert.deepEqual(initialDesktopGeometry(800, 600, 0, '?ui=large'), {width: 800, height: 600, scale: 1});
 const largeGeometry = initialDesktopGeometry(2560, 1440, 0, '?ui=large');
 const safeFrame = canvasFitSize(largeGeometry.width, largeGeometry.height, 2560, 1440, 1, 'fit');
 assert.ok(safeFrame.width <= 2560 && safeFrame.height <= 1440);

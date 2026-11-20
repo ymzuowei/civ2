@@ -82,6 +82,9 @@ const startupSource = readFileSync(new URL('../main.js', import.meta.url), 'utf8
 assert.match(startupSource, /env\.CIV2_SKIP_OPENING = '1'/);
 assert.match(startupSource, /openingVideoNeedsGesture\(entries, hdArtAvailable, location.search\)/);
 assert.match(startupSource, /hd && !!window\.civ2Hd\?\.packBytes/);
+for (const field of ['ownedOpeningPresent', 'hdArtAvailable', 'skipRequested', 'gestureRequired', 'silent-fallback'])
+    assert.ok(startupSource.includes(field));
+assert.match(startupSource, /window\.civ2Intro = \{/);
 assert.match(startupSource, /await unlockOpeningAudio\(\)/);
 assert.match(startupSource, /await resumeOpeningAudioContext\(audio\)/);
 assert.match(startupSource, /env\.CIV2_NOSOUND = '1'/);
@@ -120,6 +123,7 @@ const safeFrame = canvasFitSize(largeGeometry.width, largeGeometry.height, 2560,
 assert.ok(safeFrame.width <= 2560 && safeFrame.height <= 1440);
 assert.ok(largeGeometry.height >= 560 && largeGeometry.width >= 800);
 assert.ok(Math.abs(safeFrame.width / safeFrame.height - largeGeometry.width / largeGeometry.height) < 1e-12);
+
 
 
 

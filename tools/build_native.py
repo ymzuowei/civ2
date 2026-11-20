@@ -29,6 +29,28 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, 'build', 'native')
 GEN = os.path.join(OUT, 'gen')
 
+
+def write_generated(path, text):
+    """Keep generated helpers' timestamps unchanged when bytes are identical."""
+    data = text.encode('utf-8')
+    if os.path.exists(path):
+        with open(path, 'rb') as f:
+            if f.read() == data:
+                return False
+    staging = path + '.part'
+    with open(staging, 'wb') as f:
+        f.write(data)
+    os.replace(staging, path)
+    return True
+
+
+def needs_link(exe, objects, compiled, signature_matches):
+    if compiled or not signature_matches or not os.path.isfile(exe):
+        return True
+    exe_time = os.path.getmtime(exe)
+    return any(os.path.getmtime(obj) > exe_time for obj in objects)
+
+
 TARGETS = {
     'linux32': {
         'cc': 'gcc',
@@ -155,7 +177,7 @@ def gen_thunks(rows):
             else:
                 lines.append('#define %s %s' % (r['name'], target))
     lines += ['#endif', '']
-    open(os.path.join(GEN, 'thunks.h'), 'w').write('\n'.join(lines))
+    write_generated(os.path.join(GEN, 'thunks.h'), '\n'.join(lines))
 
 
 def gen_inits(rows):
@@ -189,7 +211,7 @@ def gen_inits(rows):
         out.append('EXTERN_C void (*const %s[])(void) = {' % label)
         out += ['    (void (*)(void))%s,' % f for f in fns]
         out += ['    0', '};', '']
-    open(os.path.join(GEN, 'inits.cpp'), 'w').write('\n'.join(out))
+    write_generated(os.path.join(GEN, 'inits.cpp'), '\n'.join(out))
 
 
 def gen_layout():
@@ -219,7 +241,7 @@ def gen_layout():
             '                    (unsigned)layout[i].addr);',
             '    return bad;',
             '}', '']
-    open(os.path.join(GEN, 'layout.cpp'), 'w').write('\n'.join(out))
+    write_generated(os.path.join(GEN, 'layout.cpp'), '\n'.join(out))
 
 
 def gen_calltable():
@@ -236,7 +258,7 @@ def gen_calltable():
            'EXTERN_C const struct ReplayCall { const char *name; void (*fn)(void); } replay_calltable[] = {']
     out += ['    {"%s", (void (*)(void))%s},' % (n, n) for n in sorted(names)]
     out += ['    {0, 0}', '};', '']
-    open(os.path.join(GEN, 'calltable.cpp'), 'w').write('\n'.join(out))
+    write_generated(os.path.join(GEN, 'calltable.cpp'), '\n'.join(out))
 
 
 # The game (not the platform layer, the host or third-party code) is C++.

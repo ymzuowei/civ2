@@ -67,6 +67,9 @@ export function match(code, list) {
     // (as src/host/codepages.h's language_alias)
     if (/^zh-(tw|hk|mo|hant)(-|$)/.test(c))
         c = 'zh-hant';
+    // Mainland/Singapore Chinese in simplified characters: zh-Hans.
+    else if (/^zh-(cn|sg|hans)(-|$)/.test(c))
+        c = 'zh-hans';
     const codes = list.map((l) => l.code);
     return codes.find((k) => k.toLowerCase() === c) || codes.find((k) => k.toLowerCase() === c.split('-')[0]) || 'en';
 }

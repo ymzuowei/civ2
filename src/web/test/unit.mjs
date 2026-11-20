@@ -10,8 +10,9 @@ import {deflateRawSync, inflateRawSync} from 'node:zlib';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {sha256, sha256js, packFrom, keepPack, loadPack, packIndex, prunePack, drawn} from '../hdpack.js';
-import {iniGet, iniSet, hdWanted, skipBrowserOpening, openingVideoPresent, openingVideoNeedsGesture, resumeOpeningAudioContext} from '../options.js';
+import {iniGet, iniSet, hdWanted, skipBrowserOpening, openingVideoPresent, openingVideoNeedsGesture, resumeOpeningAudioContext, siteBundlesGame} from '../options.js';
 import {match} from '../locale.js';
+import {makeNet} from '../net.js';
 import {GRAPHICS_PREFERENCE_KEY, graphicsFromQuery, resolveGraphicsPreference, hdArg} from '../graphics_choice.js';
 
 // Native and web language aliases distinguish Taiwan's traditional from
@@ -25,6 +26,47 @@ assert.equal(match('zh-HK',languageChoices),'zh-Hant');
 assert.equal(match('zh-MO',languageChoices),'zh-Hant');
 assert.equal(match('de-AT',languageChoices),'de');
 assert.equal(match('zh-CN',[]),'en');
+
+// BYO-only sites must not request a missing /game/index.json. A GAME=1
+// build sets exactly one HTML metadata flag and retains game installation.
+const siteFlag = (content) => ({
+    querySelector(selector) {
+        assert.equal(selector, 'meta[name="openciv2-bundled-game"]');
+        return content === null ? null : {content};
+    }
+});
+assert.equal(siteBundlesGame(siteFlag('0')), false);
+assert.equal(siteBundlesGame(siteFlag('1')), true);
+assert.equal(siteBundlesGame(siteFlag(null)), false);
+const byoh = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+assert.match(byoh, /<meta name="openciv2-bundled-game" content="0">/);
+assert.match(byoh, /<link rel="icon" href="data:,">/);
+const mainSource = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
+assert.match(mainSource, /siteBundlesGame\(document\)/);
+assert.match(mainSource, /fetch\('game\/index\.json'/);
+
+// Relay discovery should be completely idle during solo game startup.
+// Only a real multiplayer connect/listen can probe /info.
+const openedSockets = [];
+class StubWebSocket {
+    constructor(url) {
+        openedSockets.push(url);
+        this.binaryType = '';
+    }
+    addEventListener() {}
+}
+const relayTest = makeNet('ws://relay.test:8765', StubWebSocket);
+assert.deepEqual(openedSockets, []);
+assert.equal(relayTest.localAddr(), '127.0.0.1');
+assert.equal(relayTest.udpOpen() >= 0, true);
+assert.deepEqual(openedSockets, []);
+const listenerHandle = relayTest.tcpOpen(4993);
+assert.equal(openedSockets.length, 0);
+assert.equal(relayTest.tcpListen(listenerHandle), 0);
+assert.deepEqual(openedSockets, [
+    'ws://relay.test:8765/info',
+    'ws://relay.test:8765/listen?port=4993'
+]);
 
 // keys
 assert.equal(vkOf({code: 'KeyA', key: 'a'}), 0x41);

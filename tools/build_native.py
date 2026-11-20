@@ -18,6 +18,8 @@ import argparse
 import concurrent.futures
 import csv
 import glob
+import hashlib
+import json
 import os
 import re
 import subprocess
@@ -353,6 +355,23 @@ def main():
                      glob.glob(os.path.join(ROOT, 'src', 'native', '*.cpp')))
     objdir = os.path.join(OUT, args.target + CXX_SUFFIX)
     os.makedirs(objdir, exist_ok=True)
+    # A persistent compile recipe stamp prevents reuse across incompatible
+    # flags, compiler upgrades or source-build-script changes.
+    signature_path = os.path.join(objdir, '.build-signature.json')
+    compiler_stat = os.stat(t['cc']) if os.path.isfile(t['cc']) else None
+    signature = json.dumps({
+        'target': args.target, 'compiler': t['cc'],
+        'compiler_size_mtime': (
+            [compiler_stat.st_size, compiler_stat.st_mtime_ns]
+            if compiler_stat else None),
+        'cxx_mode': CXX_MODE, 'flags': CFLAGS,
+        'target_flags': t.get('cflags', []),
+        'instrument': t.get('instrument', []),
+        'ldflags': t['ldflags'], 'libs': t['libs'],
+        'recipe_hash': hashlib.sha256(open(__file__, 'rb').read()).hexdigest(),
+    }, sort_keys=True) + '\n'
+    signature_matches = os.path.isfile(signature_path) and (
+        open(signature_path, encoding='utf-8').read() == signature)
     if args.target.startswith('linux') or args.target == 'wasm':
         sources += sorted(glob.glob(os.path.join(ROOT, 'src', 'platform', '*.c')))     # aaa_begin.c first
         # The Indeo 4 decoder (FFmpeg's, LGPL): indeo4.c is included by iv41.c.
@@ -365,7 +384,8 @@ def main():
     sources += [os.path.join(ROOT, f) for f in t.get('extra', [])]
     # (the state headers too: src/data/state/*.h)
     headers = max(os.path.getmtime(h) for h in glob.glob(os.path.join(ROOT, 'src', '*', '*.h')) +
-                  glob.glob(os.path.join(ROOT, 'src', '*', '*', '*.h')))
+                  glob.glob(os.path.join(ROOT, 'src', '*', '*', '*.h')) +
+                  [os.path.join(GEN, 'thunks.h')])
     jobs = []
     tflags = t.get('cflags', [])
     for src in sources:
@@ -373,12 +393,16 @@ def main():
         newest = max(os.path.getmtime(src), headers)
         if '/tests/' in src.replace('\\', '/'):
             newest = max([newest] + [os.path.getmtime(h) for h in glob.glob(os.path.join(ROOT, 'tests', '*.h'))])
-        stale = not os.path.exists(o) or os.path.getmtime(o) < newest
+        stale = (not signature_matches or not os.path.exists(o) or
+                 os.path.getmtime(o) < newest)
         jobs.append((t['cc'], src, o, stale, tflags, t.get('instrument')))
     with concurrent.futures.ThreadPoolExecutor(os.cpu_count()) as ex:
         results = list(ex.map(compile_one, jobs))
     objs = [o for o, err in results if err is None]
     failed = [(o, err) for o, err in results if err is not None]
+    compiled = sum(bool(job[3]) for job in jobs)
+    print('CIV2_NATIVE_OBJECTS_REBUILT=%d REUSED=%d' %
+          (compiled, len(jobs) - compiled), flush=True)
     for o, err in failed:
         sys.stderr.write(err[-2000:])
     if failed:
@@ -387,6 +411,9 @@ def main():
     if CXX:
         exe = re.sub(r'(\.\w+)?$', lambda m: CXX_SUFFIX + (m.group(1) or ''), exe, count=1)
     os.makedirs(os.path.dirname(exe), exist_ok=True)
+    if not needs_link(exe, objs, compiled, signature_matches):
+        print('CIV2_NATIVE_INCREMENTAL_LINK=REUSED (%s)' % os.path.relpath(exe, ROOT))
+        return
     r = subprocess.run([cxx_of(t['cc']) if CXX else t['cc'], '-o', exe] + objs + t['ldflags'] + t['libs'], capture_output=True, text=True)
     undefined = sorted(set(re.findall(r"undefined reference to `([^']+)'", r.stderr) +
                            re.findall(r"undefined symbol: (\S+)", r.stderr)))
@@ -408,6 +435,11 @@ def main():
     if mismatch:
         sys.stderr.write(r.stderr[-6000:])
         raise SystemExit('calls that do not match their callee: %s' % ' '.join(mismatch))
+    # Record the verified build recipe only after successful linking.
+    with open(signature_path + '.part', 'w', encoding='utf-8', newline='\n') as stamp:
+        stamp.write(signature)
+    os.replace(signature_path + '.part', signature_path)
+    print('CIV2_NATIVE_INCREMENTAL_LINK=REBUILT')
     print('built %s' % os.path.relpath(exe, ROOT))
 
 

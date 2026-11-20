@@ -8,7 +8,7 @@ import {unzip} from './zip.js';
 import {exportSaves, importSaves} from './saves.js';
 import {findDisc} from './setup_run.js';
 import {packFrom, keepPack, loadPack, download, siteArt} from './hdpack.js';
-import {hdWanted, iniGet, iniSet} from './options.js';
+import {hdWanted, iniGet, iniSet, skipBrowserOpening} from './options.js';
 import {t, languages, pageLanguage, urlLanguage, withLanguage, useLanguage, langFile, parseLang, match} from './i18n.js';
 
 const GAME = '/civ2', DATA = '/data';
@@ -682,6 +682,11 @@ async function play(store) {
     // (the platform's log: ?log, in the console)
     // (Auto, the system's language: English)
     const env = {CIV2_DATA: DATA, CIV2_SYSTEM_LANG: 'en'};
+    // Browser-only startup policy; do not send a fake mouse click to the
+    // game or alter its modal input. This env is runtime-only: no CIV.INI,
+    // imported E: media or IndexedDB save changes.
+    if (skipBrowserOpening(location.search))
+        env.CIV2_SKIP_OPENING = '1';
     if (!new URLSearchParams(location.search).has('log'))
         env.CIV2_HOOK_LOG = '/dev/null';
     // (tests, src/web/test/smoke.mjs: files and settings of a replay)

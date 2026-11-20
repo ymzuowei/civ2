@@ -16,6 +16,19 @@ class BrowserModulePackagingTests(unittest.TestCase):
         self.assertIn("graphics_choice.js", manifest)
         self.assertEqual(missing_modules(ROOT / "src/web", manifest), [])
 
+    def test_generated_english_texts_are_not_source_tree_modules(self):
+        # i18n.js imports ./texts.js; write_languages() generates that
+        # file at build/web/texts.js from src/host/texts.h. It cannot be
+        # copied from src/web or declared in PAGE.
+        manifest = page_manifest(ROOT / "tools/build_web.py")
+        self.assertNotIn("texts.js", manifest)
+        self.assertIn("out = os.path.join(OUT, 'texts.js')",
+                      (ROOT / "tools/build_web.py").read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory(prefix="civ2-generated-js-") as tmp:
+            src = Path(tmp)
+            (src / "i18n.js").write_text("import {EN} from './texts.js';")
+            self.assertEqual(missing_modules(src, ["i18n.js"]), [])
+
     def test_missing_graphics_module_is_detected_before_wasm(self):
         with tempfile.TemporaryDirectory(prefix="civ2-js-manifest-") as temp:
             src = Path(temp)

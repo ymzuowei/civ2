@@ -14568,3 +14568,13 @@ G
 游戏概念(&C)
 @@menu.9f0
 关于文明帝国II(&B)
+@@openciv2.web.display
+显示
+@@openciv2.web.display_integer
+整数倍缩放
+@@openciv2.web.display_fit
+适应窗口大小
+@@openciv2.web.enter_fullscreen
+全屏
+@@openciv2.web.exit_fullscreen
+退出全屏

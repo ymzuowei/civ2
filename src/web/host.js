@@ -83,6 +83,14 @@ export function desktopScale(w, h, scale) {
     return scale < 1 ? 1 : scale;
 }
 
+// Keep the game's logical desktop stable when the browser viewport changes.
+// In-game AVI playback and modal windows retain geometry; only the canvas
+// presentation is scaled to the available viewport. The legacy dynamic
+// desktop reflow is opt-in for diagnosis (?desktopResize=live).
+export function liveDesktopResize(search = '') {
+    return new URLSearchParams(search).get('desktopResize') === 'live';
+}
+
 // ARGB (the game's 0xAARRGGBB words) -> the canvas's RGBA bytes, opaque
 export function argbToRgba(src, dst, n) {
     for (let i = 0; i < n; i++) {
@@ -166,9 +174,14 @@ export async function runGame(opts) {
         setDensity(1);
         fit();
     };
+    // The canvas resizes smoothly; the game desktop does not. Changing the
+    // desktop in the middle of AVI playback can resize/rearrange modal game
+    // windows, leaving their contents in an inconsistent coordinate system.
+    // Keep native reflow available as an explicit legacy-mode escape hatch.
+    const dynamicDesktopResize = liveDesktopResize(window.location.search);
     window.addEventListener('resize', () => {
         fit();
-        if (follows) {
+        if (follows && dynamicDesktopResize) {
             const [vw, vh] = viewport();
             push(EV.RESIZE, 0, Math.max(vw, 640), Math.max(vh, 480));
         }

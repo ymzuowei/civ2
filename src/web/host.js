@@ -94,6 +94,18 @@ export function liveDesktopResize(search = '') {
 // Canvas presentation only; the game's logical desktop stays unchanged.
 // Integer mode preserves sharp pixel-art steps, fit mode uses the whole
 // available viewport at a uniform (possibly fractional) scale.
+// An opt-in larger original PC interface on big monitors. Change the
+// logical desktop density only at initial host_open_maximized_window; never
+// reflow it while an AVI/window animation is active. Explicit game scale
+// settings still take priority over this browser presentation preference.
+export function desktopUiScale(w, h, scale = 0, search = '') {
+    const normal = desktopScale(w, h, scale);
+    if (new URLSearchParams(search).get('ui') !== 'large' || scale > 0)
+        return normal;
+    const most = Math.min(Math.floor(w / 640), Math.floor(h / 480));
+    return Math.max(normal, most);
+}
+
 export function canvasFitSize(w, h, vw, vh, dpr = 1, mode = 'integer') {
     const available = Math.min(Math.max(1, vw) / w, Math.max(1, vh) / h);
     const scale = mode === 'fit' || available < 1 ? available : Math.floor(available);
@@ -366,7 +378,7 @@ export async function runGame(opts) {
                 cw = 1024;
                 ch = 768;
             }
-            const k = desktopScale(cw, ch, scale);
+            const k = desktopUiScale(cw, ch, scale, window.location.search);
             setDesktop(Math.floor(cw / k), Math.floor(ch / k));
             follows = true;
             dv().setInt32(pw, screenW, true);

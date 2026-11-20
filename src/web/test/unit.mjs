@@ -2,7 +2,7 @@
 // desktop's scale, pixels, the WASI file system, .zip reading and writing, the player's saves.
 //   tools/toolchain/node/bin/node src/web/test/unit.mjs
 import assert from 'node:assert/strict';
-import {vkOf, Wheel, desktopScale, argbToRgba, liveDesktopResize, canvasFitSize, displayModeFromSearch} from '../host.js';
+import {vkOf, Wheel, desktopScale, desktopUiScale, argbToRgba, liveDesktopResize, canvasFitSize, displayModeFromSearch} from '../host.js';
 import {MemFS, makeWasi, normalize} from '../wasi.js';
 import {unzip, zip as makeZip, crc32} from '../zip.js';
 import {savesKind, playerFiles, importPath, savesToImport} from '../saves.js';
@@ -72,6 +72,15 @@ assert.equal(desktopScale(2560, 1440, 0), 2);
 assert.equal(desktopScale(3840, 2160, 0), 3);
 assert.equal(desktopScale(2940, 1782, 0), 3);
 assert.equal(desktopScale(800, 600, 2), 1);
+
+// Larger native UI targets original game readability, not Canvas stretching.
+// Default game layout and explicit native-scale settings are unaffected.
+assert.equal(desktopUiScale(2560, 1440, 0, ''), 2);
+assert.equal(desktopUiScale(2560, 1440, 0, '?lang=zh-CN&ui=large'), 3);
+assert.equal(desktopUiScale(1920, 1080, 0, '?ui=large'), 2);
+assert.equal(desktopUiScale(3840, 2160, 0, '?ui=large'), 4);
+assert.equal(desktopUiScale(2560, 1440, 2, '?ui=large'), 2);
+assert.equal(desktopUiScale(1280, 720, 0, '?ui=large'), 1);
 
 // The visible controls must be in the actual shipped page, outside the
 // canvas, and labels must go through the standard game's translations.

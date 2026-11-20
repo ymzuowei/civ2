@@ -41,6 +41,13 @@ class HdGridContrastContract(unittest.TestCase):
         self.assertIn("b->hd +", helper)
         self.assertNotRegex(helper, r"\bbmp_row\([^)]*\)\s*=")
         self.assertIn("void hd_map_grid_contrast(", self.header)
+        # Owner approved the overall 1440p visual composition but requested
+        # softer ordinary visible-grid outlines. Keep the city-radius white
+        # treatment, original game sprites and hidden-grid behavior intact.
+        self.assertIn("stroke = radius_tile ? 0.84 : 0.66", helper)
+        self.assertIn("strength = radius_tile ? 184u : 104u", helper)
+        self.assertIn("radius_tile ? 0xf2eee4u : 0x0b1815u", helper)
+        self.assertIn("best < .12 ? strength", helper)
 
 
 if __name__ == "__main__":

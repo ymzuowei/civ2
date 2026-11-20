@@ -50,20 +50,26 @@ export function makeNet(relayGiven, WS = globalThis.WebSocket, unreachable = () 
                 unreachable(relay);
         });
     };
-    // (the address the others reach this machine's games at: the relay's)
-    if (relay && WS) {
+    // Query relay metadata only when the player actually starts a network
+    // game. Single-player sessions need no relay and should not attempt
+    // ws://localhost:8765/info merely because the game initialized.
+    let infoRelay = null;
+    const ensureInfo = () => {
+        if (!relay || !WS || relay === infoRelay)
+            return;
+        infoRelay = relay;
         try {
             const ws = open('/info');
             ws.onmessage = (e) => {
                 try {
                     const m = JSON.parse(e.data);
-                    if (m.addr)
+                    if (m.addr && relay === infoRelay)
                         localAddr = m.addr;
                 } catch (err) { /* not ours */ }
             };
             ws.onerror = () => {};
-        } catch (e) { /* no relay there */ }
-    }
+        } catch (e) { /* the normal network connection will report failure */ }
+    };
     const readable = (s, n) => {
         if (!s.rx.length)
             return null;
@@ -113,6 +119,7 @@ export function makeNet(relayGiven, WS = globalThis.WebSocket, unreachable = () 
             relay = relayNow();
             if (!s || s.kind !== 'tcp' || !relay || !s.port)
                 return -1;
+            ensureInfo();
             let ws;
             try {
                 ws = open('/listen?port=' + s.port);
@@ -176,6 +183,7 @@ export function makeNet(relayGiven, WS = globalThis.WebSocket, unreachable = () 
             relay = relayNow();
             if (!s || s.kind !== 'tcp' || s.ws || !relay)
                 return -1;
+            ensureInfo();
             s.state = 'connecting';
             let ws;
             try {

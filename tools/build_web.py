@@ -72,7 +72,7 @@ BINARYEN = os.environ.get('BINARYEN') or os.path.join(ROOT, 'tools', 'toolchain'
 ASYNC_IMPORTS = ['host.host_wait_event', 'host.host_poll_event', 'host.host_delay_ms', 'host.host_message_box',
                  'host.host_restart']
 PAGE = ['index.html', 'main.js', 'host.js', 'wasi.js', 'store.js', 'zip.js', 'saves.js', 'setup_run.js',
-        'setup_worker.js', 'net.js', 'hdpack.js', 'options.js', 'i18n.js']
+        'setup_worker.js', 'net.js', 'hdpack.js', 'options.js', 'i18n.js', 'locale.js']
 FONTS = ['fonts_win.bin', 'fonts_win_aa.bin']
 LANG = os.path.join(ROOT, 'data', 'native', 'lang')
 

@@ -41,6 +41,24 @@ esac
 # verify the gzip/tar, then unpack under a private temporary directory.
 # Only an intact checked installation is renamed to the final SDK directory.
 # CIV2_TOOLCHAIN_ARCHIVE_DIR is OPTIONAL, and never sent to GitHub Actions.
+# Windows Python often passes D:\\... as an environment value to MSYS sh.
+# GNU tar treats a colon-containing pathname as a remote host (tar: Cannot
+# connect to D:); convert drive paths at the boundary, before stat/tar.
+# Preserve already-canonical /d/... and normal POSIX paths unchanged.
+normalize_toolchain_archive_dir() {
+    raw_dir=$1
+    case "$raw_dir" in
+        [A-Za-z]:*)
+            command -v cygpath >/dev/null 2>&1 ||
+                { echo "Windows toolchain archive path requires Git Bash cygpath" >&2; return 1; }
+            raw_dir=$(cygpath -u -- "$raw_dir") || return 1
+            case "$raw_dir" in
+                /*) ;;
+                *) echo "Invalid converted toolchain archive path" >&2; return 1 ;;
+            esac ;;
+    esac
+    printf '%s\n' "$raw_dir"
+}
 archive_path=
 fetch_archive() {
     filename=$1
@@ -48,9 +66,11 @@ fetch_archive() {
     expected_size=$3
     archive_path="$filename"
     if [ -n "${CIV2_TOOLCHAIN_ARCHIVE_DIR:-}" ]; then
-        [ -d "$CIV2_TOOLCHAIN_ARCHIVE_DIR" ] && [ ! -L "$CIV2_TOOLCHAIN_ARCHIVE_DIR" ] ||
+        local_archive_dir=$(normalize_toolchain_archive_dir "$CIV2_TOOLCHAIN_ARCHIVE_DIR") ||
+            { echo "Unable to normalize toolchain archive directory" >&2; exit 1; }
+        [ -d "$local_archive_dir" ] && [ ! -L "$local_archive_dir" ] ||
             { echo "CIV2_TOOLCHAIN_ARCHIVE_DIR must be a real directory" >&2; exit 1; }
-        supplied="$CIV2_TOOLCHAIN_ARCHIVE_DIR/$filename"
+        supplied="$local_archive_dir/$filename"
         if [ -f "$supplied" ]; then
             [ ! -L "$supplied" ] || { echo "Refusing symlink archive: $filename" >&2; exit 1; }
             archive_path="$supplied"

@@ -300,6 +300,16 @@ def compile_one(job):
     return o, None
 
 
+def flat_object_name(relative_path):
+    """Return a one-level object basename for native or WASM builds on any host.
+
+    os.path.relpath uses backslashes on Windows, forward slashes on POSIX.
+    Leaving '\\' unchanged makes Clang treat it as nested directories
+    under the object root that the build does not create.
+    """
+    return relative_path.replace('\\', '_').replace('/', '_') + '.o'
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--target', default='linux', choices=sorted(TARGETS))
@@ -334,7 +344,7 @@ def main():
     jobs = []
     tflags = t.get('cflags', [])
     for src in sources:
-        o = os.path.join(objdir, os.path.relpath(src, ROOT).replace('/', '_') + '.o')
+        o = os.path.join(objdir, flat_object_name(os.path.relpath(src, ROOT)))
         newest = max(os.path.getmtime(src), headers)
         if '/tests/' in src:
             newest = max([newest] + [os.path.getmtime(h) for h in glob.glob(os.path.join(ROOT, 'tests', '*.h'))])

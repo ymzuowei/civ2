@@ -32,6 +32,11 @@ class BrowserOpeningTests(unittest.TestCase):
         self.assertIn("opts.audioContext || null", host)
         self.assertIn("resumeOpeningAudioContext(audio)", main)
         self.assertIn("env.CIV2_NOSOUND = '1'", main)
+        sound = (ROOT / "src/auto/sound.cpp").read_text(encoding="utf-8")
+        self.assertIn('getenv("CIV2_LOG_VIDEO")', sound)
+        self.assertIn("last_video_trace_ms", sound)
+        self.assertIn('video: clock playing=', sound)
+        self.assertNotIn("video: raw bytes", sound)
         self.assertNotIn("civ2ClickToSkip", main)
         self.assertNotIn("store.clear()", main[main.index("const env = {CIV2_DATA:"):main.index("if (window.civ2Test)", main.index("const env = {CIV2_DATA:"))])
 

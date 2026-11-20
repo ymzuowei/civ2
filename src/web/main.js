@@ -2,6 +2,7 @@
 // the game (host.js) on the canvas.
 
 import {MemFS} from './wasi.js';
+import {GRAPHICS_PREFERENCE_KEY, resolveGraphicsPreference, graphicsFromQuery, hdArg} from './graphics_choice.js';
 import {runGame} from './host.js';
 import {openStore} from './store.js';
 import {unzip} from './zip.js';
@@ -382,6 +383,50 @@ function displayControls() {
     syncFullscreen();
 }
 
+// One-time first-play choice, kept outside native game files and saves.
+function firstGraphicsDialog(available) {
+    const dialog = $('graphics-choice-dialog');
+    const classic = $('graphics-first-classic'), hd = $('graphics-first-hd');
+    hd.disabled = !available;
+    $('graphics-first-unavailable').hidden = available;
+    dialog.showModal();
+    return new Promise((resolve) => {
+        const choose = (mode) => {
+            classic.onclick = hd.onclick = null;
+            dialog.close();
+            resolve(mode);
+        };
+        classic.onclick = () => choose('classic');
+        hd.onclick = () => choose('hd');
+        dialog.oncancel = (e) => e.preventDefault();
+    });
+}
+
+async function graphicsControls(store) {
+    const select = $('graphics-mode');
+    select.value = graphicsFromQuery(location.search) ||
+        (await store.getMeta(GRAPHICS_PREFERENCE_KEY)) || 'classic';
+    const dialog = $('graphics-choice-dialog');
+    dialog.addEventListener('keydown', (e) => e.stopPropagation());
+    dialog.addEventListener('keyup', (e) => e.stopPropagation());
+    select.addEventListener('change', async () => {
+        const choice = select.value;
+        const old = graphicsFromQuery(location.search) ||
+            (await store.getMeta(GRAPHICS_PREFERENCE_KEY)) || 'classic';
+        if (running && !confirm(t('web.graphics_switch_confirm'))) {
+            select.value = old;
+            $('screen').focus();
+            return;
+        }
+        // Flush only files the game has already written: no false autosave.
+        await window.civ2Flush?.();
+        await store.setMeta(GRAPHICS_PREFERENCE_KEY, choice);
+        const url = new URL(location.href);
+        url.searchParams.set('hd', hdArg(choice));
+        location.assign(url.href);
+    });
+}
+
 // ---- the HD graphics' art (hdpack.js), as CIV.INI asks for it (options.js) ----
 
 let pinP = null;
@@ -601,6 +646,12 @@ async function play(store) {
     const query = new URLSearchParams(location.search), args = ['civ2', GAME];
     const iniName = (await store.keys()).find((k) => /^civ\.ini$/i.test(k));
     const ini = iniOf(iniName ? [[iniName, await store.get(iniName)]] : []).text;
+    const [siteAvailable, cacheAvailable] = await Promise.all([siteHdP, keptP]);
+    const graphics = await resolveGraphicsPreference(store, location.search,
+        !!(siteAvailable || cacheAvailable), firstGraphicsDialog);
+    $('graphics-mode').value = graphics;
+    if (!query.has('hd'))
+        query.set('hd', hdArg(graphics));
     const hd = hdWanted(ini, query.get('hd')) >= 0;
     // (the art: where the site has it, for the game's OpenCiv2 Options; kept
     // in this browser once downloaded, used then even where the site has none)
@@ -863,6 +914,7 @@ async function main() {
     const store = await mark('store', openStore(() =>
         status(t('web.other_tab'))));
     savesControls(store);
+    await graphicsControls(store);
     // (the relay's dialog keeps the keys from the game)
     const rd = $('relay-dialog');
     rd.addEventListener('keydown', (e) => e.stopPropagation());

@@ -12,6 +12,7 @@ import {readFileSync} from 'node:fs';
 import {sha256, sha256js, packFrom, keepPack, loadPack, packIndex, prunePack, drawn} from '../hdpack.js';
 import {iniGet, iniSet, hdWanted, skipBrowserOpening, openingVideoPresent, openingVideoNeedsGesture, resumeOpeningAudioContext} from '../options.js';
 import {match} from '../locale.js';
+import {GRAPHICS_PREFERENCE_KEY, graphicsFromQuery, resolveGraphicsPreference, hdArg} from '../graphics_choice.js';
 
 // Native and web language aliases distinguish Taiwan's traditional from
 // Mainland/Singapore's simplified Chinese without changing existing saves.
@@ -94,6 +95,38 @@ const hostSource = readFileSync(new URL('../host.js', import.meta.url), 'utf8');
 assert.match(hostSource, /opts\.audioContext \|\| null/);
 const gamePage = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 assert.match(gamePage, /id="intro-start"/);
+
+// Browser graphics choice persists only as a preference; explicit URL wins.
+assert.equal(graphicsFromQuery('?hd=1'), 'hd');
+assert.equal(graphicsFromQuery('?hd=0'), 'classic');
+assert.equal(graphicsFromQuery('?lang=zh-CN'), null);
+assert.equal(hdArg('hd'), '1');
+const pref = new Map(), prefs = {
+    async getMeta(k) { return pref.get(k); },
+    async setMeta(k, v) { pref.set(k, v); }
+};
+let prompts = 0;
+assert.equal(await resolveGraphicsPreference(prefs, '', true, async () => {
+    prompts++; return 'hd';
+}), 'hd');
+assert.equal(pref.get(GRAPHICS_PREFERENCE_KEY), 'hd');
+assert.equal(await resolveGraphicsPreference(prefs, '', true, async () => {
+    prompts++; return 'classic';
+}), 'hd');
+assert.equal(prompts, 1);
+assert.equal(await resolveGraphicsPreference(prefs, '?hd=0', true, async () => {
+    throw Error('explicit URL should never ask');
+}), 'classic');
+assert.equal(pref.get(GRAPHICS_PREFERENCE_KEY), 'hd');
+pref.clear();
+assert.equal(await resolveGraphicsPreference(prefs, '', false, async () => 'hd'), 'classic');
+const graphicsPage = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+for (const id of ['graphics-mode', 'graphics-choice-dialog', 'graphics-first-classic',
+                  'graphics-first-hd', 'graphics-first-unavailable'])
+    assert.ok(graphicsPage.includes('id="' + id + '"'));
+assert.match(startupSource, /await resolveGraphicsPreference/);
+assert.match(startupSource, /web\.graphics_switch_confirm/);
+assert.match(startupSource, /location\.assign\(url\.href\)/);
 
 // // the desktop's scale (host.h's examples)
 assert.equal(desktopScale(1920, 1080, 0), 1);

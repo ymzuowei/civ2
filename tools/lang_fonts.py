@@ -51,6 +51,25 @@ FONTS = [   # (file, url, sha256, family): per family the serif (Times New Roman
 ]
 
 
+# The small TC SubsetOTF source intentionally omits some Simplified Chinese
+# codepoints. Use these full OFL CJK TC fonts ONLY if the subset lacks needed
+# glyphs; subset the full source to the same minimal output filenames.
+# Git blob SHAs from notofonts/noto-cjk's *pinned* Serif2.003/Sans2.004
+# trees; fetch_git_blob verifies the exact git object content, not tag alone.
+FULL_CJK_FONTS = {
+    'NotoSerifTC-Regular.otf': (
+        ('NotoSerifCJKtc-Regular.otf',
+         'https://raw.githubusercontent.com/notofonts/noto-cjk/Serif2.003/Serif/OTF/TraditionalChinese/NotoSerifCJKtc-Regular.otf',
+         'a59de8d047a3ed619164a57b231e51856762ef56'),
+    ),
+    'NotoSansTC-Regular.otf': (
+        ('NotoSansCJKtc-Regular.otf',
+         'https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/Sans/OTF/TraditionalChinese/NotoSansCJKtc-Regular.otf',
+         'f9376bae1d421520f73a3c6c9d50b22f89548301'),
+    ),
+}
+
+
 def family(c):
     """the family of fonts that draws character c: Greek and Cyrillic (and
     Greek Extended) in Noto's, the others in Noto TC's"""
@@ -168,6 +187,30 @@ def fetch(name, url, sha):
     return path
 
 
+def git_blob_sha(data):
+    """SHA-1 of the Git blob object (the official upstream tree's content ID)."""
+    return hashlib.sha1(b'blob ' + str(len(data)).encode('ascii') + b'\\0' + data).hexdigest()
+
+
+def fetch_git_blob(name, url, git_sha):
+    """Fetch the full OFL font only if needed, pinned to GitHub's blob SHA."""
+    os.makedirs(WORK, exist_ok=True)
+    path = os.path.join(WORK, name)
+    if not os.path.exists(path) or git_blob_sha(open(path, 'rb').read()) != git_sha:
+        print('fetching verified full CJK font', name, flush=True)
+        data = urllib.request.urlopen(url, timeout=120).read()
+        if git_blob_sha(data) != git_sha:
+            sys.exit('%s: full font is not the pinned Git blob' % name)
+        with open(path, 'wb') as f:
+            f.write(data)
+    return path
+
+
+def font_covers(font, chars):
+    cmap = font.getBestCmap() or {}
+    return all(c in cmap for c in chars)
+
+
 def needed():
     """the font files the translations need: [(file, url, sha256, family)]"""
     return [f for f in FONTS if wanted(f[3])]
@@ -206,6 +249,19 @@ def main():
         options.name_IDs = ['*']
         options.name_languages = ['*']
         font = ttLib.TTFont(fetch(name, url, sha), recalcTimestamp=False)
+        if not font_covers(font, part):
+            for full_name, full_url, git_sha in FULL_CJK_FONTS.get(name, ()):
+                full = ttLib.TTFont(fetch_git_blob(full_name, full_url, git_sha), recalcTimestamp=False)
+                if font_covers(full, part):
+                    font.close()
+                    font = full
+                    print('%s: pinned full CJK TC source used for complete glyph coverage' % name, flush=True)
+                    break
+                full.close()
+            else:
+                missing = [chr(c) for c in part if c not in (font.getBestCmap() or {})]
+                sys.exit('%s: even official complete source lacks %d glyphs (%s)' %
+                         (name, len(missing), ''.join(missing[:24])))
         sub = subset.Subsetter(options)
         sub.populate(unicodes=part)
         sub.subset(font)

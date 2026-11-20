@@ -333,7 +333,9 @@ export async function runGame(opts) {
     }
 
     // -- sound: PCM queued on WebAudio sources, one after the other
-    let audio = null;
+    // A context created/resumed by a real click *before* starting the WASM
+    // game remains eligible for audible AVI playback after asynchronous load.
+    let audio = opts.audioContext || null;
     const devices = [null];
     function resumeAudio() {
         if (audio && audio.state === 'suspended')

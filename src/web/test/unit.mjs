@@ -10,7 +10,7 @@ import {deflateRawSync, inflateRawSync} from 'node:zlib';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {sha256, sha256js, packFrom, keepPack, loadPack, packIndex, prunePack, drawn} from '../hdpack.js';
-import {iniGet, iniSet, hdWanted, skipBrowserOpening} from '../options.js';
+import {iniGet, iniSet, hdWanted, skipBrowserOpening, openingVideoPresent, openingVideoNeedsGesture, resumeOpeningAudioContext} from '../options.js';
 import {match} from '../locale.js';
 
 // Native and web language aliases distinguish Taiwan's traditional from
@@ -47,16 +47,53 @@ assert.equal(w.notches(30, 0), 0);          // turned back: the half notch forgo
 assert.equal(w.notches(70, 0), -1);
 assert.equal(w.notches(3, 1), -1);          // lines: 3 a notch
 
-// Browser startup should show the first menu without requiring a click
-// to dismiss the opening movie. Never skip non-startup videos globally.
-assert.equal(skipBrowserOpening(''), true);
-assert.equal(skipBrowserOpening('?lang=zh-CN&display=fit'), true);
+// The original startup movie is no longer removed silently. When locally
+// present, it is unlocked by a click outside the AVI window; an explicit
+// URL escape hatch still exists for recovery from unsupported codecs.
+assert.equal(skipBrowserOpening(''), false);
+assert.equal(skipBrowserOpening('?lang=zh-CN&display=fit'), false);
 assert.equal(skipBrowserOpening('?intro=skip'), true);
 assert.equal(skipBrowserOpening('?intro=play'), false);
 assert.equal(skipBrowserOpening('?lang=zh-TW&intro=play&display=fit'), false);
-assert.equal(skipBrowserOpening('?intro=other'), true);
+assert.equal(skipBrowserOpening('?intro=diagnose'), false);
+assert.equal(openingVideoPresent([]), false);
+assert.equal(openingVideoPresent([['Video/OPENING.AVI']]), true);
+assert.equal(openingVideoPresent([['civ2\\VIDEO\\opening.avi']]), true);
+assert.equal(openingVideoPresent([['video/OTHER.AVI']]), false);
+assert.equal(openingVideoPresent([['OPENING.AVI']]), false);
+const ownedOpening = [['Civ2Art.dll'], ['Video/OPENING.AVI']];
+assert.equal(openingVideoNeedsGesture(ownedOpening, false, ''), true);
+assert.equal(openingVideoNeedsGesture(ownedOpening, false, '?intro=diagnose'), true);
+assert.equal(openingVideoNeedsGesture(ownedOpening, false, '?intro=play'), true);
+assert.equal(openingVideoNeedsGesture(ownedOpening, false, '?intro=skip'), false);
+assert.equal(openingVideoNeedsGesture(ownedOpening, true, ''), false);
+assert.equal(openingVideoNeedsGesture(ownedOpening, true, '?intro=play'), false);
+assert.equal(openingVideoNeedsGesture([], false, ''), false);
+const runningAudio = {state: 'running', resume() { throw new Error('already running'); }};
+assert.equal(await resumeOpeningAudioContext(runningAudio), true);
+const unlockedAudio = {state: 'suspended', resume() { this.state = 'running'; return Promise.resolve(); }};
+assert.equal(await resumeOpeningAudioContext(unlockedAudio), true);
+const deniedAudio = {state: 'suspended', resume() { return Promise.reject(new Error('denied')); }};
+assert.equal(await resumeOpeningAudioContext(deniedAudio), false);
+const stalledAudio = {state: 'suspended', resume() { return new Promise(() => {}); }};
+assert.equal(await resumeOpeningAudioContext(stalledAudio, 1), false);
+assert.equal(await resumeOpeningAudioContext({state: 'closed'}), false);
 const startupSource = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
 assert.match(startupSource, /env\.CIV2_SKIP_OPENING = '1'/);
+assert.match(startupSource, /openingVideoNeedsGesture\(entries, hdArtAvailable, location.search\)/);
+assert.match(startupSource, /hd && !!window\.civ2Hd\?\.packBytes/);
+for (const field of ['ownedOpeningPresent', 'hdArtAvailable', 'skipRequested', 'gestureRequired', 'silent-fallback'])
+    assert.ok(startupSource.includes(field));
+assert.match(startupSource, /window\.civ2Intro = \{/);
+assert.match(startupSource, /await unlockOpeningAudio\(\)/);
+assert.match(startupSource, /await resumeOpeningAudioContext\(audio\)/);
+assert.match(startupSource, /env\.CIV2_NOSOUND = '1'/);
+assert.match(startupSource, /env\.CIV2_LOG_VIDEO = '1'/);
+assert.match(startupSource, /!introDiagnose && !new URLSearchParams/);
+const hostSource = readFileSync(new URL('../host.js', import.meta.url), 'utf8');
+assert.match(hostSource, /opts\.audioContext \|\| null/);
+const gamePage = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+assert.match(gamePage, /id="intro-start"/);
 
 // // the desktop's scale (host.h's examples)
 assert.equal(desktopScale(1920, 1080, 0), 1);

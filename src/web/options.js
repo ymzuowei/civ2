@@ -78,9 +78,47 @@ export function hdWanted(ini, query) {
     return parseInt(iniGet(ini, SECTION, 'GraphicsDensity') || '0', 10) || 0;
 }
 
-// In the browser an imported OPENING.AVI may be black, yet its native modal
-// movie window keeps the main menu hidden until the player clicks to skip.
-// Prefer a usable first launch. An explicit URL opt-in preserves the movie.
+// Never silently remove the original opening movie from a player's licensed
+// game. ?intro=skip is an explicit escape hatch for diagnostics/recovery;
+// browser audio must first be unlocked with a real user gesture (main.js).
 export function skipBrowserOpening(search = '') {
-    return new URLSearchParams(search).get('intro') !== 'play';
+    return new URLSearchParams(search).get('intro') === 'skip';
+}
+
+// Only the owner's local, installed movie triggers the intro audio gate.
+// Missing original media must still reach the main menu without interaction.
+export function openingVideoPresent(entries) {
+    return entries.some(([name]) => /(?:^|\/)video\/opening\.avi$/i.test(name.replace(/\\/g, '/')));
+}
+
+// The original game's HD art mode skips the opening itself. Do not ask for a
+// browser audio click when the native startup will never enter its AVI modal
+// window. This is only a pre-start UI gate decision; it does not change the
+// game's original HD movie policy or the stored game settings.
+export function openingVideoNeedsGesture(entries, hd, search = '') {
+    return !hd && !skipBrowserOpening(search) && openingVideoPresent(entries);
+}
+
+
+// The user gesture must actually make WebAudio RUNNING before the native
+// AVI audio clock can safely become the frame clock. Call this directly from
+// a click handler: resume() runs synchronously up to its returned Promise.
+// A bounded wait prevents indefinite black-modal startup on denied audio.
+export async function resumeOpeningAudioContext(context, timeoutMs = 3000) {
+    if (!context || context.state === 'closed')
+        return false;
+    if (context.state === 'running')
+        return true;
+    let timer;
+    try {
+        const resumed = context.resume();
+        return await Promise.race([
+            Promise.resolve(resumed).then(() => context.state === 'running', () => false),
+            new Promise((resolve) => { timer = setTimeout(() => resolve(false), timeoutMs); })
+        ]);
+    } catch (e) {
+        return false;
+    } finally {
+        clearTimeout(timer);
+    }
 }

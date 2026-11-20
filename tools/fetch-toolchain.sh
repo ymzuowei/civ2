@@ -35,32 +35,146 @@ case "$os-$arch" in
     MINGW64*-x86_64|MSYS*-x86_64|CYGWIN*-x86_64) sdk=x86_64-windows; wabt=windows-x64; binaryen=x86_64-windows ;;
     *) [ -z "$wasm$web" ] || { echo "no prebuilt toolchain for $os $arch" >&2; exit 1; } ;;
 esac
+# CIV2-B006: avoid "curl | tar": a dropped connection wrote corrupt
+# partially-extracted binaries into the persistent D: toolchain. Complete a
+# version-pinned archive first (from a manual downloader or resumable curl),
+# verify the gzip/tar, then unpack under a private temporary directory.
+# Only an intact checked installation is renamed to the final SDK directory.
+# CIV2_TOOLCHAIN_ARCHIVE_DIR is OPTIONAL, and never sent to GitHub Actions.
+# Windows Python often passes D:\\... as an environment value to MSYS sh.
+# GNU tar treats a colon-containing pathname as a remote host (tar: Cannot
+# connect to D:); convert drive paths at the boundary, before stat/tar.
+# Preserve already-canonical /d/... and normal POSIX paths unchanged.
+normalize_toolchain_archive_dir() {
+    raw_dir=$1
+    case "$raw_dir" in
+        [A-Za-z]:*)
+            command -v cygpath >/dev/null 2>&1 ||
+                { echo "Windows toolchain archive path requires Git Bash cygpath" >&2; return 1; }
+            raw_dir=$(cygpath -u -- "$raw_dir") || return 1
+            case "$raw_dir" in
+                /*) ;;
+                *) echo "Invalid converted toolchain archive path" >&2; return 1 ;;
+            esac ;;
+    esac
+    printf '%s\n' "$raw_dir"
+}
+archive_path=
+fetch_archive() {
+    filename=$1
+    url=$2
+    expected_size=$3
+    archive_path="$filename"
+    if [ -n "${CIV2_TOOLCHAIN_ARCHIVE_DIR:-}" ]; then
+        local_archive_dir=$(normalize_toolchain_archive_dir "$CIV2_TOOLCHAIN_ARCHIVE_DIR") ||
+            { echo "Unable to normalize toolchain archive directory" >&2; exit 1; }
+        [ -d "$local_archive_dir" ] && [ ! -L "$local_archive_dir" ] ||
+            { echo "CIV2_TOOLCHAIN_ARCHIVE_DIR must be a real directory" >&2; exit 1; }
+        supplied="$local_archive_dir/$filename"
+        if [ -f "$supplied" ]; then
+            [ ! -L "$supplied" ] || { echo "Refusing symlink archive: $filename" >&2; exit 1; }
+            archive_path="$supplied"
+            echo "CIV2_LOCAL_TOOLCHAIN_ARCHIVE=$filename"
+        fi
+    fi
+    if [ "$archive_path" = "$filename" ]; then
+        # Persistent .tar.gz; curl resumes a partial transfer on the next
+        # invocation. GitHub may reject Range: then use a separate browser/
+        # IDM/aria2 downloader and place the finished file in archive dir.
+        if [ ! -f "$filename" ] ||
+           { [ -n "$expected_size" ] && [ "$(wc -c < "$filename" | tr -d '[:space:]')" != "$expected_size" ]; }; then
+            curl -fL# --retry 5 --retry-all-errors --retry-delay 5 -C - -o "$filename" "$url" ||
+                { echo "Download incomplete; resumable archive preserved: $filename" >&2; exit 1; }
+        fi
+    fi
+    if [ -n "$expected_size" ]; then
+        actual_size=$(wc -c < "$archive_path" | tr -d '[:space:]')
+        [ "$actual_size" = "$expected_size" ] ||
+            { echo "$filename: incorrect official release size ($actual_size, expected $expected_size)" >&2; exit 1; }
+    fi
+    tar -tzf "$archive_path" >/dev/null ||
+        { echo "$filename: incomplete/corrupted tar.gz; do not install" >&2; exit 1; }
+}
+install_archive() {
+    top=$1
+    dest=$2
+    file_to_unpack=$archive_path
+    [ ! -e "$dest" ] && [ ! -L "$dest" ] ||
+        { echo "$dest already exists; will not overwrite" >&2; exit 1; }
+    stage=$(mktemp -d "./.civ2-tool-unpack.XXXXXXXX") || exit 1
+    trap 'rm -rf -- "$stage"' EXIT
+    if ! tar -xzf "$file_to_unpack" -C "$stage"; then
+        echo "$top: tar extraction failed; staged files removed, archive retained" >&2
+        exit 1
+    fi
+    [ -d "$stage/$top" ] ||
+        { echo "$top: unexpected archive layout" >&2; exit 1; }
+    case "$dest" in
+        wasi-sdk)
+            { [ -f "$stage/$top/bin/clang.exe" ] || [ -f "$stage/$top/bin/clang" ]; } &&
+            [ -d "$stage/$top/share/wasi-sysroot" ] ||
+                { echo "$top: missing SDK compiler/sysroot" >&2; exit 1; } ;;
+        wabt)
+            { [ -f "$stage/$top/bin/wasm2c.exe" ] || [ -f "$stage/$top/bin/wasm2c" ]; } ||
+                { echo "$top: missing wasm2c" >&2; exit 1; } ;;
+        binaryen)
+            { [ -f "$stage/$top/bin/wasm-opt.exe" ] || [ -f "$stage/$top/bin/wasm-opt" ]; } ||
+                { echo "$top: missing wasm-opt" >&2; exit 1; } ;;
+    esac
+    mv -- "$stage/$top" "$dest"
+    rmdir -- "$stage"
+    trap - EXIT
+    echo "CIV2_TOOLCHAIN_INSTALLED=$dest"
+}
 if [ -n "$wasm" ] && [ ! -d wasi-sdk ]; then
-    curl -fL# --retry 5 --retry-all-errors --retry-delay 5 https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-25/wasi-sdk-25.0-$sdk.tar.gz | tar xz
-    mv wasi-sdk-25.0-$sdk wasi-sdk
+    sdk_name="wasi-sdk-25.0-$sdk"
+    # Official release asset metadata: GitHub API wasi-sdk-25,
+    # x86_64-windows: exactly 520273336 bytes. No published SHA-256 in that
+    # release, so this size+tar verification is NOT cryptographic provenance.
+    expected=
+    [ "$sdk" != x86_64-windows ] || expected=520273336
+    fetch_archive "$sdk_name.tar.gz" \
+        "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-25/$sdk_name.tar.gz" "$expected"
+    install_archive "$sdk_name" wasi-sdk
 fi
 if [ -n "$wasm" ] && [ ! -d wabt ]; then
     if [ -z "$wabt" ]; then
         echo "wabt: no prebuilt release for this system; install it (brew install wabt) and set WABT=\$(brew --prefix wabt)" >&2
         exit 1
     fi
-    curl -fL# --retry 5 --retry-all-errors --retry-delay 5 https://github.com/WebAssembly/wabt/releases/download/1.0.41/wabt-1.0.41-$wabt.tar.gz | tar xz
-    mv wabt-1.0.41 wabt
+    wabt_name="wabt-1.0.41-$wabt"
+    fetch_archive "$wabt_name.tar.gz" \
+        "https://github.com/WebAssembly/wabt/releases/download/1.0.41/$wabt_name.tar.gz" ""
+    # Release archive filename is platform-specific, but its top-level
+    # extracted directory is always wabt-1.0.41 (without -windows-x64).
+    # Original fetch-toolchain.sh also renamed wabt-1.0.41 to wabt.
+    install_archive "wabt-1.0.41" wabt
 fi
 if [ -n "$mingw" ] && [ ! -d SDL2-mingw ]; then
-    curl -fL# --retry 5 --retry-all-errors --retry-delay 5 https://github.com/libsdl-org/SDL/releases/download/release-2.30.9/SDL2-devel-2.30.9-mingw.tar.gz | tar xz
-    mv SDL2-2.30.9 SDL2-mingw
+    fetch_archive "SDL2-devel-2.30.9-mingw.tar.gz" \
+        "https://github.com/libsdl-org/SDL/releases/download/release-2.30.9/SDL2-devel-2.30.9-mingw.tar.gz" ""
+    install_archive SDL2-2.30.9 SDL2-mingw
 fi
-# Binaryen (wasm-opt): the browser version's module, made resumable
-# (asyncify) and tolerant of calls through mismatched function types
-# (fpcast-emu); tools/build_web.py.  Checked against its release's SHA-256.
+# Binaryen (wasm-opt): browser asyncify and fpcast-emu. Accept an
+# owner-downloaded official asset from the same D: archive dir as WASI/WABT,
+# or resumable curl. For Windows, pin the official GitHub release SHA-256
+# locally so an offline import never requires a second network request.
 if [ -n "$web" ] && [ ! -d binaryen ]; then
-    url=https://github.com/WebAssembly/binaryen/releases/download/version_130/binaryen-version_130-$binaryen.tar.gz
-    curl -fL# --retry 5 --retry-all-errors --retry-delay 5 "$url" -o binaryen.tar.gz
-    want=$(curl -fsSL --retry 5 "$url.sha256" | cut -d' ' -f1)
-    sum=$( (sha256sum binaryen.tar.gz 2>/dev/null || shasum -a 256 binaryen.tar.gz) | cut -d' ' -f1)
-    [ "$sum" = "$want" ] || { echo "binaryen.tar.gz: not the expected file (SHA-256 $sum)" >&2; exit 1; }
-    tar xzf binaryen.tar.gz && rm binaryen.tar.gz && mv binaryen-version_130 binaryen
+    binaryen_name="binaryen-version_130-$binaryen"
+    url="https://github.com/WebAssembly/binaryen/releases/download/version_130/$binaryen_name.tar.gz"
+    binaryen_expected_size=
+    binaryen_expected_sha=
+    if [ "$binaryen" = x86_64-windows ]; then
+        binaryen_expected_size=80320428
+        binaryen_expected_sha=cc09c874f4332d00aa32ab72745a9b98c9a172f795762f21d03e70638a3f7f4c
+    else
+        binaryen_expected_sha=$(curl -fsSL --retry 5 "$url.sha256" | cut -d' ' -f1)
+    fi
+    fetch_archive "$binaryen_name.tar.gz" "$url" "$binaryen_expected_size"
+    binaryen_sum=$( (sha256sum "$archive_path" 2>/dev/null || shasum -a 256 "$archive_path") | cut -d' ' -f1)
+    [ "$binaryen_sum" = "$binaryen_expected_sha" ] ||
+        { echo "$binaryen_name.tar.gz: SHA-256 mismatch ($binaryen_sum)" >&2; exit 1; }
+    install_archive "binaryen-version_130" binaryen
 fi
 # The browser version's smoke test: Node.js and Chrome for Testing's
 # headless shell, Linux x86-64 (pinned, checked).

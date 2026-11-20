@@ -91,3 +91,26 @@ export function openingVideoPresent(entries) {
     return entries.some(([name]) => /(?:^|\/)video\/opening\.avi$/i.test(name.replace(/\\/g, '/')));
 }
 
+
+// The user gesture must actually make WebAudio RUNNING before the native
+// AVI audio clock can safely become the frame clock. Call this directly from
+// a click handler: resume() runs synchronously up to its returned Promise.
+// A bounded wait prevents indefinite black-modal startup on denied audio.
+export async function resumeOpeningAudioContext(context, timeoutMs = 3000) {
+    if (!context || context.state === 'closed')
+        return false;
+    if (context.state === 'running')
+        return true;
+    let timer;
+    try {
+        const resumed = context.resume();
+        return await Promise.race([
+            Promise.resolve(resumed).then(() => context.state === 'running', () => false),
+            new Promise((resolve) => { timer = setTimeout(() => resolve(false), timeoutMs); })
+        ]);
+    } catch (e) {
+        return false;
+    } finally {
+        clearTimeout(timer);
+    }
+}

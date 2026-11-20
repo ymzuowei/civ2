@@ -63,6 +63,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths  # noqa: E402
+from check_web_modules import missing_modules  # noqa: E402
 
 ROOT = paths.ROOT
 OUT = os.path.join(ROOT, 'build', 'web')
@@ -72,7 +73,8 @@ BINARYEN = os.environ.get('BINARYEN') or os.path.join(ROOT, 'tools', 'toolchain'
 ASYNC_IMPORTS = ['host.host_wait_event', 'host.host_poll_event', 'host.host_delay_ms', 'host.host_message_box',
                  'host.host_restart']
 PAGE = ['index.html', 'main.js', 'host.js', 'wasi.js', 'store.js', 'zip.js', 'saves.js', 'setup_run.js',
-        'setup_worker.js', 'net.js', 'hdpack.js', 'options.js', 'i18n.js', 'locale.js']
+        'setup_worker.js', 'net.js', 'hdpack.js', 'options.js', 'i18n.js', 'locale.js',
+        'graphics_choice.js']
 FONTS = ['fonts_win.bin', 'fonts_win_aa.bin']
 LANG = os.path.join(ROOT, 'data', 'native', 'lang')
 
@@ -323,6 +325,13 @@ def build_setup():
 
 
 def main():
+    # Node tests import directly from src/web; the actual static site needs
+    # every relative ES module imported by main.js or a Worker copied too.
+    # Fail before compiling WASM if the published PAGE manifest is incomplete.
+    missing = missing_modules(SRC, PAGE)
+    if missing:
+        raise SystemExit('\n'.join(missing))
+    print('CIV2_BROWSER_MODULE_MANIFEST=PASS')
     if '--no-module' not in sys.argv:
         run([sys.executable, os.path.join(ROOT, 'tools', 'build_port.py'), 'module'])
     wasm_opt = os.path.join(BINARYEN, 'bin', 'wasm-opt')

@@ -122,3 +122,11 @@ export async function resumeOpeningAudioContext(context, timeoutMs = 3000) {
         clearTimeout(timer);
     }
 }
+
+
+// Bundled-game availability is a build-time property, not browser storage.
+// A public BYO build has no game/index.json; don't probe a known-absent
+// endpoint on every single-player launch (and don't clear any saved media).
+export function siteBundlesGame(page) {
+    return page.querySelector('meta[name="openciv2-bundled-game"]')?.content === '1';
+}

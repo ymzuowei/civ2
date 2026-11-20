@@ -125,8 +125,9 @@ if [ -n "$wasm" ] && [ ! -d wabt ]; then
     install_archive "$wabt_name" wabt
 fi
 if [ -n "$mingw" ] && [ ! -d SDL2-mingw ]; then
-    curl -fL# --retry 5 --retry-all-errors --retry-delay 5 https://github.com/libsdl-org/SDL/releases/download/release-2.30.9/SDL2-devel-2.30.9-mingw.tar.gz | tar xz
-    mv SDL2-2.30.9 SDL2-mingw
+    fetch_archive "SDL2-devel-2.30.9-mingw.tar.gz" \
+        "https://github.com/libsdl-org/SDL/releases/download/release-2.30.9/SDL2-devel-2.30.9-mingw.tar.gz" ""
+    install_archive SDL2-2.30.9 SDL2-mingw
 fi
 # Binaryen (wasm-opt): the browser version's module, made resumable
 # (asyncify) and tolerant of calls through mismatched function types

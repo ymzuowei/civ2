@@ -84,7 +84,9 @@ def check_utf8():
 def main():
     en = english_texts()
     template = os.path.join(LANG, 'en.txt')
-    if open(template, 'rb').read() != export_of(en).encode('cp1252'):
+    # Git for Windows may check out text files with CRLF. Compare the template
+    # in universal-newline text mode, not against raw POSIX LF bytes.
+    if open(template, 'r', encoding='cp1252', newline=None).read() != export_of(en):
         fail('data/native/lang/en.txt is not src/host/texts.h (write it with CIV2_EXPORT_TEXT, CIV2_EXPORT_OWN=1)')
     tables = codepage_tables()
     pages = set()

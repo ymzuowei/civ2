@@ -222,3 +222,14 @@ options: `tools/webrelay.py --help`.
 The original game runs with a logical desktop chosen at startup. On browser-window resize the Web host defaults to **presentation-only resizing**: it fits the existing canvas inside the new viewport without changing the game's logical desktop or rearranging maximized/modal windows during AVI/animated playback. It preserves aspect ratio and the canvas-based pointer coordinate mapping. This is a deliberate compatibility policy for the browser; the native desktop's logical resolution stays the same until the game is restarted. For live native desktop reflow behavior during debugging, opt in with `?desktopResize=live` (may disturb animation windows).
 
 A bigger screen available **when the game starts** is still detected by `desktopScale`. Reloading after changing browser size adopts the new physical window dimensions, using previously retained game saves. Verify with owner in Chrome and Edge at 1080p/1440p/4K including animation playback; JavaScript tests alone cannot prove the visual regression is fixed.
+
+## Display fitting on large or high-DPI monitors (candidate)
+
+The Web host can calculate a fitted canvas in either of two **presentation-only** modes, preserving the logical game desktop and original in-game window geometry:
+
+- Default **integer scale**: nearest whole device-pixel enlargement where possible; especially sharp retro pixels, but may leave empty margins on high-resolution displays with fractional fit ratios.
+- Experimental `?display=fit`: use the maximum uniform CSS scale permitted by the browser viewport even when fractional, preserving aspect ratio and pointer mapping and filling more available space; fractional scale may smooth original pixels.
+
+Example: with a 1024×768 logical desktop inside a 2560×1440 physical viewport, default integer displays at 1024×768, while `?display=fit` uses 1920×1440. With Windows devicePixelRatio 1.25, CSS dimensions are divided by the DPR consistently. No game engine/desktop resize event is emitted by this setting.
+
+This is an experimental option for P1 high-resolution acceptance; not the final visible display-mode UI. Test Chrome/Edge, native game dialogs, animation, mouse cursors and game focus before making the new mode the default. See [CIV2-T006](https://github.com/ymzuowei/civ2-web/issues/23).

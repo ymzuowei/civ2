@@ -91,6 +91,15 @@ export function liveDesktopResize(search = '') {
     return new URLSearchParams(search).get('desktopResize') === 'live';
 }
 
+// Canvas presentation only; the game's logical desktop stays unchanged.
+// Integer mode preserves sharp pixel-art steps, fit mode uses the whole
+// available viewport at a uniform (possibly fractional) scale.
+export function canvasFitSize(w, h, vw, vh, dpr = 1, mode = 'integer') {
+    const available = Math.min(Math.max(1, vw) / w, Math.max(1, vh) / h);
+    const scale = mode === 'fit' || available < 1 ? available : Math.floor(available);
+    return {width: w * scale / dpr, height: h * scale / dpr, scale};
+}
+
 // ARGB (the game's 0xAARRGGBB words) -> the canvas's RGBA bytes, opaque
 export function argbToRgba(src, dst, n) {
     for (let i = 0; i < n; i++) {
@@ -149,14 +158,13 @@ export async function runGame(opts) {
     const rendering = () => {
         canvas.style.imageRendering = shown >= density && shown % density === 0 ? '' : 'auto';
     };
+    const displayMode = new URLSearchParams(window.location.search).get('display') === 'fit' ? 'fit' : 'integer';
     const fit = () => {
         const [vw, vh] = viewport();
-        let s = Math.min(vw / screenW, vh / screenH);
-        if (s >= 1)
-            s = Math.floor(s);
-        shown = s;
-        canvas.style.width = (screenW * s / dpr()) + 'px';
-        canvas.style.height = (screenH * s / dpr()) + 'px';
+        const size = canvasFitSize(screenW, screenH, vw, vh, dpr(), displayMode);
+        shown = size.scale;
+        canvas.style.width = size.width + 'px';
+        canvas.style.height = size.height + 'px';
         rendering();
         cursorCache.clear();
         applyCursor();

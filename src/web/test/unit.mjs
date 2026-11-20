@@ -2,7 +2,7 @@
 // desktop's scale, pixels, the WASI file system, .zip reading and writing, the player's saves.
 //   tools/toolchain/node/bin/node src/web/test/unit.mjs
 import assert from 'node:assert/strict';
-import {vkOf, Wheel, desktopScale, argbToRgba, liveDesktopResize} from '../host.js';
+import {vkOf, Wheel, desktopScale, argbToRgba, liveDesktopResize, canvasFitSize} from '../host.js';
 import {MemFS, makeWasi, normalize} from '../wasi.js';
 import {unzip, zip as makeZip, crc32} from '../zip.js';
 import {savesKind, playerFiles, importPath, savesToImport} from '../saves.js';
@@ -47,6 +47,22 @@ assert.equal(liveDesktopResize('?hd=0'), false);
 assert.equal(liveDesktopResize('?desktopResize=fit'), false);
 assert.equal(liveDesktopResize('?desktopResize=live'), true);
 assert.equal(liveDesktopResize('?desktopResize=live&hd=0'), true);
+
+// The physical viewport can be high-DPI (device pixels), while canvas sizes
+// are CSS pixels. Fit fills the available viewport without changing aspect.
+const integer = canvasFitSize(1024, 768, 2560, 1440);
+assert.equal(integer.scale, 1);
+assert.deepEqual([integer.width, integer.height], [1024, 768]);
+const fitLarge = canvasFitSize(1024, 768, 2560, 1440, 1, 'fit');
+assert.equal(fitLarge.scale, 1.875);
+assert.deepEqual([fitLarge.width, fitLarge.height], [1920, 1440]);
+assert.equal(fitLarge.width / fitLarge.height, 4 / 3);
+const hiDpi = canvasFitSize(1280, 720, 2400, 1350, 1.25, 'fit');
+assert.deepEqual([hiDpi.width, hiDpi.height], [1920, 1080]);
+const exact = canvasFitSize(1280, 720, 2560, 1440, 1, 'integer');
+assert.deepEqual([exact.width, exact.height], [2560, 1440]);
+const shrink = canvasFitSize(1280, 720, 640, 360, 1.5, 'fit');
+assert.deepEqual([shrink.width, shrink.height], [1280 / 3, 240]);
 
 // pixels: ARGB words -> RGBA bytes, opaque
 const dst = new Uint32Array(1);

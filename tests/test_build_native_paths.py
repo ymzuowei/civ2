@@ -5,6 +5,8 @@ Runs without the compiler toolchain or original Civilization II assets:
 """
 import sys
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +26,30 @@ class FlatObjectNameTests(unittest.TestCase):
             build_native.flat_object_name(r"build\native\gen\calltable.cpp"),
             "build_native_gen_calltable.cpp.o",
         )
+
+    def test_windows_third_party_c_gets_gnu99(self):
+        for path in (r"D:\\CIV2\\src\\third_party\\indeo4\\vlc.c",
+                     "/work/src/third_party/indeo4/vlc.c"):
+            with self.subTest(path=path):
+                with patch.object(build_native.subprocess, "run",
+                                  return_value=SimpleNamespace(returncode=0, stderr="")) as compiler:
+                    _, err = build_native.compile_one(("clang", path, "dummy.o", True, [], None))
+                self.assertIsNone(err)
+                flags = compiler.call_args.args[0]
+                self.assertIn("-std=gnu99", flags)
+                self.assertNotIn("-std=gnu89", flags)
+
+    def test_windows_platform_c_has_portable_c_flags(self):
+        for path in (r"D:\\CIV2\\src\\platform\\controls.c",
+                     "/work/src/platform/controls.c"):
+            with self.subTest(path=path):
+                with patch.object(build_native.subprocess, "run",
+                                  return_value=SimpleNamespace(returncode=0, stderr="")) as compiler:
+                    _, err = build_native.compile_one(("clang", path, "dummy.o", True, [], None))
+                self.assertIsNone(err)
+                flags = compiler.call_args.args[0]
+                self.assertIn("-std=gnu99", flags)
+                self.assertIn("-D_GNU_SOURCE", flags)
 
     def test_no_directory_separators_in_output(self):
         for source in ("src/auto/map.cpp", r"src\game\timer_display.cpp", "src/data/gamedata.cpp"):

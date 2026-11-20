@@ -48,7 +48,7 @@ assert.equal(liveDesktopResize('?desktopResize=fit'), false);
 assert.equal(liveDesktopResize('?desktopResize=live'), true);
 assert.equal(liveDesktopResize('?desktopResize=live&hd=0'), true);
 
-// // pixels: ARGB words -> RGBA bytes, opaque
+// pixels: ARGB words -> RGBA bytes, opaque
 const dst = new Uint32Array(1);
 argbToRgba(new Uint32Array([0x00112233]), dst, 1);
 assert.deepEqual([...new Uint8Array(dst.buffer)], [0x11, 0x22, 0x33, 0xff]);

@@ -10,7 +10,7 @@ import {deflateRawSync, inflateRawSync} from 'node:zlib';
 import {createHash} from 'node:crypto';
 import {sha256, sha256js, packFrom, keepPack, loadPack, packIndex, prunePack, drawn} from '../hdpack.js';
 import {iniGet, iniSet, hdWanted} from '../options.js';
-import {match} from '../i18n.js';
+import {match} from '../locale.js';
 
 // Native and web language aliases distinguish Taiwan's traditional from
 // Mainland/Singapore's simplified Chinese without changing existing saves.

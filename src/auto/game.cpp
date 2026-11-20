@@ -957,6 +957,7 @@ void __cdecl intro_play_opening_video(void)
   AviPlayer player;  /* the video player and its window (at 0x48) */
   RECT screen_rect2;
   int open_rc;
+  const char *browser_skip_intro = getenv("CIV2_SKIP_OPENING");
   
   player.construct();
   /* BF-297 (Peter Johnson's ledger): the audio's flags start clear, as the
@@ -980,10 +981,14 @@ void __cdecl intro_play_opening_video(void)
     str_clear((char *)path);
     str_append((char *)path,(const char *)&str_civ2_video_opening_avi);
     found = file_resolve_path((const char *)path);
-    /* (port) HD graphics: no opening video, straight to the main menu (as
-       without the CD's Video folder: the menu starts the theme); the one
-       rand() call opening it makes (avi_open_file's player palette) kept */
-    if (found != 0 && hd_art) {
+    /* (port) HD art skips the original opening, preserving the palette's
+       single random call. In the browser, do the same by default: when
+       OPENING.AVI renders black, its modal window otherwise blocks the
+       main menu until a user click. ?intro=play removes this env flag.
+       Native desktop builds are unchanged (no flag by default).
+       Keep the same palette/RNG path as the existing HD skip. */
+    if (found != 0 && (hd_art ||
+        (browser_skip_intro && browser_skip_intro[0] == '1' && !browser_skip_intro[1]))) {
       player.palette.new_version();
       found = 0;
     }

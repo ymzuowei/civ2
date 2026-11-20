@@ -117,6 +117,9 @@ install_archive() {
         wabt)
             { [ -f "$stage/$top/bin/wasm2c.exe" ] || [ -f "$stage/$top/bin/wasm2c" ]; } ||
                 { echo "$top: missing wasm2c" >&2; exit 1; } ;;
+        binaryen)
+            { [ -f "$stage/$top/bin/wasm-opt.exe" ] || [ -f "$stage/$top/bin/wasm-opt" ]; } ||
+                { echo "$top: missing wasm-opt" >&2; exit 1; } ;;
     esac
     mv -- "$stage/$top" "$dest"
     rmdir -- "$stage"
@@ -152,16 +155,26 @@ if [ -n "$mingw" ] && [ ! -d SDL2-mingw ]; then
         "https://github.com/libsdl-org/SDL/releases/download/release-2.30.9/SDL2-devel-2.30.9-mingw.tar.gz" ""
     install_archive SDL2-2.30.9 SDL2-mingw
 fi
-# Binaryen (wasm-opt): the browser version's module, made resumable
-# (asyncify) and tolerant of calls through mismatched function types
-# (fpcast-emu); tools/build_web.py.  Checked against its release's SHA-256.
+# Binaryen (wasm-opt): browser asyncify and fpcast-emu. Accept an
+# owner-downloaded official asset from the same D: archive dir as WASI/WABT,
+# or resumable curl. For Windows, pin the official GitHub release SHA-256
+# locally so an offline import never requires a second network request.
 if [ -n "$web" ] && [ ! -d binaryen ]; then
-    url=https://github.com/WebAssembly/binaryen/releases/download/version_130/binaryen-version_130-$binaryen.tar.gz
-    curl -fL# --retry 5 --retry-all-errors --retry-delay 5 "$url" -o binaryen.tar.gz
-    want=$(curl -fsSL --retry 5 "$url.sha256" | cut -d' ' -f1)
-    sum=$( (sha256sum binaryen.tar.gz 2>/dev/null || shasum -a 256 binaryen.tar.gz) | cut -d' ' -f1)
-    [ "$sum" = "$want" ] || { echo "binaryen.tar.gz: not the expected file (SHA-256 $sum)" >&2; exit 1; }
-    tar xzf binaryen.tar.gz && rm binaryen.tar.gz && mv binaryen-version_130 binaryen
+    binaryen_name="binaryen-version_130-$binaryen"
+    url="https://github.com/WebAssembly/binaryen/releases/download/version_130/$binaryen_name.tar.gz"
+    binaryen_expected_size=
+    binaryen_expected_sha=
+    if [ "$binaryen" = x86_64-windows ]; then
+        binaryen_expected_size=80320428
+        binaryen_expected_sha=cc09c874f4332d00aa32ab72745a9b98c9a172f795762f21d03e70638a3f7f4c
+    else
+        binaryen_expected_sha=$(curl -fsSL --retry 5 "$url.sha256" | cut -d' ' -f1)
+    fi
+    fetch_archive "$binaryen_name.tar.gz" "$url" "$binaryen_expected_size"
+    binaryen_sum=$( (sha256sum "$archive_path" 2>/dev/null || shasum -a 256 "$archive_path") | cut -d' ' -f1)
+    [ "$binaryen_sum" = "$binaryen_expected_sha" ] ||
+        { echo "$binaryen_name.tar.gz: SHA-256 mismatch ($binaryen_sum)" >&2; exit 1; }
+    install_archive "binaryen-version_130" binaryen
 fi
 # The browser version's smoke test: Node.js and Chrome for Testing's
 # headless shell, Linux x86-64 (pinned, checked).

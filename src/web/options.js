@@ -91,6 +91,14 @@ export function openingVideoPresent(entries) {
     return entries.some(([name]) => /(?:^|\/)video\/opening\.avi$/i.test(name.replace(/\\/g, '/')));
 }
 
+// The original game's HD art mode skips the opening itself. Do not ask for a
+// browser audio click when the native startup will never enter its AVI modal
+// window. This is only a pre-start UI gate decision; it does not change the
+// game's original HD movie policy or the stored game settings.
+export function openingVideoNeedsGesture(entries, hd, search = '') {
+    return !hd && !skipBrowserOpening(search) && openingVideoPresent(entries);
+}
+
 
 // The user gesture must actually make WebAudio RUNNING before the native
 // AVI audio clock can safely become the frame clock. Call this directly from

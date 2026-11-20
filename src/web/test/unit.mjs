@@ -10,7 +10,7 @@ import {deflateRawSync, inflateRawSync} from 'node:zlib';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {sha256, sha256js, packFrom, keepPack, loadPack, packIndex, prunePack, drawn} from '../hdpack.js';
-import {iniGet, iniSet, hdWanted, skipBrowserOpening, openingVideoPresent, resumeOpeningAudioContext} from '../options.js';
+import {iniGet, iniSet, hdWanted, skipBrowserOpening, openingVideoPresent, openingVideoNeedsGesture, resumeOpeningAudioContext} from '../options.js';
 import {match} from '../locale.js';
 
 // Native and web language aliases distinguish Taiwan's traditional from
@@ -61,6 +61,14 @@ assert.equal(openingVideoPresent([['Video/OPENING.AVI']]), true);
 assert.equal(openingVideoPresent([['civ2\\VIDEO\\opening.avi']]), true);
 assert.equal(openingVideoPresent([['video/OTHER.AVI']]), false);
 assert.equal(openingVideoPresent([['OPENING.AVI']]), false);
+const ownedOpening = [['Civ2Art.dll'], ['Video/OPENING.AVI']];
+assert.equal(openingVideoNeedsGesture(ownedOpening, false, ''), true);
+assert.equal(openingVideoNeedsGesture(ownedOpening, false, '?intro=diagnose'), true);
+assert.equal(openingVideoNeedsGesture(ownedOpening, false, '?intro=play'), true);
+assert.equal(openingVideoNeedsGesture(ownedOpening, false, '?intro=skip'), false);
+assert.equal(openingVideoNeedsGesture(ownedOpening, true, ''), false);
+assert.equal(openingVideoNeedsGesture(ownedOpening, true, '?intro=play'), false);
+assert.equal(openingVideoNeedsGesture([], false, ''), false);
 const runningAudio = {state: 'running', resume() { throw new Error('already running'); }};
 assert.equal(await resumeOpeningAudioContext(runningAudio), true);
 const unlockedAudio = {state: 'suspended', resume() { this.state = 'running'; return Promise.resolve(); }};
@@ -72,7 +80,8 @@ assert.equal(await resumeOpeningAudioContext(stalledAudio, 1), false);
 assert.equal(await resumeOpeningAudioContext({state: 'closed'}), false);
 const startupSource = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
 assert.match(startupSource, /env\.CIV2_SKIP_OPENING = '1'/);
-assert.match(startupSource, /openingVideoPresent\(entries\)/);
+assert.match(startupSource, /openingVideoNeedsGesture\(entries, hdArtAvailable, location.search\)/);
+assert.match(startupSource, /hd && !!window\.civ2Hd\?\.packBytes/);
 assert.match(startupSource, /await unlockOpeningAudio\(\)/);
 assert.match(startupSource, /await resumeOpeningAudioContext\(audio\)/);
 assert.match(startupSource, /env\.CIV2_NOSOUND = '1'/);
@@ -111,6 +120,7 @@ const safeFrame = canvasFitSize(largeGeometry.width, largeGeometry.height, 2560,
 assert.ok(safeFrame.width <= 2560 && safeFrame.height <= 1440);
 assert.ok(largeGeometry.height >= 560 && largeGeometry.width >= 800);
 assert.ok(Math.abs(safeFrame.width / safeFrame.height - largeGeometry.width / largeGeometry.height) < 1e-12);
+
 
 
 

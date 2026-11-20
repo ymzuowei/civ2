@@ -8,7 +8,7 @@ import {unzip} from './zip.js';
 import {exportSaves, importSaves} from './saves.js';
 import {findDisc} from './setup_run.js';
 import {packFrom, keepPack, loadPack, download, siteArt} from './hdpack.js';
-import {hdWanted, iniGet, iniSet, skipBrowserOpening, openingVideoPresent, resumeOpeningAudioContext} from './options.js';
+import {hdWanted, iniGet, iniSet, skipBrowserOpening, openingVideoNeedsGesture, resumeOpeningAudioContext} from './options.js';
 import {t, languages, pageLanguage, urlLanguage, withLanguage, useLanguage, langFile, parseLang, match} from './i18n.js';
 
 const GAME = '/civ2', DATA = '/data';
@@ -714,8 +714,12 @@ async function play(store) {
     // A movie with sound needs a real browser activation. Do not consume
     // its first click on the canvas: the native AVI handler would skip it.
     // No gate is shown when the locally imported OPENING.AVI is absent.
-    const introHasMovie = !skipBrowserOpening(location.search) && openingVideoPresent(entries);
-    const introAudio = introHasMovie ? await unlockOpeningAudio() : null;
+    // HD art is enabled only after the local HD pack successfully loads.
+    // A requested-but-missing pack reverts to the original AVI path, so
+    // it still needs the audio activation gate.
+    const hdArtAvailable = hd && !!window.civ2Hd?.packBytes;
+    const introNeedsGesture = openingVideoNeedsGesture(entries, hdArtAvailable, location.search);
+    const introAudio = introNeedsGesture ? await unlockOpeningAudio() : null;
     status(t('web.starting', Math.round(performance.now() - t0)));
     const canvas = $('screen');
     canvas.focus();
@@ -725,7 +729,7 @@ async function play(store) {
     // If the user's browser denied the Play gesture, do not give the AVI a
     // permanently suspended audio clock. The existing native no-sound
     // fallback keeps the *movie* running on wall time (no silent movie skip).
-    if (introHasMovie && !introAudio)
+    if (introNeedsGesture && !introAudio)
         env.CIV2_NOSOUND = '1';
     // Browser-only explicit escape hatch; playable opening is the goal.
     // ?intro=diagnose logs local decode/presentation failures to DevTools.

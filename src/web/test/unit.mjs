@@ -67,7 +67,7 @@ assert.match(pageSource, /dispatchEvent\(new Event\('civ2-display-change'\)\)/);
 assert.match(pageSource, /requestFullscreen\(\)/);
 assert.match(pageSource, /controls\.addEventListener\('keydown'/);
 
-// // Display toolbar can switch between the existing modes without creating
+// Display toolbar can switch between the existing modes without creating
 // another game desktop or restarting it; URL parameters remain orthogonal.
 assert.equal(displayModeFromSearch(''), 'integer');
 assert.equal(displayModeFromSearch('?display=integer'), 'integer');
@@ -75,7 +75,7 @@ assert.equal(displayModeFromSearch('?display=fit'), 'fit');
 assert.equal(displayModeFromSearch('?lang=zh-CN&display=fit'), 'fit');
 assert.equal(displayModeFromSearch('?display=unsupported'), 'integer');
 
-// // Browser resize during animations is paint-only by default; dynamic game
+// Browser resize during animations is paint-only by default; dynamic game
 // desktop reflow is a legacy opt-in for comparisons.
 assert.equal(liveDesktopResize(''), false);
 assert.equal(liveDesktopResize('?hd=0'), false);

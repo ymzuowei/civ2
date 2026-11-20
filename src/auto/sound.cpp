@@ -2,6 +2,11 @@
  * (tools/gen_c.py, now edited directly), in address order. */
 #include "auto_common.h"
 
+/* The opt-in AVI clock trace calls src/platform/util.c's C logger.
+ * Game sources compile as C++; keep the declaration's C linkage so the
+ * WASM link resolves the platform function without name mangling. */
+EXTERN_C void plat_log(const char *fmt, ...);
+
 /* 00419c8b auto */
 void __cdecl snd_menu_end(void)
 

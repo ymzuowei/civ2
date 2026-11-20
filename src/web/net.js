@@ -58,12 +58,13 @@ export function makeNet(relayGiven, WS = globalThis.WebSocket, unreachable = () 
         if (!relay || !WS || relay === infoRelay)
             return;
         infoRelay = relay;
+        const requestedRelay = relay;
         try {
             const ws = open('/info');
             ws.onmessage = (e) => {
                 try {
                     const m = JSON.parse(e.data);
-                    if (m.addr && relay === infoRelay)
+                    if (m.addr && infoRelay === requestedRelay)
                         localAddr = m.addr;
                 } catch (err) { /* not ours */ }
             };

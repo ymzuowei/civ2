@@ -27,8 +27,12 @@ class HdGridContrastContract(unittest.TestCase):
 
     def test_hd_only_revealed_tiles_and_native_coordinates(self):
         region = self.game.split("void MapView::draw_tile(int x,int y,int civ)", 1)[1].split("i32 MapView::tile_in_view", 1)[0]
-        self.assertIn("hd_art && (civ < 0 || game.reveal_map != 0 || tile_visible_to(x,y,civ) != 0)", region)
-        self.assertIn("(int)tile_width_u,(int)tile_height_u,near_city", region)
+        self.assertIn("hd_art && !near_city &&", region)
+        self.assertIn("civ < 0 || game.reveal_map != 0 || tile_visible_to(x,y,civ) != 0", region)
+        self.assertIn("(int)tile_width_u,(int)tile_height_u,0", region)
+        # Bright radius is painted exactly once, *after* neighbors; do not
+        # reintroduce the previous double blend in the tile-terrain pass.
+        self.assertNotIn("(int)tile_width_u,(int)tile_height_u,near_city", region)
         self.assertNotIn("game.game_options |= OPT_MAP_GRID", region)
 
     def test_contrast_is_only_in_color_plane_and_cities_get_bright_line(self):

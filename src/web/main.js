@@ -772,16 +772,18 @@ async function play(store) {
     // its first click on the canvas: the native AVI handler would skip it.
     // No gate is shown when the locally imported OPENING.AVI is absent.
     // HD art is enabled only after the local HD pack successfully loads.
-    // A requested-but-missing pack reverts to the original AVI path, so
-    // it still needs the audio activation gate.
+    // Unlike native desktop, Web HD may play the owned opening when present:
+    // it explicitly opts in below, after the browser audio gesture gate.
     const hdArtAvailable = hd && !!window.civ2Hd?.packBytes;
     const introNeedsGesture = openingVideoNeedsGesture(entries, hdArtAvailable, location.search);
+    const hdMovieOptIn = hdArtAvailable && introNeedsGesture;
     // Diagnostics record booleans/states only: no game filenames, bytes, save
     // names or local E: paths. The owner can inspect window.civ2Intro in
     // DevTools even if a modal AVI remains black before the main menu.
     window.civ2Intro = {
         ownedOpeningPresent: openingVideoPresent(entries),
         hdArtAvailable,
+        hdMovieOptIn,
         skipRequested: skipBrowserOpening(location.search),
         gestureRequired: introNeedsGesture,
         audio: introNeedsGesture ? 'pending' : 'not-required'
@@ -804,6 +806,11 @@ async function play(store) {
     // ?intro=diagnose logs local decode/presentation failures to DevTools.
     if (skipBrowserOpening(location.search))
         env.CIV2_SKIP_OPENING = '1';
+    // Original HD native art mode skips AVI. Override only for the browser
+    // with a locally owned video and audio-gesture/fallback prepared. Never
+    // set this for missing media or explicit ?intro=skip.
+    if (hdMovieOptIn)
+        env.CIV2_BROWSER_HD_OPENING = '1';
     const introDiagnose = new URLSearchParams(location.search).get('intro') === 'diagnose';
     if (introDiagnose)
         env.CIV2_LOG_VIDEO = '1';

@@ -64,9 +64,21 @@ class SaveFolderContractTests(unittest.TestCase):
     def test_translation_keys_exist(self):
         keys = ("file.new_folder", "file.create_folder", "file.folder_name",
                 "file.folder_invalid", "file.folder_exists", "file.folder_failed")
-        for path in ("src/host/texts.h", "data/native/lang/en.txt",
-                     "data/native/lang/zh-Hans.txt", "data/native/lang/zh-Hant.txt"):
-            text = (ROOT / path).read_text(encoding="utf-8")
+        # Every shipped native language must carry all six folder labels.
+        # Decode using the declared legacy code page; never rewrite historical
+        # German/Esperanto/Latin binary-safe translations as UTF-8.
+        locales = {
+            "src/host/texts.h": "utf-8",
+            "data/native/lang/en.txt": "cp1252",
+            "data/native/lang/de.txt": "cp1252",
+            "data/native/lang/el.txt": "utf-8",
+            "data/native/lang/eo.txt": "iso-8859-3",
+            "data/native/lang/la.txt": "cp1252",
+            "data/native/lang/zh-Hans.txt": "utf-8",
+            "data/native/lang/zh-Hant.txt": "utf-8",
+        }
+        for path, codec in locales.items():
+            text = (ROOT / path).read_bytes().decode(codec)
             for key in keys:
                 with self.subTest(path=path, key=key):
                     if path.endswith(".h"):

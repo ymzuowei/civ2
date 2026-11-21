@@ -14592,3 +14592,15 @@ Civilopedia(&P)
 Τα γραφικά υψηλής ανάλυσης δεν έχουν εγκατασταθεί. Τα αρχικά γραφικά είναι διαθέσιμα.
 @@openciv2.web.graphics_switch_confirm
 Αποθηκεύστε πρώτα το παιχνίδι. Η αλλαγή θα φορτώσει ξανά τη σελίδα και οι κινήσεις που δεν αποθηκεύτηκαν θα χαθούν. Συνέχεια;
+@@openciv2.file.new_folder
+Νέος φάκελος
+@@openciv2.file.create_folder
+Δημιουργία
+@@openciv2.file.folder_name
+Όνομα φακέλου:
+@@openciv2.file.folder_invalid
+Εισαγάγετε ένα έγκυρο όνομα φακέλου.
+@@openciv2.file.folder_exists
+Υπάρχει ήδη αρχείο ή φάκελος με αυτό το όνομα.
+@@openciv2.file.folder_failed
+Δεν ήταν δυνατή η δημιουργία του φακέλου.

@@ -2368,6 +2368,16 @@ LRESULT ctl_static_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
         HDC hdc = BeginPaint(h, &ps);
         RECT r;
         GetClientRect(h, &r);
+        /* The Save/Load dialog reuses STATIC captions for its current
+         * directory and file/folder name. A transparent DrawTextA on the
+         * retained top-level window surface OVERPRINTS the old characters
+         * after WM_SETTEXT. InvalidateRect alone cannot erase those pixels.
+         * Repaint this dialog's normal button-face background first, just
+         * as the BUTTON renderer already does. Other game STATIC controls
+         * may intentionally overlay artwork: keep their existing behavior. */
+        if (w->parent && w->parent->cls &&
+            strcmp(w->parent->cls->name, "Civ2FileDialog") == 0)
+            FillRect(hdc, &r, GetSysColorBrush(COLOR_3DFACE));
         SetBkMode(hdc, TRANSPARENT);
         DrawTextA(hdc, w->text, -1, &r, DT_WORDBREAK);
         EndPaint(h, &ps);

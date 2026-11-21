@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {vkOf, Wheel, desktopScale, desktopUiScale, initialDesktopGeometry, argbToRgba, liveDesktopResize, canvasFitSize, displayModeFromSearch} from '../host.js';
 import {MemFS, makeWasi, normalize} from '../wasi.js';
 import {createAudioVolume, audioLabels} from '../audio_volume.js';
+import {TOOLBAR_KEY, createToolbarCollapse, toolbarLabels} from '../toolbar.js';
 import {unzip, zip as makeZip, crc32} from '../zip.js';
 import {savesKind, playerFiles, importPath, savesToImport, exportSaves} from '../saves.js';
 import {deflateRawSync, inflateRawSync} from 'node:zlib';
@@ -224,6 +225,63 @@ assert.match(pageSource, /addEventListener\('change',/);
 assert.match(pageSource, /dispatchEvent\(new Event\('civ2-display-change'\)\)/);
 assert.match(pageSource, /requestFullscreen\(\)/);
 assert.match(pageSource, /controls\.addEventListener\('keydown'/);
+
+// CIV2-T012: compact toolbar retains an explicit reopen handle, and the
+// high-contrast mute button has two deterministic vector states (not emoji).
+{
+const toolbarHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const toolbarMain = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
+for (const id of ['game-controls-content', 'controls-toggle', 'controls-toggle-chevron',
+                  'audio-waves', 'audio-slash', 'display-help'])
+    assert.match(toolbarHtml, new RegExp('id="' + id + '"'));
+assert.match(toolbarHtml, /aria-controls="game-controls-content" aria-label="Collapse controls"/);
+assert.match(toolbarHtml, /aria-expanded="true"/);
+assert.match(toolbarHtml, /id="audio-mute" class="icon-button"/);
+assert.match(toolbarHtml, /#game-controls #audio-mute\[aria-pressed="true"\]/);
+assert.match(toolbarHtml, /#game-controls \.icon-button/);
+assert.doesNotMatch(toolbarHtml, /🔊|🔇/);
+assert.doesNotMatch(toolbarMain, /audioMute\.textContent/);
+for (const token of ['content.hidden = collapsed', "toggle.setAttribute('aria-expanded'",
+                     "toggle.setAttribute('aria-label'", "chevron.setAttribute('d'",
+                     "audioMute.setAttribute('aria-pressed'", "$('audio-waves').hidden = muted",
+                     "$('audio-slash').hidden = !muted",
+                     "controls.addEventListener('keydown', (e) => e.stopPropagation())",
+                     "controls.addEventListener('keyup', (e) => e.stopPropagation())",
+                     "window.dispatchEvent(new Event('civ2-display-change'))",
+                     "mode.title = hint"]) {
+    assert.ok(toolbarMain.includes(token), 'missing toolbar behavior: ' + token);
+}
+const local = new Map();
+const fakeStorage = {
+    getItem(key) { return local.get(key) ?? null; },
+    setItem(key, value) { local.set(key, value); },
+};
+const toggleState = createToolbarCollapse(fakeStorage);
+assert.equal(toggleState.collapsed, false); // default open: discoverable
+toggleState.setCollapsed(true);
+assert.equal(toggleState.collapsed, true);
+assert.equal(local.get(TOOLBAR_KEY), 'collapsed');
+assert.equal(createToolbarCollapse(fakeStorage).collapsed, true); // reload
+toggleState.setCollapsed(false);
+assert.equal(createToolbarCollapse(fakeStorage).collapsed, false);
+assert.equal(local.get(TOOLBAR_KEY), 'expanded');
+assert.equal(createToolbarCollapse({getItem() { throw new Error('denied'); }}).collapsed, false);
+const blocked = createToolbarCollapse({getItem() { return 'collapsed'; }, setItem() { throw new Error('denied'); }});
+blocked.setCollapsed(false);
+assert.equal(blocked.collapsed, false); // storage failure never strands the menu
+assert.equal(toolbarLabels('zh-Hans').expand, '展开工具栏');
+assert.equal(toolbarLabels('zh-Hant').collapse, '收合工具列');
+assert.equal(toolbarLabels('de').expand, 'Expand controls');
+assert.match(toolbarLabels('zh-CN').integer, /整数倍/);
+assert.match(toolbarLabels('zh-TW').fit, /整數倍/);
+assert.match(toolbarLabels('en').fit, /fractional/);
+// Same-size modes do NOT need different pixels: integer and fractional
+// presentation coincide exactly at whole-number scaling or 1x.
+assert.deepEqual(canvasFitSize(1280, 720, 2560, 1440, 1, 'integer'),
+                 canvasFitSize(1280, 720, 2560, 1440, 1, 'fit'));
+assert.deepEqual(canvasFitSize(800, 600, 800, 600, 1, 'integer'),
+                 canvasFitSize(800, 600, 800, 600, 1, 'fit'));
+}
 
 // Display toolbar can switch between the existing modes without creating
 // another game desktop or restarting it; URL parameters remain orthogonal.

@@ -19,6 +19,11 @@
 #define ID_SORT 13
 #define ID_DATE 14
 #define ID_NEW_FOLDER 15
+/* Space for the longer CJK "file.folder_name" caption in folder mode.
+ * The edit starts beyond this caption; do not rely on text wrapping. */
+#define NAME_CAPTION_X 10
+#define NAME_CAPTION_WIDTH 155
+#define NAME_EDIT_X 175
 #define MAX_ITEMS 2048
 
 static struct {
@@ -132,6 +137,22 @@ static void set_text(HWND h, const char *text)
     UpdateWindow(h);
 }
 
+/* Both "file.name" and "file.folder_name" occupy this SAME STATIC.
+ * Their old glyphs can survive in the retained parent surface, especially
+ * after the longer Chinese folder-name text switches back to file-name.
+ * Explicitly erase the whole reserved caption strip on the parent FIRST,
+ * without touching the adjacent edit, then redraw the live STATIC text. */
+static void set_name_label(const char *text)
+{
+    RECT strip = {NAME_CAPTION_X, 260, NAME_EDIT_X - 2, 290};
+    HDC dc = GetDC(fd.dlg);
+    if (dc) {
+        FillRect(dc, &strip, GetSysColorBrush(COLOR_3DFACE));
+        ReleaseDC(fd.dlg, dc);
+    }
+    set_text(fd.namelabel, text);
+}
+
 static void show_date(int i)
 {
     char text[64] = "";
@@ -237,7 +258,7 @@ static void folder_mode(int creating)
     } else {
         SetWindowTextA(fd.name, fd.previous_file_name);
     }
-    set_text(fd.namelabel, extras_text(creating ? "file.folder_name" : "file.name"));
+    set_name_label(extras_text(creating ? "file.folder_name" : "file.name"));
     set_text(fd.folderbutton, extras_text(creating ? "file.create_folder" : "file.new_folder"));
     EnableWindow(fd.savebutton, !creating);
     /* While naming a folder, keep list navigation and sorting disabled:
@@ -452,8 +473,8 @@ WINBOOL plat_file_dialog(OPENFILENAMEA *ofn, int save)
                              (screen_w - w) / 2, (screen_h - h) / 2, w, h, owner, NULL, NULL, NULL);
     fd.dirlabel = control("STATIC", "", SS_LEFT, 10, 8, w - 30, 18, ID_DIR);
     fd.list = control("LISTBOX", "", WS_BORDER | WS_VSCROLL | LBS_NOTIFY, 10, 30, w - 30, 220, ID_LIST);
-    fd.namelabel = control("STATIC", extras_text("file.name"), SS_LEFT, 10, 264, 120, 20, -1);
-    fd.name = control("EDIT", "", WS_BORDER | ES_AUTOHSCROLL, 130, 260, w - 150, 24, ID_NAME);
+    fd.namelabel = control("STATIC", extras_text("file.name"), SS_LEFT, NAME_CAPTION_X, 264, NAME_CAPTION_WIDTH, 20, -1);
+    fd.name = control("EDIT", "", WS_BORDER | ES_AUTOHSCROLL, NAME_EDIT_X, 260, w - NAME_EDIT_X - 20, 24, ID_NAME);
     fd.date = control("STATIC", "", SS_LEFT, 85, 292, 335, 18, ID_DATE);
     fd.sort = control("BUTTON", extras_text(fd.by_date ? "file.sort_date" : "file.sort_name"), BS_PUSHBUTTON, 10, 322, 100, 28, ID_SORT);
     if (save)

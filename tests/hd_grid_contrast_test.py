@@ -16,52 +16,77 @@ class HdGridContrastContract(unittest.TestCase):
         cls.plane = (ROOT / "src/platform/hd.c").read_text(encoding="utf-8")
         cls.header = (ROOT / "src/platform/hd.h").read_text(encoding="utf-8")
 
-    def test_preserves_original_game_grid_toggle_and_near_city(self):
-        region = self.game.split("void MapView::draw_tile(int x,int y,int civ)", 1)[1].split("i32 MapView::tile_in_view", 1)[0]
+    def test_original_sprites_and_no_early_hd_overlay(self):
+        region = self.game.split(
+            "void MapView::draw_tile(int x,int y,int civ)", 1
+        )[1].split("i32 MapView::tile_in_view", 1)[0]
         self.assertIn("game.game_options & OPT_MAP_GRID", region)
         self.assertIn("map_grid_sprite", region)
         self.assertIn("city_radius_grid_sprite", region)
         self.assertIn("map_distance_diag(x,y", region)
-        self.assertLess(region.index("draw_tile_terrain("), region.index("map_grid_sprite"))
-        self.assertLess(region.index("draw_tile_terrain("), region.index("city_radius_grid_sprite"))
-        self.assertIn("hd_map_grid_contrast(", region)
-        self.assertLess(region.index("map_grid_sprite"), region.index("hd_map_grid_contrast("))
-        self.assertLess(region.index("city_radius_grid_sprite"), region.index("hd_map_grid_contrast("))
-
-    def test_hd_only_revealed_tiles_and_native_coordinates(self):
-        region = self.game.split("void MapView::draw_tile(int x,int y,int civ)", 1)[1].split("i32 MapView::tile_in_view", 1)[0]
-        # A small HD dark accent applies only to ordinary revealed tiles.
-        # Pale radius enhancement remains exclusive to the final postpass.
-        self.assertIn("hd_art && !near_city &&", region)
-        self.assertIn("civ < 0 || game.reveal_map != 0 || tile_visible_to(x,y,civ) != 0", region)
-        self.assertIn("(int)tile_width_u,(int)tile_height_u,0", region)
-        self.assertNotIn("(int)tile_width_u,(int)tile_height_u,1", region)
-        self.assertIn("map_grid_sprite", region)
-        self.assertIn("city_radius_grid_sprite", region)
+        self.assertLess(region.index("draw_tile_terrain("),
+                        region.index("map_grid_sprite"))
+        self.assertLess(region.index("draw_tile_terrain("),
+                        region.index("city_radius_grid_sprite"))
+        # No HD paint during the per-tile terrain pass: its overlap would
+        # otherwise change apparent alpha based on traversal order.
+        self.assertNotIn("hd_map_grid_contrast(", region)
         self.assertIn("gfx_reset_zoom_scale();", region)
         self.assertNotIn("game.game_options |= OPT_MAP_GRID", region)
 
-    def test_contrast_is_only_in_color_plane_and_cities_get_bright_line(self):
-        helper = self.plane.split("void hd_map_grid_contrast(", 1)[1].split("void hd_dc_chevron(", 1)[0]
-        self.assertIn("if (!hd_art || !bits", helper)
-        self.assertIn("unsigned color = radius_tile ? 0xf2eee4u : 0x0b1815u", helper)
-        self.assertIn("strength = radius_tile ? hd_radius_grid_strength(w) : 40u", helper)
-        self.assertNotIn("118u", helper)
-        self.assertNotIn("184u", helper)
-        self.assertIn("seg_dist2(", helper)
-        self.assertIn("sync_rect(", helper)
-        self.assertIn("commit_rect(", helper)
-        self.assertIn("b->hd +", helper)
-        self.assertNotRegex(helper, r"\bbmp_row\([^)]*\)\s*=")
-        self.assertIn("void hd_map_grid_contrast(", self.header)
+    def test_grid_mask_unions_coverage_before_one_final_blend(self):
+        code = self.plane
+        header = (ROOT / "src/platform/hd_grid_batch.h").read_text(
+            encoding="utf-8")
+        self.assertIn("hd_grid_batch_begin(", header)
+        self.assertIn("hd_grid_batch_end(", header)
+        self.assertIn("hd_grid_batch_begin(", code)
+        self.assertIn("hd_grid_batch_end(", code)
+        self.assertIn("uint16_t *pixels;", code)
+        self.assertIn("calloc(pw * ph, sizeof *mask)", code)
+        self.assertIn("free(g->pixels)", code)
+        self.assertIn("memset(g, 0, sizeof *g)", code)
+        self.assertIn("pw > SIZE_MAX / ph", code)
+        self.assertIn("pw * ph > SIZE_MAX / sizeof *mask", code)
+        # Native terrain/sprites are synced only once, after collecting
+        # the shared-edge coverage, then the HD plane is committed once.
+        finish = code.split("void hd_grid_batch_end(", 1)[1].split(
+            "void hd_map_grid_contrast(", 1)[0]
+        self.assertLess(finish.index("sync_rect("),
+                        finish.index("for (iy = g->miny"))
+        self.assertLess(finish.index("for (iy = g->miny"),
+                        finish.index("commit_rect("))
+        self.assertIn("sample & 0x100u", finish)
+        self.assertIn("0xf2eee4u : 0x0b1815u", finish)
+        self.assertIn("uint16_t sample = g->pixels[", finish)
+        self.assertNotIn("hd_grid_batch_end(", self.game.split(
+            "void MapView::draw_tile(int x,int y,int civ)", 1
+        )[1].split("i32 MapView::tile_in_view", 1)[0])
+
+    def test_grid_raster_collects_max_coverage_not_repeated_color(self):
+        helper = self.plane.split("void hd_map_grid_contrast(", 1)[1].split(
+            "void hd_dc_chevron(", 1)[0]
+        self.assertIn("b != grid_batch.b || !grid_batch.pixels", helper)
         self.assertIn("stroke = 0.56, limit = stroke * stroke", helper)
-        self.assertIn("best < .12 ? strength", helper)
-        # Only pale radius extends 1px for seamless AA clipping; ordinary
-        # thin dark lines preserve the original tile rectangle.
+        self.assertIn("strength = radius_tile ? hd_radius_grid_strength(w) : 40u",
+                      helper)
+        self.assertIn("seg_dist2(", helper)
+        self.assertIn("a | (radius_tile ? 0x100u : 0u)", helper)
+        self.assertIn("a > (old_sample & 255u)", helper)
+        self.assertIn("radius_tile && !(old_sample & 0x100u)", helper)
+        self.assertNotIn("*dst =", helper)
+        self.assertNotIn("commit_rect(", helper)
+        self.assertNotIn("sync_rect(", helper)
+        # White city edges preserve 1 native pixel AA margin; normal
+        # dark grid keeps the exact tile rectangle with no spill.
         self.assertIn("l = x - (radius_tile ? 1 : 0)", helper)
         self.assertIn("t = y - (radius_tile ? 1 : 0)", helper)
         self.assertIn("r = x + w + (radius_tile ? 1 : 0)", helper)
         self.assertIn("bot = y + h + (radius_tile ? 1 : 0)", helper)
+        self.assertIn("l < grid_batch.l", helper)
+        self.assertIn("r > grid_batch.r", helper)
+        self.assertNotRegex(helper, r"\\bbmp_row\\([^)]*\\)\\s*=")
+        self.assertIn("void hd_map_grid_contrast(", self.header)
 
     def test_city_radius_zoom_alpha_is_bounded_and_monotone(self):
         # This is native map zoom: gfx_zoom_scale(64, zoom) =
@@ -103,14 +128,16 @@ class HdGridContrastContract(unittest.TestCase):
         # later neighboring terrain or ordinary dark grid. Source-order
         # contracts protect both full redraw and movement/partial redraw.
         shared = self.game.split(
-            "static bool hd_radius_tile_for_postpass(", 1
+            "static int hd_grid_tile_kind_for_postpass(", 1
         )[1].split("void MapView::draw_tile_radius(", 1)[0]
         self.assertIn("OPT_MAP_GRID", shared)
         self.assertIn("tile_visible_to(tx,ty,civ)", shared)
         self.assertIn("cities[c].owner == civ", shared)
         self.assertIn("map_distance_diag(tx,ty,", shared)
         self.assertIn("map_in_bounds(tx,ty)", shared)
-        self.assertIn("return true;", shared)
+        self.assertIn("return 2;", shared)
+        self.assertIn("return 1;", shared)
+        self.assertIn("return 0;", shared)
         for name, next_name in (
             ("draw_tile_radius", "draw_all_tiles"),
             ("draw_all_tiles", "blit_tile_radius"),
@@ -118,15 +145,22 @@ class HdGridContrastContract(unittest.TestCase):
             region = self.game.split(
                 "void MapView::" + name + "(", 1
             )[1].split("void MapView::" + next_name + "(", 1)[0]
-            self.assertIn("hd_radius_tile_for_postpass(", region)
+            self.assertIn("hd_grid_batch_begin((void *)this->bits", region)
+            self.assertIn("hd_grid_tile_kind_for_postpass(", region)
             self.assertIn("hd_map_grid_contrast((void *)this->bits", region)
+            self.assertIn("hd_grid_batch_end((void *)this->bits)", region)
             self.assertIn("tile_to_screen(&sx,&sy", region)
             self.assertIn("apply_zoom();", region)
             self.assertIn("gfx_reset_zoom_scale();", region)
             self.assertLess(region.index("draw_tile(x,"),
-                            region.index("hd_radius_tile_for_postpass("))
-            self.assertLess(region.index("hd_radius_tile_for_postpass("),
+                            region.index("hd_grid_batch_begin("))
+            self.assertLess(region.index("hd_grid_batch_begin("),
+                            region.index("hd_grid_tile_kind_for_postpass("))
+            self.assertLess(region.index("hd_grid_tile_kind_for_postpass("),
+                            region.index("hd_grid_batch_end("))
+            self.assertLess(region.index("hd_grid_batch_end("),
                             region.index("draw_city_names("))
+            self.assertIn("kind == 2", region)
             self.assertNotIn("game.game_options |=", region)
 
 

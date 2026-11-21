@@ -34,6 +34,39 @@ class SaveFolderContractTests(unittest.TestCase):
         self.assertIn("name[0] == ' '", self.dialog)
         self.assertIn("return mkdir(host, 0777);", self.paths)
 
+    def test_save_dialog_redraws_folder_path_and_has_room_for_chinese_label(self):
+        dialog = self.dialog
+        refill = dialog[dialog.index("static void refill(void)"):
+                        dialog.index("static void enter_dir(")]
+        self.assertIn("set_text(fd.dirlabel, label);", refill)
+        self.assertNotIn("SetWindowTextA(fd.dirlabel, label);", refill)
+        self.assertIn("folder_mode(0);\n    enter_dir(name);", dialog)
+        self.assertIn("int w = save ? 480 : 440, h = 396", dialog)
+        self.assertIn("w - 30, 18, ID_DIR", dialog)
+        self.assertIn("w - 30, 220, ID_LIST", dialog)
+        self.assertIn("120, 322, 140, 28, ID_NEW_FOLDER", dialog)
+        self.assertIn("save ? 275 : 240", dialog)
+        self.assertIn("save ? 375 : 335", dialog)
+
+    def test_save_leader_prefix_preserves_complete_utf8_characters(self):
+        source = self.save
+        helper = source[source.index("static size_t save_leader_prefix_bytes("):
+                        source.index("/* 0047758c auto */")]
+        self.assertIn('#include "../include/utf8.h"', source)
+        self.assertIn("for (i = 0; i < 2 && at < n; i++)", helper)
+        self.assertIn("u8_len_at(name, n, at)", helper)
+        self.assertIn("if (plat_text_utf8)", helper)
+        self.assertIn("u8_decode(name + at, n - at, &decoded_size) == U8_BAD", helper)
+        self.assertIn("at += size;", helper)
+        self.assertIn("return (size_t)at;", helper)
+        self.assertIn("file_name_buf[1 + save_leader_prefix_bytes(file_name_buf + 1)] = 0;", source)
+        self.assertNotIn("file_name_buf[3] = 0;", source)
+        # Two characters in UTF-8 can be six bytes or more. The extension,
+        # era suffix and original autosave naming do not change.
+        self.assertEqual(len("中国".encode("utf-8")), 6)
+        self.assertIn("crt_strcat(file_name_buf + 1,((i8 *)&save_name_ext_dot_str));", source)
+        self.assertIn("game_save_autosave_follow(file_name_buf + 1);", source)
+
     def test_successful_save_and_load_choose_autosave_folder(self):
         self.assertIn("result = save_write_game((file_name_buf + 1),is_scenario);", self.save)
         self.assertIn("game_save_autosave_follow(file_name_buf + 1);", self.save)

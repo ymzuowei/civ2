@@ -74,7 +74,7 @@ ASYNC_IMPORTS = ['host.host_wait_event', 'host.host_poll_event', 'host.host_dela
                  'host.host_restart']
 PAGE = ['index.html', 'main.js', 'host.js', 'wasi.js', 'store.js', 'zip.js', 'saves.js', 'setup_run.js',
         'setup_worker.js', 'net.js', 'hdpack.js', 'options.js', 'i18n.js', 'locale.js',
-        'graphics_choice.js']
+        'graphics_choice.js', 'audio_volume.js'
 FONTS = ['fonts_win.bin', 'fonts_win_aa.bin']
 
 SITE_GAME_MARKER = '<meta name="openciv2-bundled-game" content="0">'

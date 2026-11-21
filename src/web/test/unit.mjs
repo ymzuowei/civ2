@@ -109,8 +109,13 @@ assert.equal(openingVideoNeedsGesture(ownedOpening, false, ''), true);
 assert.equal(openingVideoNeedsGesture(ownedOpening, false, '?intro=diagnose'), true);
 assert.equal(openingVideoNeedsGesture(ownedOpening, false, '?intro=play'), true);
 assert.equal(openingVideoNeedsGesture(ownedOpening, false, '?intro=skip'), false);
-assert.equal(openingVideoNeedsGesture(ownedOpening, true, ''), false);
-assert.equal(openingVideoNeedsGesture(ownedOpening, true, '?intro=play'), false);
+// HD must not silently suppress a licensed original movie. This used to
+// return false and start directly at the menu despite the stored AVI.
+assert.equal(openingVideoNeedsGesture(ownedOpening, true, ''), true);
+assert.equal(openingVideoNeedsGesture(ownedOpening, true, '?intro=play'), true);
+assert.equal(openingVideoNeedsGesture(ownedOpening, true, '?intro=diagnose'), true);
+assert.equal(openingVideoNeedsGesture(ownedOpening, true, '?intro=skip'), false);
+assert.equal(openingVideoNeedsGesture([], true, ''), false);
 assert.equal(openingVideoNeedsGesture([], false, ''), false);
 const runningAudio = {state: 'running', resume() { throw new Error('already running'); }};
 assert.equal(await resumeOpeningAudioContext(runningAudio), true);
@@ -123,6 +128,9 @@ assert.equal(await resumeOpeningAudioContext(stalledAudio, 1), false);
 assert.equal(await resumeOpeningAudioContext({state: 'closed'}), false);
 const startupSource = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
 assert.match(startupSource, /env\.CIV2_SKIP_OPENING = '1'/);
+assert.match(startupSource, /const hdMovieOptIn = hdArtAvailable && introNeedsGesture/);
+assert.match(startupSource, /if \(hdMovieOptIn\)\s+env\.CIV2_BROWSER_HD_OPENING = '1'/);
+assert.match(startupSource, /hdMovieOptIn,/);
 assert.match(startupSource, /openingVideoNeedsGesture\(entries, hdArtAvailable, location.search\)/);
 assert.match(startupSource, /hd && !!window\.civ2Hd\?\.packBytes/);
 for (const field of ['ownedOpeningPresent', 'hdArtAvailable', 'skipRequested', 'gestureRequired', 'silent-fallback'])

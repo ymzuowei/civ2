@@ -126,6 +126,17 @@ int plat_chdir(const char *win)
     return chdir(host) ? -1 : 0;
 }
 
+int plat_mkdir(const char *win)
+{
+    char host[1024];
+    plat_host_path(win, host, sizeof host, 1);
+#ifdef _WIN32
+    return _mkdir(host);
+#else
+    return mkdir(host, 0777);
+#endif
+}
+
 int plat_getcwd(char *win, int n)
 {
     char host[1024];

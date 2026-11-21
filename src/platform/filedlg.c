@@ -233,6 +233,10 @@ static void folder_mode(int creating)
     set_text(fd.namelabel, extras_text(creating ? "file.folder_name" : "file.name"));
     set_text(fd.folderbutton, extras_text(creating ? "file.create_folder" : "file.new_folder"));
     EnableWindow(fd.savebutton, !creating);
+    /* While naming a folder, keep list navigation and sorting disabled:
+     * they otherwise change fd.dir under the pending folder name. */
+    EnableWindow(fd.list, !creating);
+    EnableWindow(fd.sort, !creating);
     if (creating)
         SetFocus(fd.name);
 }

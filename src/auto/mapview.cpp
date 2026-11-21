@@ -2217,13 +2217,10 @@ void MapView::draw_tile(int x,int y,int civ)
       else {
         ((Sprite *)((i8 *)&icons_pair_sprites_block.city_radius_grid_sprite))->draw((RECT *)radius_rect,this,screen_x,screen_y);
       }
-      /* The dark ordinary HD grid belongs to this terrain pass. Defer
-         the pale radius enhancement to the final full/partial postpass,
-         after all neighbors, to avoid seam overpaint or double blending. */
-      if (hd_art && !near_city &&
-          (civ < 0 || game.reveal_map != 0 || tile_visible_to(x,y,civ) != 0))
-        hd_map_grid_contrast((void *)this->bits,screen_x,screen_y,
-                             (int)tile_width_u,(int)tile_height_u,0);
+      /* Original normal-grid and city-radius sprites are sufficient for
+         drawing the tile grid. Do not darken HD terrain with a second,
+         per-tile ordinary-grid pass. City-radius HD emphasis is added
+         exactly once after all adjacent terrain is drawn below. */
       gfx_reset_zoom_scale();
     }
   }

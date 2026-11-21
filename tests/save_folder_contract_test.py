@@ -4,6 +4,8 @@ The real WASM/native browser dialogs still require compiled owner acceptance;
 these checks prevent accidental separate-folder autosaves or root collisions.
 """
 from pathlib import Path
+import hashlib
+import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -93,6 +95,36 @@ class SaveFolderContractTests(unittest.TestCase):
             with self.subTest(locale=code):
                 text = (ROOT / f"data/native/lang/{code}.txt").read_bytes().decode(codec)
                 self.assertTrue(text.startswith("; OpenCiv2:"))
+
+
+    def test_all_locale_keys_match_template_except_exact_six_native_fallbacks(self):
+        # Source-only CI must catch a newly added English key BEFORE the
+        # owner spends time on a full D:-isolated WASM build. Historic binary
+        # translations stay unchanged; no transcoding or files generated.
+        template = (ROOT / "data/native/lang/en.txt").read_bytes()
+        def own_keys(data):
+            return set(re.findall(rb"(?m)^@@openciv2\\.([A-Za-z0-9_.-]+)\\r?$", data))
+        expected = own_keys(template)
+        folder = {k.encode("ascii") for k in (
+            "file.new_folder", "file.create_folder", "file.folder_name",
+            "file.folder_invalid", "file.folder_exists", "file.folder_failed",
+        )}
+        legacy = {
+            "de": "40d7f6a5eac8b7739df98f9cd19db5b5160fa4b7",
+            "el": "42acbbdad178ed36c7525a1abe617a0ab784bc7e",
+            "eo": "61caf027b434234e1b4fbe9824bdad789f5bd99e",
+            "la": "fc926c18ca48ceeb6f0bfef02a71b544cc36ef8f",
+        }
+        for code in ("de", "el", "eo", "la", "zh-Hans", "zh-Hant"):
+            with self.subTest(locale=code):
+                raw = (ROOT / f"data/native/lang/{code}.txt").read_bytes()
+                actual = own_keys(raw)
+                self.assertEqual(expected - actual, folder if code in legacy else set())
+                self.assertEqual(actual - expected, set())
+                if code in legacy:
+                    blob = b"blob " + str(len(raw)).encode("ascii") + b"\\0" + raw
+                    self.assertEqual(hashlib.sha1(blob).hexdigest(), legacy[code],
+                                     "Historical locale bytes must not be re-encoded")
 
 
 if __name__ == "__main__":

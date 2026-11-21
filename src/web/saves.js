@@ -97,6 +97,24 @@ export async function savesToImport(files, existing) {
     // Windows and the emulated game's paths are case-insensitive; reuse the
     // exact existing storage key to avoid creating parallel .SAV/CIV.INI keys.
     const known = new Map(existing.map((path) => [path.toLowerCase(), path]));
+    const knownDirs = new Map();
+    for (const path of existing)
+        for (let dir = dirOf(path); dir; dir = dirOf(dir))
+            knownDirs.set(dir.toLowerCase(), dir);
+    // If an own ZIP's folder already exists with another case, use that
+    // casing for the longest existing parent. A new nested subfolder must
+    // remain nested, rather than being flattened by importPath().
+    const preserveCase = (safe) => {
+        const existingFile = known.get(safe.toLowerCase());
+        if (existingFile)
+            return existingFile;
+        for (let dir = dirOf(safe); dir; dir = dirOf(dir)) {
+            const existingDir = knownDirs.get(dir.toLowerCase());
+            if (existingDir)
+                return existingDir + safe.slice(dir.length);
+        }
+        return safe;
+    };
     const add = (name, data, preservedPaths = null) => {
         const safe = safeSavePath(name);
         if (!safe)
@@ -104,8 +122,7 @@ export async function savesToImport(files, existing) {
         // Preserve only known nested paths from our own export. Root files
         // (notably CIV.INI) still take the legacy case-preserving import path.
         const preserve = safe.includes('/') && preservedPaths?.has(safe);
-        const p = preserve ? (known.get(safe.toLowerCase()) || safe)
-                           : importPath(safe, existing);
+        const p = preserve ? preserveCase(safe) : importPath(safe, existing);
         if (savesKind(p))
             out.set(p, data);
     };

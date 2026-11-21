@@ -438,6 +438,13 @@ assert.ok(!savedArchive.some((entry) => entry.name === 'Civ2Art.dll'));
 const restoredCampaigns = await savesToImport([{name: 'downloaded.zip', data: savedCampaigns.data}], []);
 assert.deepEqual(restoredCampaigns.map(([name]) => name), savedCampaigns.names);
 assert.deepEqual(Buffer.from(restoredCampaigns[0][1]), campaignBytes);
+// Re-import to an existing profile with differently cased keys should
+// update those existing files, not create duplicates on case-sensitive IDB.
+const existingCampaigns = await savesToImport(
+    [{name: 'downloaded.zip', data: savedCampaigns.data}],
+    ['20261121/rome.sav', 'civ.ini']);
+assert.deepEqual(existingCampaigns.map(([name]) => name),
+    ['20261121/_AUTO.SAV', '20261121/rome.sav', '20261122/_AUTO.SAV', 'civ.ini']);
 // An injected/unsafe manifest path cannot escape the game's virtual folder.
 const traversalArchive = await makeZip([
     {name: 'openciv2-saves-manifest.json', data: Buffer.from(JSON.stringify({

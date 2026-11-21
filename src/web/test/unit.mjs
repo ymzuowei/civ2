@@ -237,14 +237,15 @@ for (const id of ['game-controls-content', 'controls-toggle', 'controls-toggle-c
 assert.match(toolbarHtml, /aria-controls="game-controls-content" aria-label="Collapse controls"/);
 assert.match(toolbarHtml, /aria-expanded="true"/);
 assert.match(toolbarHtml, /id="audio-mute" class="icon-button"/);
+assert.match(toolbarHtml, /id="audio-slash"[^>]*style="display:none"/);
 assert.match(toolbarHtml, /#game-controls #audio-mute\[aria-pressed="true"\]/);
 assert.match(toolbarHtml, /#game-controls \.icon-button/);
 assert.doesNotMatch(toolbarHtml, /🔊|🔇/);
 assert.doesNotMatch(toolbarMain, /audioMute\.textContent/);
 for (const token of ['content.hidden = collapsed', "toggle.setAttribute('aria-expanded'",
                      "toggle.setAttribute('aria-label'", "chevron.setAttribute('d'",
-                     "audioMute.setAttribute('aria-pressed'", "$('audio-waves').hidden = muted",
-                     "$('audio-slash').hidden = !muted",
+                     "audioMute.setAttribute('aria-pressed'", "$('audio-waves').style.display = muted ? 'none' : ''",
+                     "$('audio-slash').style.display = muted ? '' : 'none'",
                      "controls.addEventListener('keydown', (e) => e.stopPropagation())",
                      "controls.addEventListener('keyup', (e) => e.stopPropagation())",
                      "window.dispatchEvent(new Event('civ2-display-change'))",

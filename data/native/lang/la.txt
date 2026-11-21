@@ -14590,15 +14590,3 @@ Alta resolutio
 Imagines altae resolutionis nondum adsunt. Imagines pristinae manent.
 @@openciv2.web.graphics_switch_confirm
 Prius statum ludi serva. Imaginibus mutatis ludus iterum aperietur, et motus nondum servati peribunt. Pergere?
-@@openciv2.file.new_folder
-Novum directorium
-@@openciv2.file.create_folder
-Creare
-@@openciv2.file.folder_name
-Nomen directorii:
-@@openciv2.file.folder_invalid
-Nomen directorii validum inscribe.
-@@openciv2.file.folder_exists
-Fasciculus aut directorium eiusdem nominis iam exstat.
-@@openciv2.file.folder_failed
-Directorium creari non potuit.

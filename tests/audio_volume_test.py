@@ -53,6 +53,15 @@ class MasterAudioSourceContracts(unittest.TestCase):
         self.assertIn("strength = radius_tile ? hd_radius_grid_strength(w) : 40u;", self.grid)
         self.assertIn("uint16_t sample = (uint16_t)(a | (radius_tile ? 0x100u : 0u))", self.grid)
 
+    def test_audio_fixture_is_block_scoped(self):
+        # Older graphics tests already declare top-level `prefs`. A second
+        # top-level const prevented Node from parsing any of the tests.
+        unit = (ROOT / "src/web/test/unit.mjs").read_text(encoding="utf-8")
+        marker = "// CIV2-T008: one persisted browser preference for effects, music and AVI."
+        self.assertEqual(unit.count(marker), 1)
+        self.assertIn("{\\n" + marker, unit)
+        self.assertIn("}\\n\\nconsole.log('src/web unit tests passed');", unit)
+
     def test_module_reaches_static_public_build(self):
         self.assertIn("'audio_volume.js'", self.build)
         self.assertIn("import {createAudioVolume, audioLabels} from './audio_volume.js'", self.page)

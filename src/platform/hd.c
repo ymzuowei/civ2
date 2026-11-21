@@ -929,6 +929,8 @@ int hd_grid_batch_begin(void *bits, int left, int top, int right, int bottom)
     pw = (size_t)(right - left) * (unsigned)d;
     ph = (size_t)(bottom - top) * (unsigned)d;
     if (!pw || !ph || pw > INT_MAX || ph > INT_MAX ||
+        (size_t)right > (size_t)INT_MAX / (unsigned)d ||
+        (size_t)bottom > (size_t)INT_MAX / (unsigned)d ||
         pw > SIZE_MAX / ph || pw * ph > SIZE_MAX / sizeof *mask ||
         !(mask = calloc(pw * ph, sizeof *mask)))
         return 0;      /* original grid sprites remain visible on OOM */

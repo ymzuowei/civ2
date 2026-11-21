@@ -4,6 +4,7 @@
 import {MemFS} from './wasi.js';
 import {GRAPHICS_PREFERENCE_KEY, resolveGraphicsPreference, graphicsFromQuery, hdArg} from './graphics_choice.js';
 import {runGame} from './host.js';
+import {createAudioVolume, audioLabels} from './audio_volume.js';
 import {openStore} from './store.js';
 import {unzip} from './zip.js';
 import {exportSaves, importSaves} from './saves.js';
@@ -15,6 +16,7 @@ import {t, languages, pageLanguage, urlLanguage, withLanguage, useLanguage, lang
 const GAME = '/civ2', DATA = '/data';
 let pageLang = 'en';        // the page's language (i18n.js: ?lang=CODE, else English)
 const $ = (id) => document.getElementById(id);
+const browserAudio = createAudioVolume();
 // (on the set-up page, and over the screen until the game's first frame)
 const status = (s) => {
     $('status').textContent = s;
@@ -361,6 +363,31 @@ function displayControls() {
     // not to the running Civilization II engine's keyboard event handler.
     controls.addEventListener('keydown', (e) => e.stopPropagation());
     controls.addEventListener('keyup', (e) => e.stopPropagation());
+    // These page controls never emit native game input or create an AudioContext.
+    // The engine picks up this preference when its next AudioContext starts.
+    const audioSlider = $('audio-volume'), audioMute = $('audio-mute');
+    const audioLevel = $('audio-level'), labels = audioLabels(pageLang);
+    $('audio-label').textContent = labels.volume;
+    audioSlider.setAttribute('aria-label', labels.volume);
+    function syncAudioControls() {
+        audioSlider.value = String(browserAudio.level);
+        audioLevel.textContent = browserAudio.level + '%';
+        const muted = browserAudio.muted;
+        audioMute.textContent = muted ? '🔇' : '🔊';
+        const action = muted ? labels.unmute : labels.mute;
+        audioMute.setAttribute('aria-label', action);
+        audioMute.title = action;
+        audioMute.setAttribute('aria-pressed', String(muted));
+    }
+    audioSlider.addEventListener('input', () => {
+        browserAudio.setLevel(Number(audioSlider.value));
+        syncAudioControls();
+    });
+    audioMute.addEventListener('click', () => {
+        browserAudio.setMuted(!browserAudio.muted);
+        syncAudioControls();
+    });
+    syncAudioControls();
     const syncFullscreen = () => {
         const on = document.fullscreenElement === game;
         fullscreen.textContent = t(on ? 'web.exit_fullscreen' : 'web.enter_fullscreen');
@@ -824,6 +851,7 @@ async function play(store) {
     try {
         window.civ2Stats = {};
         code = await runGame({wasm: site.wasm, fs, audioContext: introAudio,
+                              audioVolume: browserAudio,
                               onFrame: () => {
                                   timing.frame = Math.round(performance.now());
                                   $('loading').hidden = true;

@@ -373,6 +373,24 @@ export async function runGame(opts) {
     }
     const audioOk = () => audio && audio.state === 'running';
     const music = {source: null, playing: false, token: 0};
+    // PCM effects, decoded music and native AVI audio use one gain bus.
+    // Create lazily: opening playback still needs its real user gesture.
+    let masterGain = null;
+    let unsubscribeVolume = () => {};
+    function audioDestination() {
+        if (!audio)
+            return null;
+        if (!masterGain) {
+            masterGain = audio.createGain();
+            masterGain.gain.value = opts.audioVolume?.gain ?? 1;
+            masterGain.connect(audio.destination);
+            if (opts.audioVolume)
+                unsubscribeVolume = opts.audioVolume.subscribe((gain) => {
+                    masterGain.gain.value = gain;
+                });
+        }
+        return masterGain;
+    }
 
     // -- network play: through the relay (opts.relay: 'ws://host:port')
     const net = makeNet(opts.relay, globalThis.WebSocket, opts.onRelayUnreachable);
@@ -523,7 +541,7 @@ export async function runGame(opts) {
             }
             const src = audio.createBufferSource();
             src.buffer = buf;
-            src.connect(audio.destination);
+            src.connect(audioDestination());
             const at = Math.max(audio.currentTime, d.end);
             src.start(at);
             d.end = at + buf.duration;
@@ -562,7 +580,7 @@ export async function runGame(opts) {
                     return;
                 const src = audio.createBufferSource();
                 src.buffer = buf;
-                src.connect(audio.destination);
+                src.connect(audioDestination());
                 src.onended = () => {
                     if (token === music.token)
                         music.playing = false;
@@ -741,5 +759,7 @@ export async function runGame(opts) {
         exports.asyncify_start_rewind(asyncData);
     }
     host.host_music_stop();
+    unsubscribeVolume();
+    masterGain?.disconnect();
     return code;
 }

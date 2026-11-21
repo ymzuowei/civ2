@@ -362,3 +362,41 @@ The Web host inspects only its existing IndexedDB list for the user's previously
 **HD pack is not a standalone game.** `hd/atlas-hd.pack` is an optional art-only add-on (delivered as `C2ATLAS1` / `hd/pack.json`, checked and cached in browser IndexedDB). It does not include or replace the user's original `Civ2Art.dll`, `RULES.TXT`, optional `Video/OPENING.AVI`, game music/sounds and other owned data. `main.js::findGame()` still requires `Civ2Art.dll` + `RULES.TXT` or installation from the user's selected CUE/CD source; a fresh browser profile with the WebAssembly engine and HD atlas alone cannot enter normal Civilization II gameplay. Once the original game has been imported locally, switching graphics modes reuses the same IndexedDB files without reimporting, uploading to the static server, resetting browser saves or changing the game's rules. The public site still includes **no commercial media**. This resolves the "independent art pack" vs "independent runnable game" distinction.
 
 **Status:** source and regression changes committed in stacked Draft #12 / Web Draft #41; real Windows WASM compilation and the actual HD+AVI video, audio, natural end and Skip behaviour remain separate pending tests. Do **not** claim the restored video displays correctly until the owner confirms. Keep the already visually accepted HD grid renderer unchanged.
+
+## CIV2-T013 — Save ZIP restore path identity and browser safety
+
+The native game treats its virtual Windows-like file paths as
+**case-insensitive**, but browser IndexedDB keys are case-sensitive.
+Before this update, `savesToImport()` reused names already present in
+the destination profile but did not check **other files being imported
+in the same batch**. A ZIP could create both `Campaign/ROME.SAV`
+and `campaign/rome.sav`, even though the game's file system treats
+them as one file; different entries could also create both
+`Campaign/` and `campaign/` folder spellings in a fresh profile.
+
+Imported files now maintain an in-memory, lowercase **staged-path
+index** as they are read. The first normalized filename (or an
+existing destination filename) remains the stable key, while the last
+imported entry for that same case-insensitive path supplies its data.
+The case of newly created parent folders is reused consistently for
+later files in the same import; independent campaign folders and
+nested autosaves stay separate. Normal self-exported ZIP manifest
+paths remain nested, foreign/untagged ZIPs retain their existing
+legacy flattening behavior, and existing `civ.ini` casing is
+preserved. The normal file/path safety checks still apply.
+
+An IndexedDB `putMany()` transaction finishes *before* the
+runtime WASI in-memory file system is updated, so a failing browser
+store does not partially change a running game's save files. These
+are ordinary in-memory and Node/CI tests; they **do not** import,
+delete, rename, scan or migrate anyone's real game files.
+
+**Owner F07 acceptance still needed:** export an existing set of
+different campaign folders via the Saves menu, import it into a
+fresh browser profile at the **same `127.0.0.1:8000` origin in
+that profile**, and verify the nested .SAV names and their contents,
+normal loading, independent autosave destinations and re-import
+without extra case-variant keys. Do not use the owner's only profile
+as a destructive test or clear IndexedDB to simulate a fresh profile.
+T011 F03–F06/F08 remain separate pending tests, and toolbar T012
+and Display behavior must remain unchanged.

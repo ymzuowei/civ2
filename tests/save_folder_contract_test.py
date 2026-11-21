@@ -149,6 +149,26 @@ class SaveFolderContractTests(unittest.TestCase):
                       "preserveCase(safe)", "safe.includes('/')"):
             self.assertIn(token, self.web)
 
+    def test_t013_import_batch_canonicalizes_case_without_touching_old_saves(self):
+        # The native virtual file system is case-insensitive; IndexedDB is
+        # not. Two entries from the same imported ZIP must not create both
+        # Campaign/ROME.SAV and campaign/rome.sav in a fresh profile.
+        code = self.web
+        self.assertIn("const staged = new Map();", code)
+        self.assertIn("const prior = staged.get(p.toLowerCase());", code)
+        self.assertIn("const canonical = prior || p;", code)
+        self.assertIn("staged.set(canonical.toLowerCase(), canonical);", code)
+        self.assertIn("for (let dir = dirOf(canonical); dir; dir = dirOf(dir))", code)
+        self.assertIn("if (!knownDirs.has(dir.toLowerCase()))", code)
+        self.assertIn("knownDirs.set(dir.toLowerCase(), dir);", code)
+        self.assertIn("out.set(canonical, data);", code)
+        self.assertIn("await store.putMany(put.map(", code)
+        self.assertLess(code.index("await store.putMany(put.map("),
+                        code.index("if (fs)\n        for (const [k, data] of put)"))
+        # No data migration or clearing of the owner's already saved keys.
+        self.assertNotIn("store.clear()", code)
+        self.assertNotIn("deleteDatabase", code)
+
     def test_translation_keys_exist(self):
         keys = ("file.new_folder", "file.create_folder", "file.folder_name",
                 "file.folder_invalid", "file.folder_exists", "file.folder_failed")

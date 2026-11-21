@@ -94,6 +94,12 @@ function safeSavePath(name) {
 // them) -> [[path, data]] to put in the game's folder (other files left out)
 export async function savesToImport(files, existing) {
     const out = new Map();
+    // IndexedDB keys themselves are case-sensitive. Reusing only the keys
+    // already in the store misses case-equivalent names within the *same*
+    // ZIP/import batch, creating files that Windows-like Civ II treats as
+    // one. Track staged paths as well; retain the first spelling and let the
+    // last data entry overwrite it, matching ordinary file-copy behavior.
+    const staged = new Map();
     // Windows and the emulated game's paths are case-insensitive; reuse the
     // exact existing storage key to avoid creating parallel .SAV/CIV.INI keys.
     const known = new Map(existing.map((path) => [path.toLowerCase(), path]));
@@ -123,8 +129,20 @@ export async function savesToImport(files, existing) {
         // (notably CIV.INI) still take the legacy case-preserving import path.
         const preserve = safe.includes('/') && preservedPaths?.has(safe);
         const p = preserve ? preserveCase(safe) : importPath(safe, existing);
-        if (savesKind(p))
-            out.set(p, data);
+        if (!savesKind(p))
+            return;
+        const prior = staged.get(p.toLowerCase());
+        const canonical = prior || p;
+        if (!prior) {
+            staged.set(canonical.toLowerCase(), canonical);
+            // This ZIP may have created a folder that isn't in IndexedDB
+            // yet. Keep its first spelling for all subsequent staged paths
+            // rather than creating Campaign/ and campaign/ in one restore.
+            for (let dir = dirOf(canonical); dir; dir = dirOf(dir))
+                if (!knownDirs.has(dir.toLowerCase()))
+                    knownDirs.set(dir.toLowerCase(), dir);
+        }
+        out.set(canonical, data);
     };
     for (const f of files) {
         if (/\.zip$/i.test(f.name)) {

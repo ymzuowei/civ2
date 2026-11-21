@@ -7,7 +7,7 @@ import {MemFS, makeWasi, normalize} from '../wasi.js';
 import {createAudioVolume, audioLabels} from '../audio_volume.js';
 import {TOOLBAR_KEY, createToolbarCollapse, toolbarLabels} from '../toolbar.js';
 import {unzip, zip as makeZip, crc32} from '../zip.js';
-import {savesKind, playerFiles, importPath, savesToImport, exportSaves} from '../saves.js';
+import {savesKind, playerFiles, importPath, savesToImport, exportSaves, importSaves} from '../saves.js';
 import {deflateRawSync, inflateRawSync} from 'node:zlib';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
@@ -534,6 +534,70 @@ const traversalArchive = await makeZip([
 ]);
 assert.deepEqual((await savesToImport([{name: 'unsafe.zip', data: traversalArchive}], []))
     .map(([name]) => name), ['20261121/GOOD.SAV']);
+
+// T013: fresh-profile import must canonicalize *within the same ZIP*,
+// not just against pre-existing IndexedDB keys. Windows/Civ II treats
+// Campaign/ROME.SAV and campaign/rome.sav as one file. The first
+// spelling survives; the final data wins deterministically.
+const caseArchive = await makeZip([
+    {name: 'openciv2-saves-manifest.json', data: Buffer.from(JSON.stringify({
+        format: 'OpenCiv2-saves', version: 1,
+        paths: ['Campaign/ROME.SAV', 'campaign/rome.sav', 'CAMPAIGN/NEXT.SAV',
+                'campaign/20261121/_AUTO.SAV', 'Campaign2/_AUTO.SAV']
+    }))},
+    {name: 'Campaign/ROME.SAV', data: Buffer.from('old data')},
+    {name: 'campaign/rome.sav', data: Buffer.from('latest data')},
+    {name: 'CAMPAIGN/NEXT.SAV', data: Buffer.from('next')},
+    {name: 'campaign/20261121/_AUTO.SAV', data: Buffer.from('nested autosave')},
+    {name: 'Campaign2/_AUTO.SAV', data: Buffer.from('separate game')}
+]);
+const caseFiles = [{name: 'portable.zip', data: caseArchive}];
+const once = await savesToImport(caseFiles, []);
+assert.deepEqual(once.map(([name]) => name), [
+    'Campaign/ROME.SAV', 'Campaign/NEXT.SAV',
+    'Campaign/20261121/_AUTO.SAV', 'Campaign2/_AUTO.SAV'
+]);
+assert.equal(Buffer.from(once[0][1]).toString(), 'latest data');
+// Reimport must preserve exact existing case and must not create new
+// browser keys that differ only in case.
+const twice = await savesToImport(caseFiles, once.map(([name]) => name));
+assert.deepEqual(twice.map(([name]) => name), once.map(([name]) => name));
+// Also cover collisions among separate files selected together and the
+// case of an existing differently spelled root key.
+const independent = await savesToImport([
+    {name: 'alpha.sav', data: Buffer.from('first')},
+    {name: 'ALPHA.SAV', data: Buffer.from('last')},
+    {name: 'CIV.INI', data: Buffer.from('settings')}
+], ['civ.ini']);
+assert.deepEqual(independent.map(([name]) => name), ['alpha.sav', 'civ.ini']);
+assert.equal(Buffer.from(independent[0][1]).toString(), 'last');
+// Store mutation must happen before live MemFS mutation, so a failed
+// IndexedDB transaction leaves the player's currently running game
+// untouched. Exercise both sides without touching real browser data.
+const live = new MemFS();
+live.mkdirs('/civ2');
+const fakeStore = {
+    written: [],
+    async keys() { return []; },
+    async putMany(rows) { this.written.push(...rows); }
+};
+const importedLive = await importSaves(fakeStore, caseFiles, live, '/civ2');
+assert.deepEqual(importedLive, once.map(([name]) => name));
+assert.equal(fakeStore.written.length, once.length);
+assert.equal(new TextDecoder().decode(live.get('/civ2/Campaign/ROME.SAV')), 'latest data');
+assert.equal(new TextDecoder().decode(live.get('/civ2/Campaign2/_AUTO.SAV')), 'separate game');
+const failedLive = new MemFS();
+failedLive.mkdirs('/civ2');
+let attemptedWrite = false;
+await assert.rejects(
+    importSaves({
+        async keys() { return []; },
+        async putMany() { attemptedWrite = true; throw Error('simulated IndexedDB transaction failure'); }
+    }, caseFiles, failedLive, '/civ2'),
+    /simulated IndexedDB transaction failure/
+);
+assert.ok(attemptedWrite);
+assert.equal(failedLive.files.size, 0); // no partially imported live saves
 
 // ---- HD graphics' art (hdpack.js) ----
 

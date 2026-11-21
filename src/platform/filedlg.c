@@ -121,11 +121,15 @@ static void setting_set(const char *key, const char *value)
         WritePrivateProfileStringA("OpenCiv2", key, value, "CIV.INI");
 }
 
-/* A label's new text, drawn now (our controls don't repaint on WM_SETTEXT). */
+/* Changing text alone does not repaint our emulated Win32 controls.
+ * Invalidate and paint synchronously for a folder-navigation/creation
+ * action: the caption must reflect fd.dir before the user sees the new list.
+ * STATIC paints clear their previous text in controls.c (file dialog only). */
 static void set_text(HWND h, const char *text)
 {
     SetWindowTextA(h, text);
     InvalidateRect(h, NULL, TRUE);
+    UpdateWindow(h);
 }
 
 static void show_date(int i)

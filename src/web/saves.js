@@ -6,6 +6,8 @@
 import {zip, unzip} from './zip.js';
 
 const SETTINGS = new Set(['civ.ini', 'civ2.dat', 'hallfame.dat']);
+// Distinguish OpenCiv2's path-preserving export from arbitrary legacy ZIPs.
+const SAVE_MANIFEST = 'openciv2-saves-manifest.json';
 const base = (name) => name.slice(name.lastIndexOf('/') + 1).toLowerCase();
 const dirOf = (name) => (name.includes('/') ? name.slice(0, name.lastIndexOf('/')) : '');
 
@@ -45,7 +47,11 @@ export async function exportSaves(store) {
     const entries = await store.all();
     const keys = new Set(playerFiles(entries, await store.getMeta('game')));
     const files = entries.filter(([k]) => keys.has(k)).map(([k, v]) => ({name: k, data: v.data, mtime: v.mtime}));
-    return {data: await zip(files), names: files.map((f) => f.name)};
+    const names = files.map((f) => f.name);
+    // New-profile restores need the folders the owner used for different
+    // campaigns. Legacy/foreign ZIPs still use importPath's safe flattening.
+    const manifest = new TextEncoder().encode(JSON.stringify({format: 'OpenCiv2-saves', version: 1, paths: names}));
+    return {data: await zip([...files, {name: SAVE_MANIFEST, data: manifest}]), names};
 }
 
 // Where an imported file goes in the game's folder (existing: the store's
@@ -72,21 +78,49 @@ export function importPath(name, existing) {
     return parts[parts.length - 1] || '';
 }
 
+// A manifest may preserve user-created nested Save paths; reject traversal,
+// absolute paths, ambiguous '.' and empty segments before trusting any ZIP.
+function safeSavePath(name) {
+    if (typeof name !== 'string' || name.startsWith('/') || /^[a-z]:/i.test(name))
+        return null;
+    const p = name.replace(/\\/g, '/'), parts = p.split('/');
+    if (p.length > 240 || parts.some((part) =>
+        !part || part === '.' || part === '..' || /[\x00-\x1f:*?"<>|]/.test(part)))
+        return null;
+    return p;
+}
+
 // files: [{name, data}] chosen by the player (.SAV ..., .zip archives of
 // them) -> [[path, data]] to put in the game's folder (other files left out)
 export async function savesToImport(files, existing) {
     const out = new Map();
-    const add = (name, data) => {
-        const p = importPath(name, existing);
+    const add = (name, data, preservedPaths = null) => {
+        const safe = safeSavePath(name);
+        if (!safe)
+            return;
+        const preserve = preservedPaths?.has(safe);
+        const p = preserve ? safe : importPath(safe, existing);
         if (savesKind(p))
             out.set(p, data);
     };
     for (const f of files) {
-        if (/\.zip$/i.test(f.name))
-            for (const g of await unzip(f.data.buffer.slice(f.data.byteOffset, f.data.byteOffset + f.data.length)))
-                add(g.name, g.data);
-        else
+        if (/\.zip$/i.test(f.name)) {
+            const archive = await unzip(f.data.buffer.slice(f.data.byteOffset, f.data.byteOffset + f.data.length));
+            let preserved = null;
+            const manifest = archive.find((g) => g.name === SAVE_MANIFEST);
+            if (manifest) {
+                try {
+                    const json = JSON.parse(new TextDecoder().decode(manifest.data));
+                    if (json.format === 'OpenCiv2-saves' && json.version === 1 && Array.isArray(json.paths))
+                        preserved = new Set(json.paths.filter((path) => safeSavePath(path) === path));
+                } catch { /* Bad/old manifest: legacy import rules remain. */ }
+            }
+            for (const g of archive)
+                if (g.name !== SAVE_MANIFEST)
+                    add(g.name, g.data, preserved);
+        } else {
             add(f.name, f.data);
+        }
     }
     return [...out];
 }

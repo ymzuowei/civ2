@@ -235,3 +235,40 @@ actual control geometry and source UTF-8 character boundary contract.
 **These three fixes remain source-only until a new D:-local Windows WASM
 build and owner browser re-test.** F03/F04/full F05/F06/F07/F08 are not
 inferred from the current screenshots.
+
+## CIV2-T011 — Save dialog caption ghosting follow-up (2026-11-22)
+
+Owner Chrome re-test after the UTF-8 filename-prefix and Save dialog
+width corrections confirmed **the default prefix now renders as Chinese**
+(e.g. `武则_b3460.sav`), and actual Save As navigation shows the correct
+folder in the file list. Existing F01/F02 folder-save/autosave evidence
+remains valid. Two screenshots still expose **overprinted directory and
+label glyphs** after switching Save dialog folders, even when the
+internal `fd.dir` state and Load dialog paths are correct.
+
+Source root cause: the emulated Win32 `STATIC` control in
+`src/platform/controls.c::ctl_static_proc()` calls
+`DrawTextA` with `TRANSPARENT` background on a **retained** top-level
+window surface, but does **not** fill its old pixels first. The earlier
+`set_text()` change in `src/platform/filedlg.c` invalidated the
+label, yet repaint merely drew new glyphs over the old ones. Increasing
+button width or invalidating again cannot erase retained glyphs.
+
+Minimal fix: in the STATIC renderer, only when the parent window's
+class is `Civ2FileDialog`, clear the control's own client rectangle
+using the same `COLOR_3DFACE` background already used by the
+native BUTTON renderer, **before** drawing the new caption. Other
+STATIC controls retain their original transparent rendering (including
+possible game artwork overlays). `set_text()` now also calls
+`UpdateWindow(h)` after invalidation, so the current path is painted
+before the next input is handled. The label text and filesystem are
+unchanged. The observed `创建` vs `新建文件夹` button captions
+are expected create-folder mode vs normal mode, **not** a new width bug.
+
+`tests/save_folder_contract_test.py` guards the targeted paint order,
+normal/create button transition, and immediate repaint, in addition to
+previous UTF-8, ZIP and autosave coverage. The new native change
+**requires a fresh Windows WASM build** for owner visual acceptance;
+the previous screenshot does **not** verify this renderer fix.
+Never rename/delete a player's existing save to test it. Avoid all HD
+colour, grid, audio, private asset or other repository changes.

@@ -2,6 +2,7 @@
  * (tools/gen_c.py, now edited directly), in address order. */
 #include "auto_common.h"
 #include "../platform/hd.h"
+#include "../platform/hd_grid_batch.h"
 #include "hd_game.h"
 
 /* 00406a80 auto */
@@ -2217,14 +2218,9 @@ void MapView::draw_tile(int x,int y,int civ)
       else {
         ((Sprite *)((i8 *)&icons_pair_sprites_block.city_radius_grid_sprite))->draw((RECT *)radius_rect,this,screen_x,screen_y);
       }
-      /* The original grid Sprite remains the baseline. Add only a very
-         low-alpha dark HD edge on revealed ordinary tiles; the pale city
-         radius still renders once in the final postpass after neighbors,
-         so neither texture visibility nor white joins are overridden. */
-      if (hd_art && !near_city &&
-          (civ < 0 || game.reveal_map != 0 || tile_visible_to(x,y,civ) != 0))
-        hd_map_grid_contrast((void *)this->bits,screen_x,screen_y,
-                             (int)tile_width_u,(int)tile_height_u,0);
+      /* Keep the original sprite layer untouched. HD dark/white accents
+         are composed after all terrain in one shared-coverage postpass,
+         so adjacent diamonds and intersections cannot stack opacity. */
       gfx_reset_zoom_scale();
     }
   }
@@ -2345,23 +2341,22 @@ void MapView::tile_radius_rect(i32 tile_x,i32 tile_y,int radius,RECT *out_rect)
   return;
 }
 
-/* Thin city-radius borders cross tile boundaries. The normal draw_tile()
-   adds the highlight before other tiles finish painting their terrain/grid,
-   which can overwrite short pieces of the pale line. Repaint radius tiles
-   once after the terrain pass: original grid toggle, city ownership, fog,
-   sprite order and pixel hitboxes remain unchanged. */
-static bool hd_radius_tile_for_postpass(int tx, int ty, int civ)
+/* Gather every eligible revealed tile's HD grid coverage after all
+   terrain and original grid sprites have been rendered. 0 = none,
+   1 = very light ordinary dark edge, 2 = pale city work-radius edge.
+   The HD batch merges shared edges and draws each pixel just once. */
+static int hd_grid_tile_kind_for_postpass(int tx, int ty, int civ)
 {
   if (!hd_art || ((byte)game.game_options & OPT_MAP_GRID) == 0 ||
       map_in_bounds(tx,ty) == 0 ||
       !(civ < 0 || game.reveal_map != 0 || tile_visible_to(tx,ty,civ) != 0))
-    return false;
+    return 0;
   for (iptr c = 0; c < game.num_cities; c++) {
     if (cities[c].id != 0 && cities[c].owner == civ &&
         map_distance_diag(tx,ty,(int)cities[c].x,(int)cities[c].y) < 3)
-      return true;
+      return 2;
   }
-  return false;
+  return 1;
 }
 
 /* 0047c869 auto */
@@ -2405,9 +2400,13 @@ void MapView::draw_tile_radius(int center_x,int center_y,int radius,i32 civ)
       }
     }
   }
-  /* Final pale radius edges must be above every neighboring terrain tile,
-     even during small partial redraws. Keep the same clipped tile set. */
-  if (hd_art && ((byte)game.game_options & OPT_MAP_GRID) != 0) {
+  /* Clip mask to this redraw's native surface region. Any HD allocation
+     failure keeps the game's original grid sprites and cannot corrupt
+     game state, fog or neighboring pixels outside the dirty area. */
+  if (hd_art && ((byte)game.game_options & OPT_MAP_GRID) != 0 &&
+      hd_grid_batch_begin((void *)this->bits,
+                          ((RECT *)clip_rect)->left, ((RECT *)clip_rect)->top,
+                          ((RECT *)clip_rect)->right, ((RECT *)clip_rect)->bottom)) {
     for (dy = -extent; (int)dy <= (int)extent; dy++) {
       if ((int)dy < 1)
         row_abs = ~dy + 1;
@@ -2421,18 +2420,21 @@ void MapView::draw_tile_radius(int center_x,int center_y,int radius,i32 civ)
           dx_abs = dx;
         if (dx_abs != extent) {
           x = map_wrap_x(dx + center_x);
-          if (tile_in_view(x,center_y + dy) != 0 &&
-              hd_radius_tile_for_postpass(x,center_y + dy,civ)) {
-            i32 sx, sy;
-            tile_to_screen(&sx,&sy,x,center_y + dy);
-            apply_zoom();
-            hd_map_grid_contrast((void *)this->bits,sx,sy,
-                                 (int)tile_width_u,(int)tile_height_u,1);
-            gfx_reset_zoom_scale();
+          if (tile_in_view(x,center_y + dy) != 0) {
+            int kind = hd_grid_tile_kind_for_postpass(x,center_y + dy,civ);
+            if (kind) {
+              i32 sx, sy;
+              tile_to_screen(&sx,&sy,x,center_y + dy);
+              apply_zoom();
+              hd_map_grid_contrast((void *)this->bits,sx,sy,
+                                   (int)tile_width_u,(int)tile_height_u,kind == 2);
+              gfx_reset_zoom_scale();
+            }
           }
         }
       }
     }
+    hd_grid_batch_end((void *)this->bits);
   }
   draw_city_names(center_x,center_y,radius);
   set_clip((RECT *)&client_rect);
@@ -2468,25 +2470,31 @@ void MapView::draw_all_tiles(i32 civ)
       draw_tile(x,origin_y + row,civ);
     }
   }
-  /* Restore the continuous thin pale radius after the last terrain and
-     ordinary dark-grid stroke; only radius tiles are repainted here. */
-  if (hd_art && ((byte)game.game_options & OPT_MAP_GRID) != 0) {
+  /* One coverage union of dark normal and pale city-range grid after
+     ALL terrain, independent of tile enumeration order. Restrict physical
+     memory to this HD bitmap; the partial path uses a smaller dirty clip. */
+  if (hd_art && ((byte)game.game_options & OPT_MAP_GRID) != 0 &&
+      hd_grid_batch_begin((void *)this->bits,0,0,0x7fffffff,0x7fffffff)) {
     for (row = 0; (int)row < (int)(field_2fc + field_304 + 1); row = row + 1) {
       origin_y = origin_y_uptr;
       origin_x = origin_x_uptr;
       row_width = (row & 1) == 0 ? tile_columns : half_view_width;
       for (col = 0; col < row_width; col++) {
         x = map_wrap_x(col * 2 + origin_x + (row & 1));
-        if (hd_radius_tile_for_postpass(x,origin_y + row,civ)) {
-          i32 sx, sy;
-          tile_to_screen(&sx,&sy,x,origin_y + row);
-          apply_zoom();
-          hd_map_grid_contrast((void *)this->bits,sx,sy,
-                               (int)tile_width_u,(int)tile_height_u,1);
-          gfx_reset_zoom_scale();
+        {
+          int kind = hd_grid_tile_kind_for_postpass(x,origin_y + row,civ);
+          if (kind) {
+            i32 sx, sy;
+            tile_to_screen(&sx,&sy,x,origin_y + row);
+            apply_zoom();
+            hd_map_grid_contrast((void *)this->bits,sx,sy,
+                                 (int)tile_width_u,(int)tile_height_u,kind == 2);
+            gfx_reset_zoom_scale();
+          }
         }
       }
     }
+    hd_grid_batch_end((void *)this->bits);
   }
   draw_city_names(0,0,0xffffffff);
   return;

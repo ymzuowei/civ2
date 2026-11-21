@@ -85,7 +85,7 @@ class HdGridContrastContract(unittest.TestCase):
         self.assertIn("bot = y + h + (radius_tile ? 1 : 0)", helper)
         self.assertIn("l < grid_batch.l", helper)
         self.assertIn("r > grid_batch.r", helper)
-        self.assertNotRegex(helper, r"\\bbmp_row\\([^)]*\\)\\s*=")
+        self.assertNotRegex(helper, r"\bbmp_row\([^)]*\)\s*=")
         self.assertIn("void hd_map_grid_contrast(", self.header)
 
     def test_city_radius_zoom_alpha_is_bounded_and_monotone(self):

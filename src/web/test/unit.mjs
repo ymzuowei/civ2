@@ -6,7 +6,7 @@ import {vkOf, Wheel, desktopScale, desktopUiScale, initialDesktopGeometry, argbT
 import {MemFS, makeWasi, normalize} from '../wasi.js';
 import {createAudioVolume, audioLabels} from '../audio_volume.js';
 import {unzip, zip as makeZip, crc32} from '../zip.js';
-import {savesKind, playerFiles, importPath, savesToImport} from '../saves.js';
+import {savesKind, playerFiles, importPath, savesToImport, exportSaves} from '../saves.js';
 import {deflateRawSync, inflateRawSync} from 'node:zlib';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
@@ -315,6 +315,19 @@ for (let p = 5000, end = 5000 + v.getUint32(3030, true); p < end;) {
     p += 24 + len;
 }
 assert.deepEqual(names, ['.', '..', 'RULES.TXT']);
+// Civ II Save As "New Folder": WASI supports a real nested directory,
+// and the same directory's relative autosave files can be created/rotated.
+n = str(1000, 'civ2/20261121');
+assert.equal(wasi.path_create_directory(3, 1000, n), 0);
+assert.equal(wasi.path_create_directory(3, 1000, n), 20); // EXISTS
+n = str(1000, 'civ2/20261121/_AUTO.SAV');
+assert.equal(wasi.path_open(3, 0, 1000, n, 1 | 8, 64n, 0n, 0, 2000), 0);
+assert.equal(wasi.fd_write(v.getUint32(2000, true), 3000, 1, 3010), 0);
+assert.equal(wasi.fd_close(v.getUint32(2000, true)), 0);
+assert.equal(new TextDecoder().decode(fs.get('/civ2/20261121/_AUTO.SAV')), 'saved!');
+// The folder remains addressable after a manual save.
+assert.deepEqual(fs.list('/civ2/20261121').map(([name]) => name), ['_AUTO.SAV']);
+
 // exit
 assert.throws(() => wasi.proc_exit(3), (e) => e.code === 3);
 
@@ -397,6 +410,72 @@ const savesZip = await makeZip([{name: 'Civ2/ONE.SAV', data: Buffer.from('1')}, 
 const toPut = await savesToImport([{name: 'saves.zip', data: savesZip}, {name: 'TWO.SAV', data: Buffer.from('2')},
                                    {name: 'notes.txt', data: Buffer.from('no')}], have);
 assert.deepEqual(toPut.map(([k, d]) => k + '=' + Buffer.from(d)), ['ONE.SAV=1', 'civ.ini=i', 'TWO.SAV=2']);
+// T011: a self-exported save ZIP remembers user-created folders even in a
+// fresh browser profile with no existing folder. Legacy untagged ZIPs still
+// flatten unknown outer folders (tested above) for backward compatibility.
+const campaignBytes = Buffer.from('autoturn 12');
+const ownerStore = {
+    async all() {
+        return [
+            ['20261121/_AUTO.SAV', {data: campaignBytes, mtime: T + 7000}],
+            ['20261121/ROME.SAV', {data: Buffer.from('rome'), mtime: T + 8000}],
+            ['20261122/_AUTO.SAV', {data: Buffer.from('other game'), mtime: T + 9000}],
+            ['CIV.INI', {data: Buffer.from('[OpenCiv2]'), mtime: T + 5}],
+            ['Civ2Art.dll', {data: Buffer.from('proprietary game file'), mtime: T}]
+        ];
+    },
+    async getMeta() {
+        return {names: ['Civ2Art.dll'], at: T};
+    }
+};
+const savedCampaigns = await exportSaves(ownerStore);
+const savedArchive = await unzip(savedCampaigns.data.buffer.slice(
+    savedCampaigns.data.byteOffset, savedCampaigns.data.byteOffset + savedCampaigns.data.byteLength));
+assert.deepEqual(savedCampaigns.names,
+    ['20261121/_AUTO.SAV', '20261121/ROME.SAV', '20261122/_AUTO.SAV', 'CIV.INI']);
+assert.ok(savedArchive.some((entry) => entry.name === 'openciv2-saves-manifest.json'));
+assert.ok(!savedArchive.some((entry) => entry.name === 'Civ2Art.dll'));
+const restoredCampaigns = await savesToImport([{name: 'downloaded.zip', data: savedCampaigns.data}], []);
+assert.deepEqual(restoredCampaigns.map(([name]) => name), savedCampaigns.names);
+assert.deepEqual(Buffer.from(restoredCampaigns[0][1]), campaignBytes);
+// Re-import to an existing profile with differently cased keys should
+// update those existing files, not create duplicates on case-sensitive IDB.
+const existingCampaigns = await savesToImport(
+    [{name: 'downloaded.zip', data: savedCampaigns.data}],
+    ['20261121/rome.sav', 'civ.ini']);
+assert.deepEqual(existingCampaigns.map(([name]) => name),
+    ['20261121/_AUTO.SAV', '20261121/rome.sav', '20261122/_AUTO.SAV', 'civ.ini']);
+// Also keep an existing directory's case when a restored campaign contains
+// additional files or subfolders that do not already exist in IndexedDB.
+const existingParent = await savesToImport(
+    [{name: 'downloaded.zip', data: savedCampaigns.data}],
+    ['20261121/other.sav', '20261122/old.sav']);
+assert.deepEqual(existingParent.map(([name]) => name),
+    ['20261121/_AUTO.SAV', '20261121/ROME.SAV', '20261122/_AUTO.SAV', 'CIV.INI']);
+const nestedArchive = await makeZip([
+    {name: 'openciv2-saves-manifest.json', data: Buffer.from(JSON.stringify({
+        format: 'OpenCiv2-saves', version: 1,
+        paths: ['Campaign/20261121/NEXT.SAV', 'Campaign/20261121/Nested/LATER.SAV']
+    }))},
+    {name: 'Campaign/20261121/NEXT.SAV', data: Buffer.from('first')},
+    {name: 'Campaign/20261121/Nested/LATER.SAV', data: Buffer.from('second')}
+]);
+const differentlyCasedParents = await savesToImport(
+    [{name: 'nested.zip', data: nestedArchive}], ['campaign/OLD.SAV']);
+assert.deepEqual(differentlyCasedParents.map(([name]) => name),
+    ['campaign/20261121/NEXT.SAV', 'campaign/20261121/Nested/LATER.SAV']);
+// An injected/unsafe manifest path cannot escape the game's virtual folder.
+const traversalArchive = await makeZip([
+    {name: 'openciv2-saves-manifest.json', data: Buffer.from(JSON.stringify({
+        format: 'OpenCiv2-saves', version: 1, paths: ['../outside.SAV', 'C:/evil.SAV', '20261121/GOOD.SAV']
+    }))},
+    {name: '../outside.SAV', data: Buffer.from('bad')},
+    {name: 'C:/evil.SAV', data: Buffer.from('bad')},
+    {name: '20261121/GOOD.SAV', data: Buffer.from('good')}
+]);
+assert.deepEqual((await savesToImport([{name: 'unsafe.zip', data: traversalArchive}], []))
+    .map(([name]) => name), ['20261121/GOOD.SAV']);
+
 // ---- HD graphics' art (hdpack.js) ----
 
 // a pack as the release's: C2ATLAS1, a count, a palette, entries in key order, the PNGs

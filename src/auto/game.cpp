@@ -1814,8 +1814,15 @@ void __cdecl game_autosave(int civ)
   char *leader_name;
   i8 backup_path[0x200];  /* BF-046 (Peter Johnson's ledger): the original's
                              80, less than its label */
+  char previous_dir[260];
+  int routed;
   
   if (human_civ[0] == civ) {
+    /* Keep original autosave filenames and backup rotation in the current
+     * campaign's last successful Save (or Load) folder. */
+    routed = game_save_autosave_enter(previous_dir, sizeof previous_dir);
+    if (routed < 0)
+      return; /* Missing folder: do not overwrite a root autosave instead. */
     save_set_file_ext(0);
     text_clear();
     leader_name = civ_leader_name(civ);
@@ -1835,6 +1842,8 @@ void __cdecl game_autosave(int civ)
       crt_rename(textbuf.buf,backup_path);
     }
     save_write_game((const char *)&textbuf.buf,0);
+    if (routed > 0)
+      game_save_autosave_leave(previous_dir);
   }
   return;
 }
@@ -3585,6 +3594,8 @@ void __cdecl game_init_new(void)
   iptr j;
   iptr leader;
   
+  /* A new game must not reuse the previous campaign's autosave folder. */
+  game_save_autosave_reset();
   scenario_reset_params();
   destroyed_civs_clear();
   for (leader = 0; leader < 8; leader++) {

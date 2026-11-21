@@ -252,6 +252,18 @@ Sort: Date
 Modified: %s
 @@openciv2.file.folder
 Folder: %s
+@@openciv2.file.new_folder
+New Folder
+@@openciv2.file.create_folder
+Create
+@@openciv2.file.folder_name
+Folder name:
+@@openciv2.file.folder_invalid
+Enter a valid single folder name.
+@@openciv2.file.folder_exists
+A file or folder with that name already exists.
+@@openciv2.file.folder_failed
+Could not create the folder.
 @@openciv2.file.not_found
 %s
 File not found.

@@ -19,6 +19,8 @@ extern "C" {
 /* Host path for a Windows path; for_create: the last component may not exist. */
 void plat_host_path(const char *win, char *host, size_t n, int for_create);
 int plat_chdir(const char *win);
+/* Create one subdirectory through the same Win32->host mapping as file I/O. */
+int plat_mkdir(const char *win);
 int plat_getcwd(char *win, int n);
 int64_t plat_time(void);                /* seconds since 1970 (virtual in replay) */
 void plat_trace_rand(unsigned value, const char *caller);   /* caller: function name */

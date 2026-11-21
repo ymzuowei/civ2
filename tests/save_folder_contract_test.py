@@ -26,6 +26,8 @@ class SaveFolderContractTests(unittest.TestCase):
             self.assertIn(token, self.dialog)
         self.assertIn("if (save)", self.dialog)
         self.assertIn("if (fd.creating_folder)", self.dialog)
+        self.assertIn("EnableWindow(fd.list, !creating)", self.dialog)
+        self.assertIn("EnableWindow(fd.sort, !creating)", self.dialog)
         self.assertIn("return mkdir(host, 0777);", self.paths)
 
     def test_successful_save_and_load_choose_autosave_folder(self):

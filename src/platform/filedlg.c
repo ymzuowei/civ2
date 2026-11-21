@@ -177,7 +177,7 @@ static void refill(void)
     }
     show_date(-1);
     snprintf(label, sizeof label, extras_text("file.folder"), fd.dir);
-    SetWindowTextA(fd.dirlabel, label);
+    set_text(fd.dirlabel, label);
 }
 
 static void enter_dir(const char *name)
@@ -403,7 +403,7 @@ WINBOOL plat_file_dialog(OPENFILENAMEA *ofn, int save)
     static int registered;
     const char *title = ofn->lpstrTitle ? ofn->lpstrTitle : extras_text(save ? "file.save_as" : "file.open");
     HWND owner = ofn->hwndOwner;
-    int w = 440, h = 396, owner_enabled = owner && IsWindowEnabled(owner);
+    int w = save ? 480 : 440, h = 396, owner_enabled = owner && IsWindowEnabled(owner);
     MSG msg;
     if (!registered) {
         WNDCLASSA wc;
@@ -446,18 +446,18 @@ WINBOOL plat_file_dialog(OPENFILENAMEA *ofn, int save)
     }
     fd.dlg = CreateWindowExA(WS_EX_DLGMODALFRAME, "Civ2FileDialog", title, WS_POPUP | WS_CAPTION | WS_SYSMENU,
                              (screen_w - w) / 2, (screen_h - h) / 2, w, h, owner, NULL, NULL, NULL);
-    fd.dirlabel = control("STATIC", "", SS_LEFT, 10, 8, 410, 18, ID_DIR);
-    fd.list = control("LISTBOX", "", WS_BORDER | WS_VSCROLL | LBS_NOTIFY, 10, 30, 410, 220, ID_LIST);
+    fd.dirlabel = control("STATIC", "", SS_LEFT, 10, 8, w - 30, 18, ID_DIR);
+    fd.list = control("LISTBOX", "", WS_BORDER | WS_VSCROLL | LBS_NOTIFY, 10, 30, w - 30, 220, ID_LIST);
     fd.namelabel = control("STATIC", extras_text("file.name"), SS_LEFT, 10, 264, 120, 20, -1);
-    fd.name = control("EDIT", "", WS_BORDER | ES_AUTOHSCROLL, 130, 260, 290, 24, ID_NAME);
+    fd.name = control("EDIT", "", WS_BORDER | ES_AUTOHSCROLL, 130, 260, w - 150, 24, ID_NAME);
     fd.date = control("STATIC", "", SS_LEFT, 85, 292, 335, 18, ID_DATE);
     fd.sort = control("BUTTON", extras_text(fd.by_date ? "file.sort_date" : "file.sort_name"), BS_PUSHBUTTON, 10, 322, 100, 28, ID_SORT);
     if (save)
         fd.folderbutton = control("BUTTON", extras_text("file.new_folder"), BS_PUSHBUTTON,
-                                  120, 322, 108, 28, ID_NEW_FOLDER);
+                                  120, 322, 140, 28, ID_NEW_FOLDER);
     fd.savebutton = control("BUTTON", extras_text(save ? "file.save" : "file.open"),
-                            BS_DEFPUSHBUTTON, 240, 322, 85, 28, IDOK);
-    control("BUTTON", extras_text("file.cancel"), BS_PUSHBUTTON, 335, 322, 85, 28, IDCANCEL);
+                            BS_DEFPUSHBUTTON, save ? 275 : 240, 322, save ? 90 : 85, 28, IDOK);
+    control("BUTTON", extras_text("file.cancel"), BS_PUSHBUTTON, save ? 375 : 335, 322, 85, 28, IDCANCEL);
     if (ofn->lpstrFile && ofn->lpstrFile[0] && !strchr(ofn->lpstrFile, '*')) {
         const char *base = strrchr(ofn->lpstrFile, '\\');
         SetWindowTextA(fd.name, base ? base + 1 : ofn->lpstrFile);

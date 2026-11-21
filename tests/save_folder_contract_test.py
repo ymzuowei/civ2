@@ -51,7 +51,9 @@ class SaveFolderContractTests(unittest.TestCase):
 
     def test_zip_import_keeps_only_self_exported_safe_relative_paths(self):
         for token in ("SAVE_MANIFEST", "safeSavePath(", "preservedPaths?.has(safe)",
-                      "exportSaves(", "new TextEncoder()", "importPath(safe, existing)"):
+                      "exportSaves(", "new TextEncoder()", "importPath(safe, existing)",
+                      "known.get(safe.toLowerCase()) || safe",
+                      "safe.includes('/')"):
             self.assertIn(token, self.web)
 
     def test_translation_keys_exist(self):

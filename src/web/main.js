@@ -401,8 +401,10 @@ function displayControls() {
         audioSlider.value = String(browserAudio.level);
         audioLevel.textContent = browserAudio.level + '%';
         const muted = browserAudio.muted;
-        $('audio-waves').hidden = muted;
-        $('audio-slash').hidden = !muted;
+        // SVG paths are not HTMLElements: .hidden need not reflect to the
+        // SVG attribute. Toggle their actual display style in all browsers.
+        $('audio-waves').style.display = muted ? 'none' : '';
+        $('audio-slash').style.display = muted ? '' : 'none';
         const action = muted ? labels.unmute : labels.mute;
         audioMute.setAttribute('aria-label', action);
         audioMute.title = action;

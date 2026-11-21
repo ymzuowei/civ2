@@ -445,6 +445,18 @@ const existingCampaigns = await savesToImport(
     ['20261121/rome.sav', 'civ.ini']);
 assert.deepEqual(existingCampaigns.map(([name]) => name),
     ['20261121/_AUTO.SAV', '20261121/rome.sav', '20261122/_AUTO.SAV', 'civ.ini']);
+// Also keep an existing directory's case when a restored campaign contains
+// additional files or subfolders that do not already exist in IndexedDB.
+const existingParent = await savesToImport(
+    [{name: 'downloaded.zip', data: savedCampaigns.data}],
+    ['20261121/other.sav', '20261122/old.sav']);
+assert.deepEqual(existingParent.map(([name]) => name),
+    ['20261121/_AUTO.SAV', '20261121/ROME.SAV', '20261122/_AUTO.SAV', 'CIV.INI']);
+const differentlyCasedParents = await savesToImport(
+    [{name: 'downloaded.zip', data: savedCampaigns.data}],
+    ['20261121/other.sav', '20261122/old.sav']);
+assert.deepEqual(differentlyCasedParents.map(([name]) => name),
+    ['20261121/_AUTO.SAV', '20261121/ROME.SAV', '20261122/_AUTO.SAV', 'CIV.INI']);
 // An injected/unsafe manifest path cannot escape the game's virtual folder.
 const traversalArchive = await makeZip([
     {name: 'openciv2-saves-manifest.json', data: Buffer.from(JSON.stringify({

@@ -62,6 +62,10 @@ game starts.
 
 The Open and Save dialogs can list files newest first (the Sort button), and they open in the folder of the last file loaded or saved. Both are remembered in CIV.INI under `[OpenCiv2]` as `FileSort=` and `FileFolder=`.
 
+**Save folders and autosaves (CIV2-T011).** The native-style **Save As** dialog has **New Folder**. Choose it, enter a single folder name (for example `20261121`), and press Enter or Create. The dialog enters the new folder while retaining the suggested save filename. After **successfully** manually saving the current game there, subsequent automatic saves and their backup rotation use that same folder, exactly as with the original game's directory-based save organization. Canceling or failing to save does not change the auto-save destination. Loading a saved game from a folder rebinds autosaves to that folder; starting a new game resets the auto-save destination to the game's default folder until the player saves it elsewhere. Merely browsing another folder or loading unrelated files does not silently change the active game's autosave target.
+
+In the browser, folders live in the virtual `/civ2` filesystem; after a saved file is written they persist through IndexedDB and can be recovered on refresh. Empty folders without files are not separately persisted by the current store. **Saves → Export saves** includes the original relative nested Save paths and a small `openciv2-saves-manifest.json` metadata entry; importing that ZIP into a different browser/profile restores those folders. Original game assets are not included. Older and foreign ZIPs without the manifest retain the existing safety-first behavior of flattening unknown outer folders. No browser upload of owned files occurs except local selection via the player's browser, and no server/cloud save service is introduced.
+
 ## Screen scale
 
 The game opens in a window, maximized to fill the screen. To play full screen instead, tick Full

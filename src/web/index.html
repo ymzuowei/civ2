@@ -103,6 +103,12 @@
                    padding: 0.25rem 0.35rem; background: rgba(30, 30, 30, 0.82); color: #fff;
                    font: 14px/1.25 var(--serif); opacity: 0.66; border: 1px solid #777; }
   #game-controls:hover, #game-controls:focus-within { opacity: 1; }
+  #game-controls .audio-group { display: flex; align-items: center; gap: 0.25rem;
+                                border-left: 1px solid #888; padding-left: 0.4rem; }
+  #game-controls #audio-volume { width: 6rem; margin: 0; accent-color: #e1dccb; cursor: pointer; }
+  #game-controls #audio-level { min-width: 2.5rem; text-align: right; font: 12px/1.3 sans-serif; }
+  #game-controls #audio-mute { min-width: 2rem; padding: 0.15rem; }
+  #game-controls input:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   #game-controls label { display: flex; align-items: center; gap: 0.3rem; white-space: nowrap; }
   #game-controls select { font: inherit; min-height: 1.75rem; max-width: 11rem; }
   #game-controls button { font: inherit; min-height: 1.75rem; margin: 0; min-width: 0;
@@ -110,7 +116,8 @@
   #game-controls select:focus-visible, #game-controls button:focus-visible {
                           outline: 2px solid #fff; outline-offset: 2px; }
   @media (max-width: 500px) {
-    #game-controls { gap: 0.15rem; padding: 0.2rem; font-size: 12px; }
+    #game-controls { gap: 0.15rem; padding: 0.2rem; font-size: 12px; flex-wrap: wrap; justify-content: flex-end; }
+    #game-controls #audio-volume { width: 4.5rem; }
     #game-controls button { padding: 0.15rem 0.3rem; }
     #game-controls select { max-width: 7rem; }
   }
@@ -201,6 +208,12 @@
         <option value="fit" data-t="web.display_fit">Fit viewport</option>
       </select>
     </label>
+    <div class="audio-group" role="group" aria-labelledby="audio-label">
+      <label id="audio-label" for="audio-volume">Volume</label>
+      <input id="audio-volume" type="range" min="0" max="100" step="1" value="100" aria-label="Volume">
+      <output id="audio-level" for="audio-volume">100%</output>
+      <button id="audio-mute" type="button" aria-label="Mute" aria-pressed="false" title="Mute">🔊</button>
+    </div>
     <button id="fullscreen" type="button" data-t="web.enter_fullscreen">Fullscreen</button>
     <button id="saves-open" title="Export or import saved games" data-t="web.saves" data-t-title="web.saves_title">Saves</button>
   </div>

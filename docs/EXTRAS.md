@@ -190,3 +190,48 @@ players' units only: the computer players play by the original rules.
 | `PopulationLimit=` | Raises the highest population a civilization can reach, in units of 10,000 people (32000 to 3275800; the original is 32000, which is 320 million). The Hall of Fame still records at most 320 million. |
 | `GoldLimit=` | Raises the most gold a treasury can hold (30000 to 1000000; the original is 30000). |
 | `MapTilesLimit=` | Raises the largest custom world, as width × height in squares (10000 to 32767; the original is 10000). Each side is still 20 to 250 squares. The dialog's text still says 10,000. |
+
+## CIV2-T011 — Owner Save dialog UI and UTF-8 filename follow-up (2026-11-21)
+
+Owner's real Chrome HD session with the compiled T011 candidate confirmed that
+**New Folder** creates the selected `20261121` directory inside the game's
+virtual `Z:\\civ2` save root; manual `20261121/_b3460.sav` is present
+in the matching **Load** dialog; after subsequent turns the folder contains
+additional `_自动*.SAV` files. Therefore **F01 and F02 PASS** for this
+scenario (including original per-folder automatic save placement); cross-
+campaign and browser-refresh/ZIP coverage are still pending.
+
+Three visible shortcomings were reproduced:
+
+- **Save-dialog path label stale after folder creation.** The list followed
+  `fd.dir`, but `refill()` only called `SetWindowTextA` on the STATIC
+  label. The custom UI control does **not** automatically repaint on
+  `WM_SETTEXT` (the existing `set_text()` helper intentionally calls
+  `InvalidateRect` afterward). Fix: use `set_text(fd.dirlabel, label)`
+  for every refill. The Load dialog in the same folder already displayed
+  `Z:\\civ2\\20261121` properly, so there is no path persistence rewrite.
+
+- **"新建文件夹" button compressed.** The original 108 logical-pixel button
+  could overlap Chinese glyphs at browser scaling. Only the Save dialog
+  grows from 440 to 480 logical pixels; its folder button grows to 140,
+  list/directory/edit controls gain available width and Save/Cancel shift
+  to preserve separate hit targets. Load dialog remains 440. No change to
+  window scaling, font pipeline or HD/Classic map.
+
+- **The leading box in the default `□_b3460.sav`.** The decompiled
+  original `game_save_dialog()` used `file_name_buf[3] = 0`: with the
+  filename starting at `file_name_buf + 1` this cuts the leader's name
+  at **two raw bytes**. A UTF-8 Chinese character needs three bytes,
+  so the source produced an invalid leading sequence and a replacement
+  glyph. Fix: use the existing `u8_len_at` / `u8_decode` helpers to
+  preserve **two whole characters**, or two original bytes in single-byte
+  locales. Invalid UTF-8 stops before the damaged character. The original
+  year/era suffix, SAV extension, manual save/load and auto-save rotation
+  logic remain unchanged. Existing oddly named files are **not**
+  renamed/deleted/migrated; they remain loadable.
+
+Regression tests `tests/save_folder_contract_test.py` cover the redraw,
+actual control geometry and source UTF-8 character boundary contract.
+**These three fixes remain source-only until a new D:-local Windows WASM
+build and owner browser re-test.** F03/F04/full F05/F06/F07/F08 are not
+inferred from the current screenshots.

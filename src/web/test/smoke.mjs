@@ -378,7 +378,9 @@ async function main() {
         const zb = readFileSync(zipped);
         const inZip = (await unzip(zb.buffer.slice(zb.byteOffset, zb.byteOffset + zb.length))).map((f) => f.name);
         log(`exported ${exported}: ${inZip.join(' ')}`);
-        if (!inZip.includes(added[0]) || inZip.some((n) => !/\.(sav|scn|mp)$|^(civ\.ini|civ2\.dat|hallfame\.dat)$/i.test(n)))
+        if (!inZip.includes(added[0]) || inZip.some((n) =>
+            n !== 'openciv2-saves-manifest.json' &&
+            !/\.(sav|scn|mp)$|^(civ\.ini|civ2\.dat|hallfame\.dat)$/i.test(n)))
             throw new Error('the export is not the player\'s files');
         const removeSave = (k) => evaluate(`new Promise((resolve) => { const r = indexedDB.open("OpenCiv2"); r.onsuccess = () => {
             const t = r.result.transaction("files", "readwrite"); t.objectStore("files").delete(${JSON.stringify(k)});

@@ -164,7 +164,7 @@ class SaveFolderContractTests(unittest.TestCase):
         self.assertIn("out.set(canonical, data);", code)
         self.assertIn("await store.putMany(put.map(", code)
         self.assertLess(code.index("await store.putMany(put.map("),
-                        code.index("if (fs)\\n        for (const [k, data] of put)"))
+                        code.index("if (fs)\n        for (const [k, data] of put)"))
         # No data migration or clearing of the owner's already saved keys.
         self.assertNotIn("store.clear()", code)
         self.assertNotIn("deleteDatabase", code)

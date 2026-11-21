@@ -880,32 +880,42 @@ void hd_dc_polygon(DC *dc, const double *xy, int n, unsigned int c)
 /* A scroll bar arrow's chevron, centred at (cx, cy), pointing up, down,
    left or right (0 to 3), on the arrow's white (as scroll_theme.h's). */
 
-/* The original black grid and white city-radius sprites already render in
-   HD, but their contrast is faint over textured terrain. Enhance only the
-   same tile diamond on the HD plane; retain original grid option, visibility,
-   game pixels and hitboxes. */
+/* Leave ordinary grid pixels exactly as the game draws its original
+   map_grid_sprite: extra dark HD edges obscure textured terrain. Keep one
+   pale radius-only HD highlight, added after neighboring terrain has been
+   drawn. Fade only that added highlight as the native map zooms out.
+   Map scale (tile width) is independent of browser Fit/DPR scaling. */
+static unsigned hd_radius_grid_strength(int tile_width)
+{
+    unsigned strength;
+    /* A normal large-desktop map at zoom +2 uses an 80-pixel native tile.
+       From zoom +1 downwards the added highlight fades smoothly; retain
+       a legible minimum while the original radius sprite remains intact. */
+    if (tile_width >= 80)
+        return 184u;
+    if (tile_width <= 0)
+        return 120u;
+    strength = 184u * (unsigned)tile_width / 80u;
+    return strength < 120u ? 120u : strength;
+}
+
 void hd_map_grid_contrast(void *bits, int x, int y, int w, int h, int radius_tile)
 {
     Bitmap *b;
     int d = hd_density, l, t, r, bot, ix, iy, edge;
-    /* Use one restrained, thin outline on revealed HD tiles. Ordinary
-       grid edges stay subtly dark; city-radius edges keep their original
-       pale/high-contrast color and strength, without the former thick rim.
-       The original grid toggle, sprites, fog and hitboxes are untouched. */
     double path[10], stroke = 0.56, limit = stroke * stroke;
-    unsigned color = radius_tile ? 0xf2eee4u : 0x0b1815u;
-    unsigned strength = radius_tile ? 184u : 118u;
-    if (!hd_art || !bits || w < 2 || h < 2 ||
+    unsigned color = 0xf2eee4u;
+    unsigned strength;
+    if (!radius_tile || !hd_art || !bits || w < 2 || h < 2 ||
         !(b = bmp_of_bits(bits)) || !plane(b))
         return;
-    /* A thin diagonal edge spans the shared tile boundary. For a city
-       radius, sample one native pixel beyond the old tile rectangle so
-       neither half of its antialiasing gets clipped at the seam. Ordinary
-       dark grid retains the original tight tile bounds. */
-    l = x - (radius_tile ? 1 : 0);
-    t = y - (radius_tile ? 1 : 0);
-    r = x + w + (radius_tile ? 1 : 0);
-    bot = y + h + (radius_tile ? 1 : 0);
+    strength = hd_radius_grid_strength(w);
+    /* Only the pale radius uses one extra native pixel of anti-alias
+       sampling at a shared tile edge; bitmap bounds stay clipped. */
+    l = x - 1;
+    t = y - 1;
+    r = x + w + 1;
+    bot = y + h + 1;
     if (!clip_rect(b, &l, &t, &r, &bot))
         return;
     sync_rect(b, l, t, r, bot);

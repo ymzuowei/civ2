@@ -437,7 +437,7 @@ assert.ok(savedArchive.some((entry) => entry.name === 'openciv2-saves-manifest.j
 assert.ok(!savedArchive.some((entry) => entry.name === 'Civ2Art.dll'));
 const restoredCampaigns = await savesToImport([{name: 'downloaded.zip', data: savedCampaigns.data}], []);
 assert.deepEqual(restoredCampaigns.map(([name]) => name), savedCampaigns.names);
-assert.deepEqual(restoredCampaigns[0][1], campaignBytes);
+assert.deepEqual(Buffer.from(restoredCampaigns[0][1]), campaignBytes);
 // An injected/unsafe manifest path cannot escape the game's virtual folder.
 const traversalArchive = await makeZip([
     {name: 'openciv2-saves-manifest.json', data: Buffer.from(JSON.stringify({

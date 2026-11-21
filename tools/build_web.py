@@ -110,7 +110,8 @@ def english_texts():
 
 def lang_file(path):
     """A translation file: (its code page, {key: text}), as src/web/i18n.js reads it."""
-    data = open(path, 'rb').read()
+    with open(path, 'rb') as stream:
+        data = stream.read()
     cp = 'windows-1252'
     lines = data.decode('latin-1').splitlines()
     for i, line in enumerate(lines):

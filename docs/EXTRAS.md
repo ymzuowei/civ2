@@ -66,6 +66,13 @@ The Open and Save dialogs can list files newest first (the Sort button), and the
 
 In the browser, folders live in the virtual `/civ2` filesystem; after a saved file is written they persist through IndexedDB and can be recovered on refresh. Empty folders without files are not separately persisted by the current store. **Saves → Export saves** includes the original relative nested Save paths and a small `openciv2-saves-manifest.json` metadata entry; importing that ZIP into a different browser/profile restores those folders. Original game assets are not included. Older and foreign ZIPs without the manifest retain the existing safety-first behavior of flattening unknown outer folders. No browser upload of owned files occurs except local selection via the player's browser, and no server/cloud save service is introduced.
 
+**New-folder language compatibility:** all six labels are translated in
+English, Simplified Chinese and Traditional Chinese. German, Greek,
+Esperanto and Latin currently use the native English text fallback for
+those six newly introduced labels; their older translated texts and
+historical binary encodings remain intact. The other translations are
+still required to be complete. See [TRANSLATING.md](TRANSLATING.md).
+
 ## Screen scale
 
 The game opens in a window, maximized to fill the screen. To play full screen instead, tick Full

@@ -24,13 +24,18 @@ class HdGridContrastContract(unittest.TestCase):
         self.assertIn("map_distance_diag(x,y", region)
         self.assertLess(region.index("draw_tile_terrain("), region.index("map_grid_sprite"))
         self.assertLess(region.index("draw_tile_terrain("), region.index("city_radius_grid_sprite"))
-        self.assertNotIn("hd_map_grid_contrast(", region)
+        self.assertIn("hd_map_grid_contrast(", region)
+        self.assertLess(region.index("map_grid_sprite"), region.index("hd_map_grid_contrast("))
+        self.assertLess(region.index("city_radius_grid_sprite"), region.index("hd_map_grid_contrast("))
 
     def test_hd_only_revealed_tiles_and_native_coordinates(self):
         region = self.game.split("void MapView::draw_tile(int x,int y,int civ)", 1)[1].split("i32 MapView::tile_in_view", 1)[0]
-        # Ordinary map-grid Sprite alone is the intended final output.
-        # There must be no extra HD dark overlay or premature pale blend.
-        self.assertNotIn("hd_map_grid_contrast(", region)
+        # A small HD dark accent applies only to ordinary revealed tiles.
+        # Pale radius enhancement remains exclusive to the final postpass.
+        self.assertIn("hd_art && !near_city &&", region)
+        self.assertIn("civ < 0 || game.reveal_map != 0 || tile_visible_to(x,y,civ) != 0", region)
+        self.assertIn("(int)tile_width_u,(int)tile_height_u,0", region)
+        self.assertNotIn("(int)tile_width_u,(int)tile_height_u,1", region)
         self.assertIn("map_grid_sprite", region)
         self.assertIn("city_radius_grid_sprite", region)
         self.assertIn("gfx_reset_zoom_scale();", region)
@@ -38,10 +43,11 @@ class HdGridContrastContract(unittest.TestCase):
 
     def test_contrast_is_only_in_color_plane_and_cities_get_bright_line(self):
         helper = self.plane.split("void hd_map_grid_contrast(", 1)[1].split("void hd_dc_chevron(", 1)[0]
-        self.assertIn("if (!radius_tile || !hd_art ||", helper)
-        self.assertIn("unsigned color = 0xf2eee4u", helper)
-        self.assertNotIn("0x0b1815u", helper)
-        self.assertIn("strength = hd_radius_grid_strength(w)", helper)
+        self.assertIn("if (!hd_art || !bits", helper)
+        self.assertIn("unsigned color = radius_tile ? 0xf2eee4u : 0x0b1815u", helper)
+        self.assertIn("strength = radius_tile ? hd_radius_grid_strength(w) : 40u", helper)
+        self.assertNotIn("118u", helper)
+        self.assertNotIn("184u", helper)
         self.assertIn("seg_dist2(", helper)
         self.assertIn("sync_rect(", helper)
         self.assertIn("commit_rect(", helper)
@@ -50,11 +56,12 @@ class HdGridContrastContract(unittest.TestCase):
         self.assertIn("void hd_map_grid_contrast(", self.header)
         self.assertIn("stroke = 0.56, limit = stroke * stroke", helper)
         self.assertIn("best < .12 ? strength", helper)
-        # Only pale city radius extends 1px for seamless AA clipping.
-        self.assertIn("l = x - 1", helper)
-        self.assertIn("t = y - 1", helper)
-        self.assertIn("r = x + w + 1", helper)
-        self.assertIn("bot = y + h + 1", helper)
+        # Only pale radius extends 1px for seamless AA clipping; ordinary
+        # thin dark lines preserve the original tile rectangle.
+        self.assertIn("l = x - (radius_tile ? 1 : 0)", helper)
+        self.assertIn("t = y - (radius_tile ? 1 : 0)", helper)
+        self.assertIn("r = x + w + (radius_tile ? 1 : 0)", helper)
+        self.assertIn("bot = y + h + (radius_tile ? 1 : 0)", helper)
 
     def test_city_radius_zoom_alpha_is_bounded_and_monotone(self):
         # This is native map zoom: gfx_zoom_scale(64, zoom) =
@@ -63,31 +70,32 @@ class HdGridContrastContract(unittest.TestCase):
             "static unsigned hd_radius_grid_strength(", 1
         )[1].split("void hd_map_grid_contrast(", 1)[0]
         self.assertIn("tile_width >= 80", helper)
-        self.assertIn("return 184u", helper)
+        self.assertIn("return 164u", helper)
         self.assertIn("tile_width <= 0", helper)
-        self.assertIn("return 120u", helper)
-        self.assertIn("184u * (unsigned)tile_width / 80u", helper)
-        self.assertIn("strength < 120u ? 120u : strength", helper)
+        self.assertIn("return 104u", helper)
+        self.assertIn("164u * (unsigned)tile_width / 80u", helper)
+        self.assertIn("strength < 104u ? 104u : strength", helper)
 
         def alpha(tile_width):
             if tile_width >= 80:
-                return 184
+                return 164
             if tile_width <= 0:
-                return 120
-            return max(120, 184 * tile_width // 80)
+                return 104
+            return max(104, 164 * tile_width // 80)
 
         values = [(w, alpha(w)) for w in (8, 32, 48, 56, 64, 72, 79, 80, 88)]
         self.assertEqual([a for _, a in values],
-                         [120, 120, 120, 128, 147, 165, 181, 184, 184])
+                         [104, 104, 104, 114, 131, 147, 161, 164, 164])
         self.assertTrue(all(
             values[i][1] <= values[i + 1][1]
             for i in range(len(values) - 1)
         ))
-        self.assertTrue(all(120 <= value <= 184 for _, value in values))
-        # Normal large-desktop zoom +2: tile 80 => original 184 intensity.
-        self.assertEqual(alpha((2 + 8) * 64 // 8), 184)
-        # Each smaller native zoom step diminishes only the HD accent.
-        self.assertEqual(alpha((0 + 8) * 64 // 8), 147)
+        self.assertTrue(all(104 <= value <= 164 for _, value in values))
+        # Normal large-desktop +2 and zoomed-out 0 are both less bright
+        # than the previous 184/147, while retained Sprite remains visible.
+        self.assertEqual(alpha((2 + 8) * 64 // 8), 164)
+        self.assertEqual(alpha((0 + 8) * 64 // 8), 131)
+        self.assertLess(40, alpha((0 + 8) * 64 // 8))
 
 
     def test_city_radius_postpass_follows_all_neighbor_terrain_draws(self):

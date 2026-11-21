@@ -5,6 +5,7 @@ import {MemFS} from './wasi.js';
 import {GRAPHICS_PREFERENCE_KEY, resolveGraphicsPreference, graphicsFromQuery, hdArg} from './graphics_choice.js';
 import {runGame} from './host.js';
 import {createAudioVolume, audioLabels} from './audio_volume.js';
+import {createToolbarCollapse, toolbarLabels} from './toolbar.js';
 import {openStore} from './store.js';
 import {unzip} from './zip.js';
 import {exportSaves, importSaves} from './saves.js';
@@ -17,6 +18,7 @@ const GAME = '/civ2', DATA = '/data';
 let pageLang = 'en';        // the page's language (i18n.js: ?lang=CODE, else English)
 const $ = (id) => document.getElementById(id);
 const browserAudio = createAudioVolume();
+const browserToolbar = createToolbarCollapse();
 // (on the set-up page, and over the screen until the game's first frame)
 const status = (s) => {
     $('status').textContent = s;
@@ -346,10 +348,36 @@ function savesControls(store) {
 // game's logical desktop or its stored game files. The query string also
 // makes a chosen mode easy to share/reproduce across browser refreshes.
 function displayControls() {
-    const controls = $('game-controls'), mode = $('display-mode');
-    const fullscreen = $('fullscreen'), game = $('game'), canvas = $('screen');
+    const controls = $('game-controls'), content = $('game-controls-content');
+    const toggle = $('controls-toggle'), chevron = $('controls-toggle-chevron');
+    const mode = $('display-mode'), fullscreen = $('fullscreen'), game = $('game'), canvas = $('screen');
+    const toolbarText = toolbarLabels(pageLang);
+    controls.setAttribute('aria-label', toolbarText.group);
+    const syncToolbar = () => {
+        const collapsed = browserToolbar.collapsed;
+        content.hidden = collapsed;
+        controls.dataset.collapsed = String(collapsed);
+        toggle.setAttribute('aria-expanded', String(!collapsed));
+        const action = collapsed ? toolbarText.expand : toolbarText.collapse;
+        toggle.setAttribute('aria-label', action);
+        toggle.title = action;
+        // The toolbar is anchored on the right: fold right, unfold left.
+        chevron.setAttribute('d', collapsed ? 'M15 5l-7 7 7 7' : 'M9 5l7 7-7 7');
+    };
+    toggle.addEventListener('click', () => {
+        browserToolbar.setCollapsed(!browserToolbar.collapsed);
+        syncToolbar();
+    });
+    syncToolbar();
     mode.value = new URLSearchParams(location.search).get('display') === 'fit' ? 'fit' : 'integer';
+    const syncDisplayHelp = () => {
+        const hint = mode.value === 'fit' ? toolbarText.fit : toolbarText.integer;
+        $('display-help').textContent = hint;
+        mode.title = hint;
+    };
+    syncDisplayHelp();
     mode.addEventListener('change', () => {
+        syncDisplayHelp();
         const url = new URL(location.href);
         if (mode.value === 'fit')
             url.searchParams.set('display', 'fit');
@@ -373,7 +401,8 @@ function displayControls() {
         audioSlider.value = String(browserAudio.level);
         audioLevel.textContent = browserAudio.level + '%';
         const muted = browserAudio.muted;
-        audioMute.textContent = muted ? '🔇' : '🔊';
+        $('audio-waves').hidden = muted;
+        $('audio-slash').hidden = !muted;
         const action = muted ? labels.unmute : labels.mute;
         audioMute.setAttribute('aria-label', action);
         audioMute.title = action;

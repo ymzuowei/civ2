@@ -452,11 +452,18 @@ const existingParent = await savesToImport(
     ['20261121/other.sav', '20261122/old.sav']);
 assert.deepEqual(existingParent.map(([name]) => name),
     ['20261121/_AUTO.SAV', '20261121/ROME.SAV', '20261122/_AUTO.SAV', 'CIV.INI']);
+const nestedArchive = await makeZip([
+    {name: 'openciv2-saves-manifest.json', data: Buffer.from(JSON.stringify({
+        format: 'OpenCiv2-saves', version: 1,
+        paths: ['Campaign/20261121/NEXT.SAV', 'Campaign/20261121/Nested/LATER.SAV']
+    }))},
+    {name: 'Campaign/20261121/NEXT.SAV', data: Buffer.from('first')},
+    {name: 'Campaign/20261121/Nested/LATER.SAV', data: Buffer.from('second')}
+]);
 const differentlyCasedParents = await savesToImport(
-    [{name: 'downloaded.zip', data: savedCampaigns.data}],
-    ['20261121/other.sav', '20261122/old.sav']);
+    [{name: 'nested.zip', data: nestedArchive}], ['campaign/OLD.SAV']);
 assert.deepEqual(differentlyCasedParents.map(([name]) => name),
-    ['20261121/_AUTO.SAV', '20261121/ROME.SAV', '20261122/_AUTO.SAV', 'CIV.INI']);
+    ['campaign/20261121/NEXT.SAV', 'campaign/20261121/Nested/LATER.SAV']);
 // An injected/unsafe manifest path cannot escape the game's virtual folder.
 const traversalArchive = await makeZip([
     {name: 'openciv2-saves-manifest.json', data: Buffer.from(JSON.stringify({

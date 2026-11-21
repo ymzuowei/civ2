@@ -94,12 +94,18 @@ function safeSavePath(name) {
 // them) -> [[path, data]] to put in the game's folder (other files left out)
 export async function savesToImport(files, existing) {
     const out = new Map();
+    // Windows and the emulated game's paths are case-insensitive; reuse the
+    // exact existing storage key to avoid creating parallel .SAV/CIV.INI keys.
+    const known = new Map(existing.map((path) => [path.toLowerCase(), path]));
     const add = (name, data, preservedPaths = null) => {
         const safe = safeSavePath(name);
         if (!safe)
             return;
-        const preserve = preservedPaths?.has(safe);
-        const p = preserve ? safe : importPath(safe, existing);
+        // Preserve only known nested paths from our own export. Root files
+        // (notably CIV.INI) still take the legacy case-preserving import path.
+        const preserve = safe.includes('/') && preservedPaths?.has(safe);
+        const p = preserve ? (known.get(safe.toLowerCase()) || safe)
+                           : importPath(safe, existing);
         if (savesKind(p))
             out.set(p, data);
     };

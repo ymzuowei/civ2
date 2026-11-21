@@ -519,6 +519,7 @@ for (const n of [0, 1, 55, 56, 63, 64, 65, 119, 120, 1000]) {
     assert.equal(Buffer.from(sha256js(b)).toString('hex'), createHash('sha256').update(b).digest('hex'));
 }
 
+{
 // CIV2-T008: one persisted browser preference for effects, music and AVI.
 const prefs = new Map();
 const storage = {getItem: (key) => prefs.get(key) ?? null, setItem: (key, val) => prefs.set(key, val)};
@@ -551,5 +552,6 @@ assert.equal(createAudioVolume({getItem: () => '{"level":50,"muted":true}', setI
 assert.equal(audioLabels('zh-Hans').mute, '静音');
 assert.equal(audioLabels('zh-Hant').unmute, '取消靜音');
 assert.equal(audioLabels('en').volume, 'Volume');
+}
 
 console.log('src/web unit tests passed');

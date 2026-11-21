@@ -18,13 +18,15 @@
 #define ID_DIR 12
 #define ID_SORT 13
 #define ID_DATE 14
+#define ID_NEW_FOLDER 15
 #define MAX_ITEMS 2048
 
 static struct {
     OPENFILENAMEA *ofn;
     int save, done, ok;
-    HWND dlg, list, name, dirlabel, sort, date;
-    int by_date;
+    HWND dlg, list, name, namelabel, dirlabel, sort, date, savebutton, folderbutton;
+    int by_date, creating_folder;
+    char previous_file_name[MAX_PATH];
     time_t times[MAX_ITEMS];            /* the list's files' modified times, in its order */
     char dir[MAX_PATH];
     char pattern[MAX_PATH];             /* ;-separated wildcards */
@@ -194,12 +196,82 @@ static void enter_dir(const char *name)
     refill();
 }
 
+/* Create one user-named folder. The game's Win32 path maps to a WASI
+ * MemFS directory in the browser; no host PC folder picker or cloud storage.
+ * A Save in this folder later causes autosaves to follow it. */
+static int folder_name_ok(const char *name)
+{
+    size_t n = strlen(name), stem = strcspn(name, ".");
+    const char *devices[] = {"CON", "PRN", "AUX", "NUL"};
+    size_t i;
+    if (!n || n > 120 || name[n - 1] == '.' || name[n - 1] == ' ')
+        return 0;
+    if (!strcmp(name, ".") || !strcmp(name, ".."))
+        return 0;
+    for (i = 0; i < n; i++)
+        if ((unsigned char)name[i] < 32 || strchr("\\\\/:*?\\\"<>|", name[i]))
+            return 0;
+    for (i = 0; i < sizeof devices / sizeof devices[0]; i++)
+        if (stem == strlen(devices[i]) && !strncasecmp(name, devices[i], stem))
+            return 0;
+    if (stem == 4 &&
+        (!strncasecmp(name, "COM", 3) || !strncasecmp(name, "LPT", 3)) &&
+        name[3] >= '1' && name[3] <= '9')
+        return 0;
+    return 1;
+}
+
+static void folder_mode(int creating)
+{
+    fd.creating_folder = creating;
+    if (creating) {
+        GetWindowTextA(fd.name, fd.previous_file_name, sizeof fd.previous_file_name);
+        SetWindowTextA(fd.name, "");
+    } else {
+        SetWindowTextA(fd.name, fd.previous_file_name);
+    }
+    set_text(fd.namelabel, extras_text(creating ? "file.folder_name" : "file.name"));
+    set_text(fd.folderbutton, extras_text(creating ? "file.create_folder" : "file.new_folder"));
+    EnableWindow(fd.savebutton, !creating);
+    if (creating)
+        SetFocus(fd.name);
+}
+
+static void create_folder(void)
+{
+    char name[MAX_PATH], path[MAX_PATH];
+    GetWindowTextA(fd.name, name, sizeof name);
+    if (!folder_name_ok(name) ||
+        strlen(fd.dir) + strlen(name) + 2 >= sizeof path) {
+        MessageBoxA(fd.dlg, extras_text("file.folder_invalid"),
+                    extras_text("file.new_folder"), MB_OK | MB_ICONWARNING);
+        return;
+    }
+    join(path, sizeof path, fd.dir, name);
+    if (kind_of(path) >= 0) {
+        MessageBoxA(fd.dlg, extras_text("file.folder_exists"),
+                    extras_text("file.new_folder"), MB_OK | MB_ICONWARNING);
+        return;
+    }
+    if (plat_mkdir(path)) {
+        MessageBoxA(fd.dlg, extras_text("file.folder_failed"),
+                    extras_text("file.new_folder"), MB_OK | MB_ICONWARNING);
+        return;
+    }
+    folder_mode(0);
+    enter_dir(name);
+}
+
 /* The name typed (or chosen): a folder to open, a filter, or the answer. */
 static void accept(void)
 {
     char name[MAX_PATH], path[MAX_PATH];
     OPENFILENAMEA *ofn = fd.ofn;
     int k;
+    if (fd.creating_folder) {
+        create_folder();
+        return;
+    }
     GetWindowTextA(fd.name, name, sizeof name);
     if (!name[0])
         return;
@@ -267,7 +339,16 @@ static LRESULT CALLBACK dlg_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
             accept();
             return 0;
         case IDCANCEL:
-            fd.done = 1;
+            if (fd.creating_folder)
+                folder_mode(0);
+            else
+                fd.done = 1;
+            return 0;
+        case ID_NEW_FOLDER:
+            if (fd.creating_folder)
+                create_folder();
+            else
+                folder_mode(1);
             return 0;
         case ID_SORT:
             fd.by_date = !fd.by_date;
@@ -360,11 +441,15 @@ WINBOOL plat_file_dialog(OPENFILENAMEA *ofn, int save)
                              (screen_w - w) / 2, (screen_h - h) / 2, w, h, owner, NULL, NULL, NULL);
     fd.dirlabel = control("STATIC", "", SS_LEFT, 10, 8, 410, 18, ID_DIR);
     fd.list = control("LISTBOX", "", WS_BORDER | WS_VSCROLL | LBS_NOTIFY, 10, 30, 410, 220, ID_LIST);
-    control("STATIC", extras_text("file.name"), SS_LEFT, 10, 264, 70, 20, -1);
-    fd.name = control("EDIT", "", WS_BORDER | ES_AUTOHSCROLL, 85, 260, 335, 24, ID_NAME);
+    fd.namelabel = control("STATIC", extras_text("file.name"), SS_LEFT, 10, 264, 120, 20, -1);
+    fd.name = control("EDIT", "", WS_BORDER | ES_AUTOHSCROLL, 130, 260, 290, 24, ID_NAME);
     fd.date = control("STATIC", "", SS_LEFT, 85, 292, 335, 18, ID_DATE);
     fd.sort = control("BUTTON", extras_text(fd.by_date ? "file.sort_date" : "file.sort_name"), BS_PUSHBUTTON, 10, 322, 100, 28, ID_SORT);
-    control("BUTTON", extras_text(save ? "file.save" : "file.open"), BS_DEFPUSHBUTTON, 240, 322, 85, 28, IDOK);
+    if (save)
+        fd.folderbutton = control("BUTTON", extras_text("file.new_folder"), BS_PUSHBUTTON,
+                                  120, 322, 108, 28, ID_NEW_FOLDER);
+    fd.savebutton = control("BUTTON", extras_text(save ? "file.save" : "file.open"),
+                            BS_DEFPUSHBUTTON, 240, 322, 85, 28, IDOK);
     control("BUTTON", extras_text("file.cancel"), BS_PUSHBUTTON, 335, 322, 85, 28, IDCANCEL);
     if (ofn->lpstrFile && ofn->lpstrFile[0] && !strchr(ofn->lpstrFile, '*')) {
         const char *base = strrchr(ofn->lpstrFile, '\\');
@@ -388,8 +473,12 @@ WINBOOL plat_file_dialog(OPENFILENAMEA *ofn, int save)
         }
         if (msg.message == WM_KEYDOWN && (msg.hwnd == fd.dlg || IsChild(fd.dlg, msg.hwnd)) &&
             (msg.wParam == VK_RETURN || msg.wParam == VK_ESCAPE)) {
-            if (msg.wParam == VK_ESCAPE)
-                fd.done = 1;
+            if (msg.wParam == VK_ESCAPE) {
+                if (fd.creating_folder)
+                    folder_mode(0);
+                else
+                    fd.done = 1;
+            }
             else if (msg.hwnd == fd.list)
                 SendMessageA(fd.dlg, WM_COMMAND, MAKEWPARAM(ID_LIST, LBN_DBLCLK), (LPARAM)fd.list);
             else

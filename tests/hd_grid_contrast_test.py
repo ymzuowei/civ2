@@ -57,7 +57,7 @@ class HdGridContrastContract(unittest.TestCase):
         self.assertLess(finish.index("for (iy = g->miny"),
                         finish.index("commit_rect("))
         self.assertIn("sample & 0x100u", finish)
-        self.assertIn("0xf2eee4u : 0x0b1815u", finish)
+        self.assertIn("0xf6f3ecu : 0x0b1815u", finish)
         self.assertIn("uint16_t sample = g->pixels[", finish)
         self.assertNotIn("hd_grid_batch_end(", self.game.split(
             "void MapView::draw_tile(int x,int y,int civ)", 1

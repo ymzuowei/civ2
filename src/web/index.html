@@ -103,11 +103,21 @@
                    padding: 0.25rem 0.35rem; background: rgba(30, 30, 30, 0.82); color: #fff;
                    font: 14px/1.25 var(--serif); opacity: 0.66; border: 1px solid #777; }
   #game-controls:hover, #game-controls:focus-within { opacity: 1; }
+  /* Collapsing hides the controls, not the handle: the original canvas and
+     keyboard focus remain untouched. The toolbar expands to the left. */
+  #game-controls-content { display: flex; align-items: center; gap: 0.35rem; min-width: 0; }
+  #game-controls[data-collapsed="true"] { opacity: 0.93; }
+  #game-controls .icon-button { flex: 0 0 auto; display: inline-flex; align-items: center;
+                 justify-content: center; min-width: 2.1rem; width: 2.1rem; height: 1.85rem;
+                 padding: 0; background: #1b3548; color: #fff; border: 1px solid #f2f7fa;
+                 box-shadow: inset 0 0 0 1px #2f4b60; }
+  #game-controls .icon-button:active { padding: 0; background: #314c60; box-shadow: none; }
+  #game-controls .icon-button svg { width: 1.35rem; height: 1.35rem; display: block; }
+  #game-controls #audio-mute[aria-pressed="true"] { background: #772c36; color: #fff; }
   #game-controls .audio-group { display: flex; align-items: center; gap: 0.25rem;
                                 border-left: 1px solid #888; padding-left: 0.4rem; }
   #game-controls #audio-volume { width: 6rem; margin: 0; accent-color: #e1dccb; cursor: pointer; }
   #game-controls #audio-level { min-width: 2.5rem; text-align: right; font: 12px/1.3 sans-serif; }
-  #game-controls #audio-mute { min-width: 2rem; padding: 0.15rem; }
   #game-controls input:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   #game-controls label { display: flex; align-items: center; gap: 0.3rem; white-space: nowrap; }
   #game-controls select { font: inherit; min-height: 1.75rem; max-width: 11rem; }
@@ -116,7 +126,8 @@
   #game-controls select:focus-visible, #game-controls button:focus-visible {
                           outline: 2px solid #fff; outline-offset: 2px; }
   @media (max-width: 500px) {
-    #game-controls { gap: 0.15rem; padding: 0.2rem; font-size: 12px; flex-wrap: wrap; justify-content: flex-end; }
+    #game-controls { gap: 0.15rem; padding: 0.2rem; font-size: 12px; justify-content: flex-end; }
+    #game-controls-content { gap: 0.15rem; flex-wrap: wrap; justify-content: flex-end; }
     #game-controls #audio-volume { width: 4.5rem; }
     #game-controls button { padding: 0.15rem 0.3rem; }
     #game-controls select { max-width: 7rem; }
@@ -195,7 +206,8 @@
     <small>OPENING.AVI</small>
     <button id="intro-start" type="button" data-t="web.play">Play</button>
   </div>
-  <div id="game-controls" role="group" aria-labelledby="display-label">
+  <div id="game-controls" role="group" aria-label="Game controls">
+    <div id="game-controls-content">
     <label><span data-t="web.graphics_label">Graphics</span>
       <select id="graphics-mode" aria-label="Graphics">
         <option value="classic" data-t="web.graphics_classic">Original</option>
@@ -203,19 +215,34 @@
       </select>
     </label>
     <label><span id="display-label" data-t="web.display">Display</span>
-      <select id="display-mode">
+      <select id="display-mode" aria-describedby="display-help">
         <option value="integer" data-t="web.display_integer">Pixel perfect</option>
         <option value="fit" data-t="web.display_fit">Fit viewport</option>
       </select>
+      <span id="display-help" hidden>Pixel perfect prefers whole-number scaling; Fit viewport also allows fractional scaling. They may look identical if the game already fits.</span>
     </label>
     <div class="audio-group" role="group" aria-labelledby="audio-label">
       <label id="audio-label" for="audio-volume">Volume</label>
       <input id="audio-volume" type="range" min="0" max="100" step="1" value="100" aria-label="Volume">
       <output id="audio-level" for="audio-volume">100%</output>
-      <button id="audio-mute" type="button" aria-label="Mute" aria-pressed="false" title="Mute">🔊</button>
+      <button id="audio-mute" class="icon-button" type="button" aria-label="Mute" aria-pressed="false" title="Mute">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M3 9h5l5-4v14l-5-4H3z" fill="currentColor" stroke="currentColor" stroke-linejoin="round"/>
+          <path id="audio-waves" d="M16 9a4 4 0 0 1 0 6m2-9a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+          <path id="audio-slash" d="M16 8l6 8m0-8l-6 8" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" hidden/>
+        </svg>
+      </button>
     </div>
     <button id="fullscreen" type="button" data-t="web.enter_fullscreen">Fullscreen</button>
     <button id="saves-open" title="Export or import saved games" data-t="web.saves" data-t-title="web.saves_title">Saves</button>
+    </div>
+    <button id="controls-toggle" class="icon-button" type="button" aria-expanded="true"
+            aria-controls="game-controls-content" aria-label="Collapse controls" title="Collapse controls">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path id="controls-toggle-chevron" d="M9 5l7 7-7 7" fill="none" stroke="currentColor"
+              stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
   </div>
 </div>
 <input id="import-saves" type="file" multiple accept=".sav,.zip,.scn,.mp,.ini,.dat">

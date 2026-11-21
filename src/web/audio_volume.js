@@ -35,3 +35,14 @@ export function createAudioVolume(storage) {
         },
     };
 }
+
+ // Short accessible browser-toolbar labels. Non-Chinese locales fall back to English
+ // without altering the game's complete existing native translation catalogs.
+export function audioLabels(code) {
+    const locale = String(code || '').toLowerCase();
+    if (/^zh[-_](hans|cn|sg)/.test(locale))
+        return {volume: '音量', mute: '静音', unmute: '取消静音'};
+    if (/^zh[-_](hant|tw|hk|mo)/.test(locale))
+        return {volume: '音量', mute: '靜音', unmute: '取消靜音'};
+    return {volume: 'Volume', mute: 'Mute', unmute: 'Unmute'};
+}

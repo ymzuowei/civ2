@@ -326,3 +326,34 @@ The fix preserves **the entire pre-existing raw Git blob prefix** of each of the
 ### Windows Git checkout byte preservation (CIV2-T006)
 
 The legacy `data/native/lang/*.txt` resources have different historical code pages (including Windows-1252 and ISO-8859-3). Their `data/native/lang/.gitattributes` declares `*.txt -text`: treat these tracked files as byte-preserved inputs, **not** Git-normalized text. Do not re-save them via a UTF-8-only editor or alter their original line endings. Add translations using the correct declared code page, preserve the entire old prefix, and keep Graphics chooser placeholders in the original order. `tests/graphics_locale_sync_test.py` checks that the checked-out bytes match the corresponding exact Git objects and that the historical prefixes retain their pinned Git blob identities. On an existing Git for Windows clone created before the attribute landed, the separate Web Candidate bootstrap can recover only a proven CRLF-only checkout conversion from the exact pinned Git objects; any other change must fail rather than overwrite translator edits.
+
+## CIV2-T011 — Native Save-folder strings and code-page fallback (2026-11-21)
+
+The owner Windows build at pinned T011 engine `5d7ce71c` reached the
+`tests/lang_test.py` gate and found six new `file.*` keys absent in
+`de/el/eo/la` (24 missing entries). This is a completeness check failure,
+not a WASM compiler, font glyph or C: cache failure.
+
+For this narrowly scoped Draft, `en`, `zh-Hans` and `zh-Hant` contain
+all six localized New Folder labels. The existing native
+`src/game/extras.cpp::extras_text()` checks `lang_has(k)` and falls back
+to its `src/host/texts.h` English label when a translation does not exist.
+The language completeness test therefore allows **only**
+`file.new_folder`, `file.create_folder`, `file.folder_name`,
+`file.folder_invalid`, `file.folder_exists`, and
+`file.folder_failed` to fall back in exactly `de/el/eo/la`.
+All other historical keys and all other language packs remain strict.
+
+**Binary integrity:** the four pre-existing language blobs must stay
+bit-for-bit unchanged, including Windows-1252/ISO-8859-3 and legacy line
+endings. A remote binary write attempt produced a different blob SHA and
+was reverted to the original Git blob objects before integration. Do not
+use Unicode/UTF-8-only Git contents APIs to update these locale files.
+Follow-up human-reviewed translations can be added separately using local
+binary-safe tooling and the existing historical-prefix, codepage and
+exact-checkout tests. This temporary English fallback is intentionally
+not a claim of completed German/Greek/Esperanto/Latin localization.
+
+The font reader now closes its UTF-8 translation files via a context
+manager, avoiding the prior nonfatal `ResourceWarning` during the
+user's Windows run. Full Windows WASM and gameplay F01–F08 remain pending.

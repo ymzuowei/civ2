@@ -65,11 +65,41 @@ class SaveFolderContractTests(unittest.TestCase):
         self.assertIn("SetBkMode(hdc, TRANSPARENT);", static)
         self.assertIn("FillRect(hdc, &r, GetSysColorBrush(COLOR_3DFACE));", button)
         self.assertIn("set_text(fd.dirlabel, label);", self.dialog)
-        self.assertIn('set_text(fd.namelabel, extras_text(', self.dialog)
+        self.assertIn('set_name_label(extras_text(', self.dialog)
         self.assertIn('set_text(fd.folderbutton, extras_text(', self.dialog)
         self.assertIn('extras_text(creating ? "file.create_folder" : "file.new_folder")', self.dialog)
         self.assertIn("InvalidateRect(h, NULL, TRUE);", self.dialog)
         self.assertIn("UpdateWindow(h);", self.dialog)
+        self.assertIn("static void set_name_label(const char *text)", self.dialog)
+        self.assertIn("RECT strip = {NAME_CAPTION_X, 260, NAME_EDIT_X - 2, 290};", self.dialog)
+        self.assertIn("FillRect(dc, &strip, GetSysColorBrush(COLOR_3DFACE));", self.dialog)
+        self.assertIn("ReleaseDC(fd.dlg, dc);", self.dialog)
+        self.assertIn("set_text(fd.namelabel, text);", self.dialog)
+        self.assertIn("#define NAME_CAPTION_WIDTH 155", self.dialog)
+        self.assertIn("#define NAME_EDIT_X 175", self.dialog)
+        self.assertIn("NAME_CAPTION_X, 264, NAME_CAPTION_WIDTH, 20", self.dialog)
+        self.assertIn("NAME_EDIT_X, 260, w - NAME_EDIT_X - 20, 24", self.dialog)
+        self.assertIn("DT_SINGLELINE | DT_LEFT | DT_VCENTER | DT_NOPREFIX", static)
+        self.assertIn("DrawTextA(hdc, w->text, -1, &r, DT_WORDBREAK);", static)
+        self.assertLess(self.dialog.index("FillRect(dc, &strip"),
+                        self.dialog.index("set_text(fd.namelabel, text)"))
+
+    def test_name_label_has_distinct_modes_without_old_chinese_suffix(self):
+        # Actual screenshots: leaving folder-create mode once displayed
+        # "文件名名称：" from old "文件夹名称：" pixels. The textbox must
+        # have a dedicated opaque erase strip and each mode its own key.
+        source = self.dialog
+        mode = source[source.index("static void folder_mode(int creating)"):
+                      source.index("static void create_folder(void)")]
+        self.assertIn('creating ? "file.folder_name" : "file.name"', mode)
+        self.assertIn("set_name_label(extras_text(", mode)
+        self.assertIn("set_text(fd.folderbutton, extras_text(", mode)
+        self.assertIn("EnableWindow(fd.savebutton, !creating);", mode)
+        self.assertIn("if (fd.creating_folder)\n                folder_mode(0);", source)
+        self.assertIn("folder_mode(0);\n    enter_dir(name);", source)
+        translations = (ROOT / "data/native/lang/zh-Hans.txt").read_text(encoding="utf-8")
+        self.assertIn("@@openciv2.file.name\n文件名：", translations)
+        self.assertIn("@@openciv2.file.folder_name\n文件夹名称：", translations)
 
     def test_save_leader_prefix_preserves_complete_utf8_characters(self):
         source = self.save

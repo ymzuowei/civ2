@@ -59,8 +59,8 @@ class MasterAudioSourceContracts(unittest.TestCase):
         unit = (ROOT / "src/web/test/unit.mjs").read_text(encoding="utf-8")
         marker = "// CIV2-T008: one persisted browser preference for effects, music and AVI."
         self.assertEqual(unit.count(marker), 1)
-        self.assertIn("{\\n" + marker, unit)
-        self.assertIn("}\\n\\nconsole.log('src/web unit tests passed');", unit)
+        self.assertIn("{\n" + marker, unit)
+        self.assertIn("}\n\nconsole.log('src/web unit tests passed');", unit)
 
     def test_module_reaches_static_public_build(self):
         self.assertIn("'audio_volume.js'", self.build)

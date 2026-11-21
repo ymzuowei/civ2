@@ -964,7 +964,7 @@ void hd_grid_batch_end(void *bits)
                 uint16_t sample = g->pixels[(size_t)(iy - g->t * d) *
                                             g->pitch + ix - g->l * d];
                 unsigned alpha = sample & 255u;
-                unsigned color = (sample & 0x100u) ? 0xf6f3ecu : 0x0b1815u;
+                unsigned color = (sample & 0x100u) ? 0xfaf8f4u : 0x0b1815u;
                 uint32_t *dst, old;
                 if (!alpha)
                     continue;

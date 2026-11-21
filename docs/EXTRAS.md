@@ -272,3 +272,36 @@ previous UTF-8, ZIP and autosave coverage. The new native change
 the previous screenshot does **not** verify this renderer fix.
 Never rename/delete a player's existing save to test it. Avoid all HD
 colour, grid, audio, private asset or other repository changes.
+
+## CIV2-T011 — File-name caption ghosting, separate from directory header (2026-11-22)
+
+Owner's latest screenshot after the initial STATIC background repair shows the
+top `文件夹：Z:\\civ2\\20261122` caption readable, with a working
+`武则_b3460.sav` default prefix. However the *separate lower-left*
+caption is still visibly overlaid: old `文件夹名称：` pixels and
+new `文件名：` appear together as `文件名名称：`.
+**Do not close this issue merely because the top directory caption
+is now correct.** This appears after switching folder-creation mode
+back to ordinary filename mode; both strings use the same STATIC HWND.
+
+The extra corrective measures are limited to the Save As dialog:
+* Reserve 155 logical pixels for the longer Chinese name caption, and
+  start its edit field at x=175 instead of x=130 so the label cannot
+  intrude on the editor.
+* Before changing the mode caption, erase the entire previous label strip
+  via the **parent dialog DC**, using its `COLOR_3DFACE` background.
+  This clears retained old glyphs even if a prior child paint escaped
+  its clipped region; then set and immediately repaint the one STATIC.
+  Never erase the adjacent edit input or any map pixels.
+* Render file-dialog STATIC captions as *one line* with `DT_SINGLELINE`
+  instead of `DT_WORDBREAK`, so changing Chinese captions cannot create
+  clipped/ghosted wrapped lines. All non-file-dialog STATIC renderers
+  keep their existing behavior.
+
+The translation strings themselves remain correct:
+`file.name = 文件名：`, `file.folder_name = 文件夹名称：`.
+Source regressions now explicitly cover changing both states and the
+dedicated background wipe. This newest candidate requires another
+owner-local D:-only WASM/browser visual test; source tests alone do not
+prove the rendered overlap has disappeared. The earlier F01/F02 and
+UTF-8 filename PASS evidence remains, with F03–F08 unverified.

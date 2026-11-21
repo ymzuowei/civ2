@@ -22,44 +22,66 @@ class HdGridContrastContract(unittest.TestCase):
         self.assertIn("map_grid_sprite", region)
         self.assertIn("city_radius_grid_sprite", region)
         self.assertIn("map_distance_diag(x,y", region)
-        self.assertLess(region.index("map_grid_sprite"), region.index("hd_map_grid_contrast"))
-        self.assertLess(region.index("city_radius_grid_sprite"), region.index("hd_map_grid_contrast"))
+        self.assertLess(region.index("draw_tile_terrain("), region.index("map_grid_sprite"))
+        self.assertLess(region.index("draw_tile_terrain("), region.index("city_radius_grid_sprite"))
+        self.assertNotIn("hd_map_grid_contrast(", region)
 
     def test_hd_only_revealed_tiles_and_native_coordinates(self):
         region = self.game.split("void MapView::draw_tile(int x,int y,int civ)", 1)[1].split("i32 MapView::tile_in_view", 1)[0]
-        self.assertIn("hd_art && !near_city &&", region)
-        self.assertIn("civ < 0 || game.reveal_map != 0 || tile_visible_to(x,y,civ) != 0", region)
-        self.assertIn("(int)tile_width_u,(int)tile_height_u,0", region)
-        # Bright radius is painted exactly once, *after* neighbors; do not
-        # reintroduce the previous double blend in the tile-terrain pass.
-        self.assertNotIn("(int)tile_width_u,(int)tile_height_u,near_city", region)
+        # Ordinary map-grid Sprite alone is the intended final output.
+        # There must be no extra HD dark overlay or premature pale blend.
+        self.assertNotIn("hd_map_grid_contrast(", region)
+        self.assertIn("map_grid_sprite", region)
+        self.assertIn("city_radius_grid_sprite", region)
+        self.assertIn("gfx_reset_zoom_scale();", region)
         self.assertNotIn("game.game_options |= OPT_MAP_GRID", region)
 
     def test_contrast_is_only_in_color_plane_and_cities_get_bright_line(self):
         helper = self.plane.split("void hd_map_grid_contrast(", 1)[1].split("void hd_dc_chevron(", 1)[0]
-        self.assertIn("if (!hd_art ||", helper)
-        self.assertIn("radius_tile ? 0xf2eee4u : 0x0b1815u", helper)
+        self.assertIn("if (!radius_tile || !hd_art ||", helper)
+        self.assertIn("unsigned color = 0xf2eee4u", helper)
+        self.assertNotIn("0x0b1815u", helper)
+        self.assertIn("strength = hd_radius_grid_strength(w)", helper)
         self.assertIn("seg_dist2(", helper)
         self.assertIn("sync_rect(", helper)
         self.assertIn("commit_rect(", helper)
         self.assertIn("b->hd +", helper)
         self.assertNotRegex(helper, r"\bbmp_row\([^)]*\)\s*=")
         self.assertIn("void hd_map_grid_contrast(", self.header)
-        # Both revealed tile types use one thin outline, so bright city
-        # radius cannot be thicker than ordinary terrain grid. Only the
-        # ordinary dark overlay is slightly deeper; city color/alpha stay.
         self.assertIn("stroke = 0.56, limit = stroke * stroke", helper)
-        self.assertNotIn("stroke = radius_tile ?", helper)
-        self.assertIn("strength = radius_tile ? 184u : 118u", helper)
-        self.assertIn("radius_tile ? 0xf2eee4u : 0x0b1815u", helper)
         self.assertIn("best < .12 ? strength", helper)
-        # Radius-only drawing may extend one pixel across a shared edge
-        # for anti-alias coverage. Ordinary dark grid still obeys the
-        # original tile rectangle; the bitmap is clipped by clip_rect().
-        self.assertIn("l = x - (radius_tile ? 1 : 0)", helper)
-        self.assertIn("t = y - (radius_tile ? 1 : 0)", helper)
-        self.assertIn("r = x + w + (radius_tile ? 1 : 0)", helper)
-        self.assertIn("bot = y + h + (radius_tile ? 1 : 0)", helper)
+        # Only pale city radius extends 1px for seamless AA clipping.
+        self.assertIn("l = x - 1", helper)
+        self.assertIn("t = y - 1", helper)
+        self.assertIn("r = x + w + 1", helper)
+        self.assertIn("bot = y + h + 1", helper)
+
+    def test_city_radius_zoom_alpha_is_bounded_and_monotone(self):
+        # This is native map zoom: gfx_zoom_scale(64, zoom) =
+        # (zoom + 8) * 64 / 8, independent of Chrome display Fit or DPI.
+        helper = self.plane.split(
+            "static unsigned hd_radius_grid_strength(", 1
+        )[1].split("void hd_map_grid_contrast(", 1)[0]
+        self.assertIn("tile_width >= 80", helper)
+        self.assertIn("return 184u", helper)
+        self.assertIn("tile_width <= 0", helper)
+        self.assertIn("return 120u", helper)
+        self.assertIn("184u * (unsigned)tile_width / 80u", helper)
+        self.assertIn("strength < 120u ? 120u : strength", helper)
+
+        def alpha(tile_width):
+            if tile_width >= 80:
+                return 184
+            if tile_width <= 0:
+                return 120
+            return max(120, 184 * tile_width // 80)
+
+        values = [(w, alpha(w)) for w in (8, 32, 48, 56, 64, 72, 79, 80, 88)]
+        self.assertEqual([a for _, a in values],
+                         [120, 120, 120, 128, 147, 165, 181, 184, 184])
+        self.assertEqual(values, sorted(values))
+        self.assertTrue(all(120 <= value <= 184 for _, value in values))
+
 
     def test_city_radius_postpass_follows_all_neighbor_terrain_draws(self):
         # A thin pale city boundary used to be partially overpainted by

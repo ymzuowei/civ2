@@ -52,8 +52,8 @@ class MasterAudioSourceContracts(unittest.TestCase):
         self.assertNotIn("audioMute.textContent =", self.page)
         for marker in ("content.hidden = collapsed",
                        "browserToolbar.setCollapsed(", "syncToolbar();",
-                       "chevron.setAttribute('d'", "$('audio-waves').hidden = muted",
-                       "$('audio-slash').hidden = !muted",
+                       "chevron.setAttribute('d'", "$('audio-waves').style.display = muted ? 'none' : ''",
+                       "$('audio-slash').style.display = muted ? '' : 'none'",
                        "mode.title = hint", "syncDisplayHelp();"):
             self.assertIn(marker, self.page)
         self.assertIn("openciv2.browser-toolbar.v1", toolbar)

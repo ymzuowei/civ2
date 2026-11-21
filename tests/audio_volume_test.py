@@ -46,7 +46,7 @@ class MasterAudioSourceContracts(unittest.TestCase):
         self.assertIn("CIV2_BROWSER_HD_OPENING", self.page)
 
     def test_city_tint_only_no_geometry_or_alpha_change(self):
-        self.assertIn("? 0xf6f3ecu : 0x0b1815u", self.grid)
+        self.assertIn("? 0xfaf8f4u : 0x0b1815u", self.grid)
         self.assertIn("double path[10], stroke = 0.56", self.grid)
         self.assertIn("return 164u;", self.grid)
         self.assertIn("return 104u;", self.grid)

@@ -64,27 +64,35 @@ class SaveFolderContractTests(unittest.TestCase):
     def test_translation_keys_exist(self):
         keys = ("file.new_folder", "file.create_folder", "file.folder_name",
                 "file.folder_invalid", "file.folder_exists", "file.folder_failed")
-        # Every shipped native language must carry all six folder labels.
-        # Decode using the declared legacy code page; never rewrite historical
-        # German/Esperanto/Latin binary-safe translations as UTF-8.
-        locales = {
+        # The English template and actual owner-facing EN/zh-Hans/zh-Hant
+        # must localize every key. The remaining four historic locales may
+        # use the already-supported English runtime fallback ONLY for these
+        # new keys; their original code-page bytes must not be rewritten.
+        localised = {
             "src/host/texts.h": "utf-8",
             "data/native/lang/en.txt": "cp1252",
-            "data/native/lang/de.txt": "cp1252",
-            "data/native/lang/el.txt": "utf-8",
-            "data/native/lang/eo.txt": "iso-8859-3",
-            "data/native/lang/la.txt": "cp1252",
             "data/native/lang/zh-Hans.txt": "utf-8",
             "data/native/lang/zh-Hant.txt": "utf-8",
         }
-        for path, codec in locales.items():
+        for path, codec in localised.items():
             text = (ROOT / path).read_bytes().decode(codec)
             for key in keys:
                 with self.subTest(path=path, key=key):
                     if path.endswith(".h"):
                         self.assertIn('"' + key + '"', text)
                     else:
-                        self.assertIn("@@openciv2." + key + "\n", text)
+                        marker = "@@openciv2." + key + "\n"
+                        self.assertEqual(text.count(marker), 1)
+                        self.assertTrue(text.split(marker, 1)[1].split("\n@@", 1)[0].strip())
+        source = (ROOT / "src/game/extras.cpp").read_text(encoding="utf-8")
+        self.assertIn("if (lang_has(k))", source)
+        self.assertIn("return lang_text(k);", source)
+        self.assertIn("return i >= 0 ? texts[i].english : key;", source)
+        for code, codec in (("de", "cp1252"), ("el", "utf-8"),
+                            ("eo", "iso-8859-3"), ("la", "cp1252")):
+            with self.subTest(locale=code):
+                text = (ROOT / f"data/native/lang/{code}.txt").read_bytes().decode(codec)
+                self.assertTrue(text.startswith("; OpenCiv2:"))
 
 
 if __name__ == "__main__":

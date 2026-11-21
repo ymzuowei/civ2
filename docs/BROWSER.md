@@ -49,6 +49,46 @@ replace the game files or remove them.
 
 Music plays where the game's folder has it (`Music/TrackNN.ogg`).
 
+## Browser toolbar — fold, sound and presentation (CIV2-T012)
+
+The upper-right floating **Game controls** toolbar can fold into a single
+high-contrast chevron button. Click it again (or activate with Enter/Space
+while focused) to reopen Graphics, Display, Volume, Fullscreen and Saves.
+The toolbar is **expanded on first use** so new players can discover its
+controls; your later fold/unfold choice is kept in browser `localStorage`
+under `openciv2.browser-toolbar.v1`. Browser storage being blocked is
+harmless and leaves controls available. Folding never changes the game's
+native canvas dimensions, moves the active unit or modifies the original
+game files, IndexedDB or SAV contents. Keyboard events while using toolbar
+controls remain isolated from the game's input handling.
+
+The mute button has a **high-contrast white speaker SVG** with clear waves
+when sound is on and a bold crossed-out symbol on a dark contrasting button
+when muted. The SVG icon has no independent keyboard focus; the existing
+button still supports focus, `aria-pressed`, the player's language and a
+localized tooltip. Muting retains the existing volume slider and WebAudio
+master GainNode behavior, which applies to current music, effects and the
+owner-supplied original opening video.
+
+**Display mode explanation:** `Pixel perfect` prefers whole-number
+upscaling (1×/2×/3×...), keeping source pixels sharp where possible.
+`Fit viewport` can also use fractional upscaling (e.g. 1.875×) to fill
+more available screen space uniformly. Both preserve the original game's
+logical desktop, aspect ratio and save state, and neither changes the HD
+pack resolution. At exactly 1× or another integer available ratio, or
+when the viewport is too small and the canvas must be shrunk, **the two
+modes can look identical**. Because the normal browser desktop is often
+allocated to match the viewport at startup, seeing no visual difference
+on a particular monitor is expected, not necessarily a rendering bug.
+Hover or focus the Display chooser for an explanation of the currently
+selected mode; Chinese labels/tooltips are provided without rewriting
+the legacy native translation files.
+
+These are **browser-presentation controls**. Public static builds remain
+BYO-only by default and must not embed commercially owned BIN/CUE/AVI
+assets. Runtime visual/accessibility verification on actual Chrome/Edge
+is separate from source tests and the compiled WASM gate.
+
 ## A site with the game on it (GAME=1)
 
 `make web GAME=1` (with `HD=1` as well, usually) puts the installed game (`~/Civ2`, or

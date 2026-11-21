@@ -48,6 +48,28 @@ class SaveFolderContractTests(unittest.TestCase):
         self.assertIn("save ? 275 : 240", dialog)
         self.assertIn("save ? 375 : 335", dialog)
 
+    def test_native_dialog_static_caption_clears_old_glyphs_on_repaint(self):
+        # Runtime screenshots showed a newly correct folder path overprinted
+        # on the old Z:\\civ2 caption. The dialog's set_text invalidated the
+        # control, but TRANSPARENT DrawTextA retained previous painted pixels.
+        # Restrict the opaque cleanup to the file dialog: other STATIC text
+        # may be intentionally drawn on top of the game's artwork.
+        controls = (ROOT / "src/platform/controls.c").read_text(encoding="utf-8")
+        static = controls[controls.index("LRESULT ctl_static_proc("):]
+        button = controls[controls.index("LRESULT ctl_button_proc("):
+                          controls.index("LRESULT ctl_static_proc(")]
+        self.assertIn("strcmp(w->parent->cls->name, \"Civ2FileDialog\") == 0", static)
+        self.assertIn("FillRect(hdc, &r, GetSysColorBrush(COLOR_3DFACE));", static)
+        self.assertLess(static.index("FillRect(hdc, &r, GetSysColorBrush(COLOR_3DFACE));"),
+                        static.index("DrawTextA(hdc, w->text"))
+        self.assertIn("SetBkMode(hdc, TRANSPARENT);", static)
+        self.assertIn("FillRect(hdc, &r, GetSysColorBrush(COLOR_3DFACE));", button)
+        self.assertIn("set_text(fd.dirlabel, label);", self.dialog)
+        self.assertIn('set_text(fd.namelabel, extras_text(', self.dialog)
+        self.assertIn('set_text(fd.folderbutton, extras_text(', self.dialog)
+        self.assertIn('extras_text(creating ? "file.create_folder" : "file.new_folder")', self.dialog)
+        self.assertIn("InvalidateRect(h, NULL, TRUE);", self.dialog)
+
     def test_save_leader_prefix_preserves_complete_utf8_characters(self):
         source = self.save
         helper = source[source.index("static size_t save_leader_prefix_bytes("):

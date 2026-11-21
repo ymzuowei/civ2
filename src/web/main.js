@@ -2,18 +2,21 @@
 // the game (host.js) on the canvas.
 
 import {MemFS} from './wasi.js';
+import {GRAPHICS_PREFERENCE_KEY, resolveGraphicsPreference, graphicsFromQuery, hdArg} from './graphics_choice.js';
 import {runGame} from './host.js';
+import {createAudioVolume, audioLabels} from './audio_volume.js';
 import {openStore} from './store.js';
 import {unzip} from './zip.js';
 import {exportSaves, importSaves} from './saves.js';
 import {findDisc} from './setup_run.js';
 import {packFrom, keepPack, loadPack, download, siteArt} from './hdpack.js';
-import {hdWanted, iniGet, iniSet, skipBrowserOpening, openingVideoPresent, openingVideoNeedsGesture, resumeOpeningAudioContext} from './options.js';
+import {hdWanted, iniGet, iniSet, skipBrowserOpening, openingVideoPresent, openingVideoNeedsGesture, resumeOpeningAudioContext, siteBundlesGame} from './options.js';
 import {t, languages, pageLanguage, urlLanguage, withLanguage, useLanguage, langFile, parseLang, match} from './i18n.js';
 
 const GAME = '/civ2', DATA = '/data';
 let pageLang = 'en';        // the page's language (i18n.js: ?lang=CODE, else English)
 const $ = (id) => document.getElementById(id);
+const browserAudio = createAudioVolume();
 // (on the set-up page, and over the screen until the game's first frame)
 const status = (s) => {
     $('status').textContent = s;
@@ -360,6 +363,31 @@ function displayControls() {
     // not to the running Civilization II engine's keyboard event handler.
     controls.addEventListener('keydown', (e) => e.stopPropagation());
     controls.addEventListener('keyup', (e) => e.stopPropagation());
+    // These page controls never emit native game input or create an AudioContext.
+    // The engine picks up this preference when its next AudioContext starts.
+    const audioSlider = $('audio-volume'), audioMute = $('audio-mute');
+    const audioLevel = $('audio-level'), labels = audioLabels(pageLang);
+    $('audio-label').textContent = labels.volume;
+    audioSlider.setAttribute('aria-label', labels.volume);
+    function syncAudioControls() {
+        audioSlider.value = String(browserAudio.level);
+        audioLevel.textContent = browserAudio.level + '%';
+        const muted = browserAudio.muted;
+        audioMute.textContent = muted ? '🔇' : '🔊';
+        const action = muted ? labels.unmute : labels.mute;
+        audioMute.setAttribute('aria-label', action);
+        audioMute.title = action;
+        audioMute.setAttribute('aria-pressed', String(muted));
+    }
+    audioSlider.addEventListener('input', () => {
+        browserAudio.setLevel(Number(audioSlider.value));
+        syncAudioControls();
+    });
+    audioMute.addEventListener('click', () => {
+        browserAudio.setMuted(!browserAudio.muted);
+        syncAudioControls();
+    });
+    syncAudioControls();
     const syncFullscreen = () => {
         const on = document.fullscreenElement === game;
         fullscreen.textContent = t(on ? 'web.exit_fullscreen' : 'web.enter_fullscreen');
@@ -380,6 +408,50 @@ function displayControls() {
     });
     document.addEventListener('fullscreenchange', syncFullscreen);
     syncFullscreen();
+}
+
+// One-time first-play choice, kept outside native game files and saves.
+function firstGraphicsDialog(available) {
+    const dialog = $('graphics-choice-dialog');
+    const classic = $('graphics-first-classic'), hd = $('graphics-first-hd');
+    hd.disabled = !available;
+    $('graphics-first-unavailable').hidden = available;
+    dialog.showModal();
+    return new Promise((resolve) => {
+        const choose = (mode) => {
+            classic.onclick = hd.onclick = null;
+            dialog.close();
+            resolve(mode);
+        };
+        classic.onclick = () => choose('classic');
+        hd.onclick = () => choose('hd');
+        dialog.oncancel = (e) => e.preventDefault();
+    });
+}
+
+async function graphicsControls(store) {
+    const select = $('graphics-mode');
+    select.value = graphicsFromQuery(location.search) ||
+        (await store.getMeta(GRAPHICS_PREFERENCE_KEY)) || 'classic';
+    const dialog = $('graphics-choice-dialog');
+    dialog.addEventListener('keydown', (e) => e.stopPropagation());
+    dialog.addEventListener('keyup', (e) => e.stopPropagation());
+    select.addEventListener('change', async () => {
+        const choice = select.value;
+        const old = graphicsFromQuery(location.search) ||
+            (await store.getMeta(GRAPHICS_PREFERENCE_KEY)) || 'classic';
+        if (running && !confirm(t('web.graphics_switch_confirm'))) {
+            select.value = old;
+            $('screen').focus();
+            return;
+        }
+        // Flush only files the game has already written: no false autosave.
+        await window.civ2Flush?.();
+        await store.setMeta(GRAPHICS_PREFERENCE_KEY, choice);
+        const url = new URL(location.href);
+        url.searchParams.set('hd', hdArg(choice));
+        location.assign(url.href);
+    });
 }
 
 // ---- the HD graphics' art (hdpack.js), as CIV.INI asks for it (options.js) ----
@@ -466,8 +538,14 @@ function fromSite() {
 
 // The site's copy of the game, or null: {core: {size, files}, files: [[path, size]]}
 let siteGameP = null;
-const siteGame = () => siteGameP || (siteGameP = fetch('game/index.json', {cache: 'no-cache'})
-    .then((r) => (r.ok ? r.json() : null)).catch(() => null));
+// BYO-only static builds deliberately have no game/ directory. The build
+// stamps this bit in index.html so the browser never generates a harmless
+// but noisy 404 merely to discover that there is no bundled game.
+const siteGame = () => siteGameP || (siteGameP =
+    siteBundlesGame(document)
+        ? fetch('game/index.json', {cache: 'no-cache'})
+            .then((r) => (r.ok ? r.json() : null)).catch(() => null)
+        : Promise.resolve(null));
 
 // A first visit to such a site: its copy kept in this browser, without
 // asking (the set-up page's choice is not shown: ?setup shows it), on one
@@ -601,6 +679,12 @@ async function play(store) {
     const query = new URLSearchParams(location.search), args = ['civ2', GAME];
     const iniName = (await store.keys()).find((k) => /^civ\.ini$/i.test(k));
     const ini = iniOf(iniName ? [[iniName, await store.get(iniName)]] : []).text;
+    const [siteAvailable, cacheAvailable] = await Promise.all([siteHdP, keptP]);
+    const graphics = await resolveGraphicsPreference(store, location.search,
+        !!(siteAvailable || cacheAvailable), firstGraphicsDialog);
+    $('graphics-mode').value = graphics;
+    if (!query.has('hd'))
+        query.set('hd', hdArg(graphics));
     const hd = hdWanted(ini, query.get('hd')) >= 0;
     // (the art: where the site has it, for the game's OpenCiv2 Options; kept
     // in this browser once downloaded, used then even where the site has none)
@@ -715,16 +799,18 @@ async function play(store) {
     // its first click on the canvas: the native AVI handler would skip it.
     // No gate is shown when the locally imported OPENING.AVI is absent.
     // HD art is enabled only after the local HD pack successfully loads.
-    // A requested-but-missing pack reverts to the original AVI path, so
-    // it still needs the audio activation gate.
+    // Unlike native desktop, Web HD may play the owned opening when present:
+    // it explicitly opts in below, after the browser audio gesture gate.
     const hdArtAvailable = hd && !!window.civ2Hd?.packBytes;
     const introNeedsGesture = openingVideoNeedsGesture(entries, hdArtAvailable, location.search);
+    const hdMovieOptIn = hdArtAvailable && introNeedsGesture;
     // Diagnostics record booleans/states only: no game filenames, bytes, save
     // names or local E: paths. The owner can inspect window.civ2Intro in
     // DevTools even if a modal AVI remains black before the main menu.
     window.civ2Intro = {
         ownedOpeningPresent: openingVideoPresent(entries),
         hdArtAvailable,
+        hdMovieOptIn,
         skipRequested: skipBrowserOpening(location.search),
         gestureRequired: introNeedsGesture,
         audio: introNeedsGesture ? 'pending' : 'not-required'
@@ -747,6 +833,11 @@ async function play(store) {
     // ?intro=diagnose logs local decode/presentation failures to DevTools.
     if (skipBrowserOpening(location.search))
         env.CIV2_SKIP_OPENING = '1';
+    // Original HD native art mode skips AVI. Override only for the browser
+    // with a locally owned video and audio-gesture/fallback prepared. Never
+    // set this for missing media or explicit ?intro=skip.
+    if (hdMovieOptIn)
+        env.CIV2_BROWSER_HD_OPENING = '1';
     const introDiagnose = new URLSearchParams(location.search).get('intro') === 'diagnose';
     if (introDiagnose)
         env.CIV2_LOG_VIDEO = '1';
@@ -760,6 +851,7 @@ async function play(store) {
     try {
         window.civ2Stats = {};
         code = await runGame({wasm: site.wasm, fs, audioContext: introAudio,
+                              audioVolume: browserAudio,
                               onFrame: () => {
                                   timing.frame = Math.round(performance.now());
                                   $('loading').hidden = true;
@@ -863,6 +955,7 @@ async function main() {
     const store = await mark('store', openStore(() =>
         status(t('web.other_tab'))));
     savesControls(store);
+    await graphicsControls(store);
     // (the relay's dialog keeps the keys from the game)
     const rd = $('relay-dialog');
     rd.addEventListener('keydown', (e) => e.stopPropagation());

@@ -500,6 +500,20 @@ the files
 This browser lacks what the game needs (WebAssembly, IndexedDB, DecompressionStream).
 @@openciv2.web.other_tab
 Waiting for another OpenCiv2 tab (from before an update) to close: close it, or reload it.
+@@openciv2.web.graphics_label
+Graphics
+@@openciv2.web.graphics_choose_title
+Choose map graphics
+@@openciv2.web.graphics_choose_note
+Choose once before entering the game. Later you can change Graphics in the toolbar; switching reloads the game.
+@@openciv2.web.graphics_classic
+Original
+@@openciv2.web.graphics_hd
+High resolution
+@@openciv2.web.graphics_unavailable
+The HD texture pack is not installed. Original graphics remain available.
+@@openciv2.web.graphics_switch_confirm
+Save your current turn in Civilization II first. Changing graphics reloads the game and loses unsaved moves. Continue?
 @@openciv2.web.display
 Display
 @@openciv2.web.display_integer

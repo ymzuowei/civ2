@@ -2,16 +2,19 @@
 // desktop's scale, pixels, the WASI file system, .zip reading and writing, the player's saves.
 //   tools/toolchain/node/bin/node src/web/test/unit.mjs
 import assert from 'node:assert/strict';
-import {vkOf, Wheel, desktopScale, argbToRgba, liveDesktopResize, canvasFitSize, displayModeFromSearch} from '../host.js';
+import {vkOf, Wheel, desktopScale, desktopUiScale, initialDesktopGeometry, argbToRgba, liveDesktopResize, canvasFitSize, displayModeFromSearch} from '../host.js';
 import {MemFS, makeWasi, normalize} from '../wasi.js';
+import {createAudioVolume, audioLabels} from '../audio_volume.js';
 import {unzip, zip as makeZip, crc32} from '../zip.js';
 import {savesKind, playerFiles, importPath, savesToImport} from '../saves.js';
 import {deflateRawSync, inflateRawSync} from 'node:zlib';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {sha256, sha256js, packFrom, keepPack, loadPack, packIndex, prunePack, drawn} from '../hdpack.js';
-import {iniGet, iniSet, hdWanted, skipBrowserOpening, openingVideoPresent, openingVideoNeedsGesture, resumeOpeningAudioContext} from '../options.js';
+import {iniGet, iniSet, hdWanted, skipBrowserOpening, openingVideoPresent, openingVideoNeedsGesture, resumeOpeningAudioContext, siteBundlesGame} from '../options.js';
 import {match} from '../locale.js';
+import {makeNet} from '../net.js';
+import {GRAPHICS_PREFERENCE_KEY, graphicsFromQuery, resolveGraphicsPreference, hdArg} from '../graphics_choice.js';
 
 // Native and web language aliases distinguish Taiwan's traditional from
 // Mainland/Singapore's simplified Chinese without changing existing saves.
@@ -24,6 +27,47 @@ assert.equal(match('zh-HK',languageChoices),'zh-Hant');
 assert.equal(match('zh-MO',languageChoices),'zh-Hant');
 assert.equal(match('de-AT',languageChoices),'de');
 assert.equal(match('zh-CN',[]),'en');
+
+// BYO-only sites must not request a missing /game/index.json. A GAME=1
+// build sets exactly one HTML metadata flag and retains game installation.
+const siteFlag = (content) => ({
+    querySelector(selector) {
+        assert.equal(selector, 'meta[name="openciv2-bundled-game"]');
+        return content === null ? null : {content};
+    }
+});
+assert.equal(siteBundlesGame(siteFlag('0')), false);
+assert.equal(siteBundlesGame(siteFlag('1')), true);
+assert.equal(siteBundlesGame(siteFlag(null)), false);
+const byoh = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+assert.match(byoh, /<meta name="openciv2-bundled-game" content="0">/);
+assert.match(byoh, /<link rel="icon" href="data:,">/);
+const mainSource = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
+assert.match(mainSource, /siteBundlesGame\(document\)/);
+assert.match(mainSource, /fetch\('game\/index\.json'/);
+
+// Relay discovery should be completely idle during solo game startup.
+// Only a real multiplayer connect/listen can probe /info.
+const openedSockets = [];
+class StubWebSocket {
+    constructor(url) {
+        openedSockets.push(url);
+        this.binaryType = '';
+    }
+    addEventListener() {}
+}
+const relayTest = makeNet('ws://relay.test:8765', StubWebSocket);
+assert.deepEqual(openedSockets, []);
+assert.equal(relayTest.localAddr(), '127.0.0.1');
+assert.equal(relayTest.udpOpen() >= 0, true);
+assert.deepEqual(openedSockets, []);
+const listenerHandle = relayTest.tcpOpen(4993);
+assert.equal(openedSockets.length, 0);
+assert.equal(relayTest.tcpListen(listenerHandle), 0);
+assert.deepEqual(openedSockets, [
+    'ws://relay.test:8765/info',
+    'ws://relay.test:8765/listen?port=4993'
+]);
 
 // keys
 assert.equal(vkOf({code: 'KeyA', key: 'a'}), 0x41);
@@ -66,8 +110,13 @@ assert.equal(openingVideoNeedsGesture(ownedOpening, false, ''), true);
 assert.equal(openingVideoNeedsGesture(ownedOpening, false, '?intro=diagnose'), true);
 assert.equal(openingVideoNeedsGesture(ownedOpening, false, '?intro=play'), true);
 assert.equal(openingVideoNeedsGesture(ownedOpening, false, '?intro=skip'), false);
-assert.equal(openingVideoNeedsGesture(ownedOpening, true, ''), false);
-assert.equal(openingVideoNeedsGesture(ownedOpening, true, '?intro=play'), false);
+// HD must not silently suppress a licensed original movie. This used to
+// return false and start directly at the menu despite the stored AVI.
+assert.equal(openingVideoNeedsGesture(ownedOpening, true, ''), true);
+assert.equal(openingVideoNeedsGesture(ownedOpening, true, '?intro=play'), true);
+assert.equal(openingVideoNeedsGesture(ownedOpening, true, '?intro=diagnose'), true);
+assert.equal(openingVideoNeedsGesture(ownedOpening, true, '?intro=skip'), false);
+assert.equal(openingVideoNeedsGesture([], true, ''), false);
 assert.equal(openingVideoNeedsGesture([], false, ''), false);
 const runningAudio = {state: 'running', resume() { throw new Error('already running'); }};
 assert.equal(await resumeOpeningAudioContext(runningAudio), true);
@@ -80,6 +129,9 @@ assert.equal(await resumeOpeningAudioContext(stalledAudio, 1), false);
 assert.equal(await resumeOpeningAudioContext({state: 'closed'}), false);
 const startupSource = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
 assert.match(startupSource, /env\.CIV2_SKIP_OPENING = '1'/);
+assert.match(startupSource, /const hdMovieOptIn = hdArtAvailable && introNeedsGesture/);
+assert.match(startupSource, /if \(hdMovieOptIn\)\s+env\.CIV2_BROWSER_HD_OPENING = '1'/);
+assert.match(startupSource, /hdMovieOptIn,/);
 assert.match(startupSource, /openingVideoNeedsGesture\(entries, hdArtAvailable, location.search\)/);
 assert.match(startupSource, /hd && !!window\.civ2Hd\?\.packBytes/);
 for (const field of ['ownedOpeningPresent', 'hdArtAvailable', 'skipRequested', 'gestureRequired', 'silent-fallback'])
@@ -95,12 +147,70 @@ assert.match(hostSource, /opts\.audioContext \|\| null/);
 const gamePage = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 assert.match(gamePage, /id="intro-start"/);
 
+// Browser graphics choice persists only as a preference; explicit URL wins.
+assert.equal(graphicsFromQuery('?hd=1'), 'hd');
+assert.equal(graphicsFromQuery('?hd=0'), 'classic');
+assert.equal(graphicsFromQuery('?lang=zh-CN'), null);
+assert.equal(hdArg('hd'), '1');
+const pref = new Map(), prefs = {
+    async getMeta(k) { return pref.get(k); },
+    async setMeta(k, v) { pref.set(k, v); }
+};
+let prompts = 0;
+assert.equal(await resolveGraphicsPreference(prefs, '', true, async () => {
+    prompts++; return 'hd';
+}), 'hd');
+assert.equal(pref.get(GRAPHICS_PREFERENCE_KEY), 'hd');
+assert.equal(await resolveGraphicsPreference(prefs, '', true, async () => {
+    prompts++; return 'classic';
+}), 'hd');
+assert.equal(prompts, 1);
+assert.equal(await resolveGraphicsPreference(prefs, '?hd=0', true, async () => {
+    throw Error('explicit URL should never ask');
+}), 'classic');
+assert.equal(pref.get(GRAPHICS_PREFERENCE_KEY), 'hd');
+pref.clear();
+assert.equal(await resolveGraphicsPreference(prefs, '', false, async () => 'hd'), 'classic');
+const graphicsPage = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+for (const id of ['graphics-mode', 'graphics-choice-dialog', 'graphics-first-classic',
+                  'graphics-first-hd', 'graphics-first-unavailable'])
+    assert.ok(graphicsPage.includes('id="' + id + '"'));
+assert.match(startupSource, /await resolveGraphicsPreference/);
+assert.match(startupSource, /web\.graphics_switch_confirm/);
+assert.match(startupSource, /location\.assign\(url\.href\)/);
+
 // // the desktop's scale (host.h's examples)
 assert.equal(desktopScale(1920, 1080, 0), 1);
 assert.equal(desktopScale(2560, 1440, 0), 2);
 assert.equal(desktopScale(3840, 2160, 0), 3);
 assert.equal(desktopScale(2940, 1782, 0), 3);
 assert.equal(desktopScale(800, 600, 2), 1);
+
+// Larger native UI targets original game readability, not Canvas stretching.
+// Default game layout and explicit native-scale settings are unaffected.
+assert.equal(desktopUiScale(2560, 1440, 0, ''), 2);
+assert.equal(desktopUiScale(2560, 1440, 0, '?lang=zh-CN&ui=large'), 3);
+assert.equal(desktopUiScale(1920, 1080, 0, '?ui=large'), 2);
+assert.equal(desktopUiScale(3840, 2160, 0, '?ui=large'), 4);
+assert.equal(desktopUiScale(2560, 1440, 2, '?ui=large'), 2);
+assert.equal(desktopUiScale(1280, 720, 0, '?ui=large'), 1);
+assert.deepEqual(initialDesktopGeometry(2560, 1440, 0, ''), {width: 1280, height: 720, scale: 2});
+assert.deepEqual(initialDesktopGeometry(2560, 1440, 0, '?ui=large'), {width: 853, height: 560, scale: 3});
+assert.deepEqual(initialDesktopGeometry(1920, 1080, 0, '?ui=large'), {width: 960, height: 560, scale: 2});
+assert.deepEqual(initialDesktopGeometry(3840, 2160, 0, '?ui=large'), {width: 960, height: 560, scale: 4});
+assert.deepEqual(initialDesktopGeometry(2560, 1440, 2, '?ui=large'), {width: 1280, height: 720, scale: 2});
+assert.deepEqual(initialDesktopGeometry(1280, 720, 0, '?ui=large'), {width: 1280, height: 720, scale: 1});
+assert.deepEqual(initialDesktopGeometry(640, 480, 0, '?ui=large'), {width: 640, height: 480, scale: 1});
+assert.deepEqual(initialDesktopGeometry(800, 600, 0, '?ui=large'), {width: 800, height: 600, scale: 1});
+const largeGeometry = initialDesktopGeometry(2560, 1440, 0, '?ui=large');
+const safeFrame = canvasFitSize(largeGeometry.width, largeGeometry.height, 2560, 1440, 1, 'fit');
+assert.ok(safeFrame.width <= 2560 && safeFrame.height <= 1440);
+assert.ok(largeGeometry.height >= 560 && largeGeometry.width >= 800);
+assert.ok(Math.abs(safeFrame.width / safeFrame.height - largeGeometry.width / largeGeometry.height) < 1e-12);
+
+
+
+
 
 // The visible controls must be in the actual shipped page, outside the
 // canvas, and labels must go through the standard game's translations.
@@ -407,6 +517,41 @@ assert.equal(hdWanted(iniSet(ini1, 'OpenCiv2', 'Mode', 'Classic'), null), -1);
 for (const n of [0, 1, 55, 56, 63, 64, 65, 119, 120, 1000]) {
     const b = Uint8Array.from({length: n}, (_, i) => (i * 37 + n) & 255);
     assert.equal(Buffer.from(sha256js(b)).toString('hex'), createHash('sha256').update(b).digest('hex'));
+}
+
+{
+// CIV2-T008: one persisted browser preference for effects, music and AVI.
+const prefs = new Map();
+const storage = {getItem: (key) => prefs.get(key) ?? null, setItem: (key, val) => prefs.set(key, val)};
+const master = createAudioVolume(storage);
+assert.equal(master.level, 100);
+assert.equal(master.gain, 1);
+assert.equal(master.muted, false);
+const gains = [];
+const off = master.subscribe((gain) => gains.push(gain));
+master.setLevel(35);
+assert.equal(master.gain, 0.35);
+master.setMuted(true);
+assert.equal(master.gain, 0);
+master.setLevel(70);
+assert.equal(master.gain, 0);  // changing slider while muted remains silent
+master.setMuted(false);
+assert.equal(master.gain, 0.7); // restores retained slider position
+assert.deepEqual(gains, [0.35, 0, 0, 0.7]);
+off();
+master.setLevel(150);
+assert.equal(master.level, 100);
+assert.equal(gains.length, 4);
+const reloadMaster = createAudioVolume(storage);
+assert.equal(reloadMaster.level, 100);
+assert.equal(reloadMaster.muted, false);
+reloadMaster.setLevel(-100);
+assert.equal(reloadMaster.level, 0);
+assert.equal(createAudioVolume({getItem: () => '{bad-json', setItem: () => {}}).gain, 1);
+assert.equal(createAudioVolume({getItem: () => '{"level":50,"muted":true}', setItem: () => {}}).gain, 0);
+assert.equal(audioLabels('zh-Hans').mute, '静音');
+assert.equal(audioLabels('zh-Hant').unmute, '取消靜音');
+assert.equal(audioLabels('en').volume, 'Volume');
 }
 
 console.log('src/web unit tests passed');

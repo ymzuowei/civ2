@@ -14578,3 +14578,17 @@ Civilopedia(&P)
 Πλήρης οθόνη
 @@openciv2.web.exit_fullscreen
 Έξοδος από πλήρη οθόνη
+@@openciv2.web.graphics_label
+Γραφικά
+@@openciv2.web.graphics_choose_title
+Επιλογή γραφικών χάρτη
+@@openciv2.web.graphics_choose_note
+Επιλέξτε την αρχική ή την υψηλή ανάλυση πριν ξεκινήσετε. Μπορείτε να αλλάξετε αργότερα από το μενού γραφικών· το παιχνίδι θα φορτωθεί ξανά.
+@@openciv2.web.graphics_classic
+Αρχικά
+@@openciv2.web.graphics_hd
+Υψηλή ανάλυση
+@@openciv2.web.graphics_unavailable
+Τα γραφικά υψηλής ανάλυσης δεν έχουν εγκατασταθεί. Τα αρχικά γραφικά είναι διαθέσιμα.
+@@openciv2.web.graphics_switch_confirm
+Αποθηκεύστε πρώτα το παιχνίδι. Η αλλαγή θα φορτώσει ξανά τη σελίδα και οι κινήσεις που δεν αποθηκεύτηκαν θα χαθούν. Συνέχεια;

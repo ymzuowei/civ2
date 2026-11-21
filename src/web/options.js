@@ -91,12 +91,12 @@ export function openingVideoPresent(entries) {
     return entries.some(([name]) => /(?:^|\/)video\/opening\.avi$/i.test(name.replace(/\\/g, '/')));
 }
 
-// The original game's HD art mode skips the opening itself. Do not ask for a
-// browser audio click when the native startup will never enter its AVI modal
-// window. This is only a pre-start UI gate decision; it does not change the
-// game's original HD movie policy or the stored game settings.
-export function openingVideoNeedsGesture(entries, hd, search = '') {
-    return !hd && !skipBrowserOpening(search) && openingVideoPresent(entries);
+// The browser may opt into the owner's original OPENING.AVI in either art
+// mode. HD/native desktop's historical skip is preserved unless the Web host
+// explicitly sets CIV2_BROWSER_HD_OPENING. Only ask for a user gesture when
+// that owned AVI exists and ?intro=skip has not been selected.
+export function openingVideoNeedsGesture(entries, _hd, search = '') {
+    return !skipBrowserOpening(search) && openingVideoPresent(entries);
 }
 
 
@@ -121,4 +121,12 @@ export async function resumeOpeningAudioContext(context, timeoutMs = 3000) {
     } finally {
         clearTimeout(timer);
     }
+}
+
+
+// Bundled-game availability is a build-time property, not browser storage.
+// A public BYO build has no game/index.json; don't probe a known-absent
+// endpoint on every single-player launch (and don't clear any saved media).
+export function siteBundlesGame(page) {
+    return page.querySelector('meta[name="openciv2-bundled-game"]')?.content === '1';
 }

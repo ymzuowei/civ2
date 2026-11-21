@@ -1,0 +1,3 @@
+# Legacy Civ II translations contain non-UTF-8 bytes and mixed code pages.
+# Never rewrite their tracked line endings during Git for Windows checkout.
+*.txt -text

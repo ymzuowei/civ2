@@ -29,6 +29,8 @@
  */
 #include "plat.h"
 #include "hd.h"
+#include "hd_grid_batch.h"
+#include <limits.h>
 #include "../host/host.h"
 #define STBI_ONLY_PNG
 #define STBI_NO_STDIO
@@ -879,6 +881,169 @@ void hd_dc_polygon(DC *dc, const double *xy, int n, unsigned int c)
 
 /* A scroll bar arrow's chevron, centred at (cx, cy), pointing up, down,
    left or right (0 to 3), on the arrow's white (as scroll_theme.h's). */
+
+/* Fine-tune two independent overlays without touching the game's grid
+   sprites, terrain texture or input geometry. The normal grid gets only a
+   very light dark HD accent (40/255, not the former 118/255); the pale city
+   work-radius stays thin and fades slightly more at smaller native zoom.
+   Native map tile width is independent of browser Fit and device DPR. */
+static unsigned hd_radius_grid_strength(int tile_width)
+{
+    unsigned strength;
+    /* Preserve a clear pale city cue but reduce its extra emphasis. The
+       original city-radius grid Sprite remains present at every zoom. */
+    if (tile_width >= 80)
+        return 164u;
+    if (tile_width <= 0)
+        return 104u;
+    strength = 164u * (unsigned)tile_width / 80u;
+    return strength < 104u ? 104u : strength;
+}
+
+/* A shared diamond edge appears in two tile outlines. Blending the
+   second tile over the first gives it a different apparent width and
+   brightness, and crossing corners brighten yet again. Instead capture
+   the greatest per-pixel coverage over the full post-terrain pass, then
+   composite each pixel only once. Pale city radius wins at joins.
+   The scratch mask is clipped to the current full/partial redraw and is
+   freed before returning to the game. No original art or saves involved. */
+typedef struct {
+    Bitmap *b;
+    uint16_t *pixels;     /* low 8 bits: alpha; bit 8: pale city radius */
+    int l, t, r, bot;     /* native pixel clip */
+    int pitch;            /* HD pixels per row in this mask */
+    int minx, miny, maxx, maxy; /* touched HD pixel bounds, inclusive */
+} HDGridBatch;
+static HDGridBatch grid_batch;
+
+int hd_grid_batch_begin(void *bits, int left, int top, int right, int bottom)
+{
+    Bitmap *b;
+    size_t pw, ph;
+    int d = hd_density;
+    uint16_t *mask;
+    if (grid_batch.pixels || !hd_art || !bits || d <= 0 ||
+        !(b = bmp_of_bits(bits)) || !plane(b) ||
+        !clip_rect(b, &left, &top, &right, &bottom))
+        return 0;
+    pw = (size_t)(right - left) * (unsigned)d;
+    ph = (size_t)(bottom - top) * (unsigned)d;
+    if (!pw || !ph || pw > INT_MAX || ph > INT_MAX ||
+        (size_t)right > (size_t)INT_MAX / (unsigned)d ||
+        (size_t)bottom > (size_t)INT_MAX / (unsigned)d ||
+        pw > SIZE_MAX / ph || pw * ph > SIZE_MAX / sizeof *mask ||
+        !(mask = calloc(pw * ph, sizeof *mask)))
+        return 0;      /* original grid sprites remain visible on OOM */
+    grid_batch.b = b;
+    grid_batch.pixels = mask;
+    grid_batch.l = left; grid_batch.t = top;
+    grid_batch.r = right; grid_batch.bot = bottom;
+    grid_batch.pitch = (int)pw;
+    grid_batch.minx = right * d;
+    grid_batch.miny = bottom * d;
+    grid_batch.maxx = left * d - 1;
+    grid_batch.maxy = top * d - 1;
+    return 1;
+}
+
+void hd_grid_batch_end(void *bits)
+{
+    HDGridBatch *g = &grid_batch;
+    int d = hd_density, ix, iy;
+    if (!g->pixels)
+        return;
+    if (g->b == bmp_of_bits(bits) && d > 0 &&
+        g->minx <= g->maxx && g->miny <= g->maxy) {
+        int l = g->minx / d, t = g->miny / d;
+        int r = g->maxx / d + 1, bot = g->maxy / d + 1;
+        /* Reconcile any last original Sprite pixels once, before changing
+           the HD plane. The mask does not alter the plane while gathering. */
+        sync_rect(g->b, l, t, r, bot);
+        for (iy = g->miny; iy <= g->maxy; iy++)
+            for (ix = g->minx; ix <= g->maxx; ix++) {
+                uint16_t sample = g->pixels[(size_t)(iy - g->t * d) *
+                                            g->pitch + ix - g->l * d];
+                unsigned alpha = sample & 255u;
+                unsigned color = (sample & 0x100u) ? 0xfaf8f4u : 0x0b1815u;
+                uint32_t *dst, old;
+                if (!alpha)
+                    continue;
+                dst = g->b->hd + (size_t)iy * g->b->w * d + ix;
+                old = *dst;
+                *dst = 0xff000000u |
+                       (((color >> 16 & 255u) * alpha + (old >> 16 & 255u) * (255u - alpha)) / 255u) << 16 |
+                       (((color >> 8 & 255u) * alpha + (old >> 8 & 255u) * (255u - alpha)) / 255u) << 8 |
+                       (((color & 255u) * alpha + (old & 255u) * (255u - alpha)) / 255u);
+            }
+        commit_rect(g->b, l, t, r, bot);
+    }
+    free(g->pixels);
+    memset(g, 0, sizeof *g);
+}
+
+void hd_map_grid_contrast(void *bits, int x, int y, int w, int h, int radius_tile)
+{
+    Bitmap *b;
+    int d = hd_density, l, t, r, bot, ix, iy, edge;
+    double path[10], stroke = 0.56, limit = stroke * stroke;
+    unsigned strength;
+    if (!hd_art || !bits || w < 2 || h < 2 ||
+        !(b = bmp_of_bits(bits)) || b != grid_batch.b || !grid_batch.pixels)
+        return;
+    strength = radius_tile ? hd_radius_grid_strength(w) : 40u;
+    /* The pale radius may sample one native pixel beyond tile edges, but
+       neither category may escape the full/partial redraw clip. */
+    l = x - (radius_tile ? 1 : 0);
+    t = y - (radius_tile ? 1 : 0);
+    r = x + w + (radius_tile ? 1 : 0);
+    bot = y + h + (radius_tile ? 1 : 0);
+    if (l < grid_batch.l) l = grid_batch.l;
+    if (t < grid_batch.t) t = grid_batch.t;
+    if (r > grid_batch.r) r = grid_batch.r;
+    if (bot > grid_batch.bot) bot = grid_batch.bot;
+    if (l >= r || t >= bot)
+        return;
+    path[0] = x; path[1] = y + h / 2.0;
+    path[2] = x + w / 2.0; path[3] = y;
+    path[4] = x + w; path[5] = y + h / 2.0;
+    path[6] = x + w / 2.0; path[7] = y + h;
+    path[8] = path[0]; path[9] = path[1];
+    for (iy = t * d; iy < bot * d; iy++)
+        for (ix = l * d; ix < r * d; ix++) {
+            double px = (ix + .5) / d, py = (iy + .5) / d, best = limit;
+            unsigned a;
+            for (edge = 0; edge < 4; edge++) {
+                double z = seg_dist2(px, py, path[2 * edge], path[2 * edge + 1],
+                                     path[2 * edge + 2], path[2 * edge + 3]);
+                if (z < best)
+                    best = z;
+            }
+            if (best >= limit)
+                continue;
+            a = best < .12 ? strength : (unsigned)(strength * (limit - best) / (limit - .12));
+            if (!a)
+                continue;
+            /* Coverage union, not repeated source-over blending. The
+               pale radius has priority over a dark ordinary tile edge
+               at their shared boundary, independent of tile order. */
+            {
+                uint16_t sample = (uint16_t)(a | (radius_tile ? 0x100u : 0u));
+                uint16_t *stored = grid_batch.pixels +
+                    (size_t)(iy - grid_batch.t * d) * grid_batch.pitch +
+                    ix - grid_batch.l * d;
+                uint16_t old_sample = *stored;
+                if ((radius_tile && !(old_sample & 0x100u)) ||
+                    ((!!(old_sample & 0x100u) == !!radius_tile) &&
+                     a > (old_sample & 255u)))
+                    *stored = sample;
+                if (ix < grid_batch.minx) grid_batch.minx = ix;
+                if (iy < grid_batch.miny) grid_batch.miny = iy;
+                if (ix > grid_batch.maxx) grid_batch.maxx = ix;
+                if (iy > grid_batch.maxy) grid_batch.maxy = iy;
+            }
+        }
+}
+
 void hd_dc_chevron(DC *dc, double cx, double cy, int dir, unsigned int c, unsigned int face)
 {
     static const double up[6] = {-3.3, 1.3, 0, -1.9, 3.3, 1.3};

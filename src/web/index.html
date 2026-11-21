@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OpenCiv2</title>
+<!-- Build-time mode: 0 means the player imports game files locally. -->
+<meta name="openciv2-bundled-game" content="0">
+<!-- Avoid a stray /favicon.ico 404; no extra binary image file required. -->
+<link rel="icon" href="data:,">
 <style>
   /* the game's look, drawn here (none of the game's own files: the page comes before them):
      the main menu's brown desktop, its dialogs' grey marble in a bevelled frame, Times */
@@ -99,6 +103,12 @@
                    padding: 0.25rem 0.35rem; background: rgba(30, 30, 30, 0.82); color: #fff;
                    font: 14px/1.25 var(--serif); opacity: 0.66; border: 1px solid #777; }
   #game-controls:hover, #game-controls:focus-within { opacity: 1; }
+  #game-controls .audio-group { display: flex; align-items: center; gap: 0.25rem;
+                                border-left: 1px solid #888; padding-left: 0.4rem; }
+  #game-controls #audio-volume { width: 6rem; margin: 0; accent-color: #e1dccb; cursor: pointer; }
+  #game-controls #audio-level { min-width: 2.5rem; text-align: right; font: 12px/1.3 sans-serif; }
+  #game-controls #audio-mute { min-width: 2rem; padding: 0.15rem; }
+  #game-controls input:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   #game-controls label { display: flex; align-items: center; gap: 0.3rem; white-space: nowrap; }
   #game-controls select { font: inherit; min-height: 1.75rem; max-width: 11rem; }
   #game-controls button { font: inherit; min-height: 1.75rem; margin: 0; min-width: 0;
@@ -106,7 +116,8 @@
   #game-controls select:focus-visible, #game-controls button:focus-visible {
                           outline: 2px solid #fff; outline-offset: 2px; }
   @media (max-width: 500px) {
-    #game-controls { gap: 0.15rem; padding: 0.2rem; font-size: 12px; }
+    #game-controls { gap: 0.15rem; padding: 0.2rem; font-size: 12px; flex-wrap: wrap; justify-content: flex-end; }
+    #game-controls #audio-volume { width: 4.5rem; }
     #game-controls button { padding: 0.15rem 0.3rem; }
     #game-controls select { max-width: 7rem; }
   }
@@ -185,17 +196,38 @@
     <button id="intro-start" type="button" data-t="web.play">Play</button>
   </div>
   <div id="game-controls" role="group" aria-labelledby="display-label">
+    <label><span data-t="web.graphics_label">Graphics</span>
+      <select id="graphics-mode" aria-label="Graphics">
+        <option value="classic" data-t="web.graphics_classic">Original</option>
+        <option value="hd" data-t="web.graphics_hd">High resolution</option>
+      </select>
+    </label>
     <label><span id="display-label" data-t="web.display">Display</span>
       <select id="display-mode">
         <option value="integer" data-t="web.display_integer">Pixel perfect</option>
         <option value="fit" data-t="web.display_fit">Fit viewport</option>
       </select>
     </label>
+    <div class="audio-group" role="group" aria-labelledby="audio-label">
+      <label id="audio-label" for="audio-volume">Volume</label>
+      <input id="audio-volume" type="range" min="0" max="100" step="1" value="100" aria-label="Volume">
+      <output id="audio-level" for="audio-volume">100%</output>
+      <button id="audio-mute" type="button" aria-label="Mute" aria-pressed="false" title="Mute">🔊</button>
+    </div>
     <button id="fullscreen" type="button" data-t="web.enter_fullscreen">Fullscreen</button>
     <button id="saves-open" title="Export or import saved games" data-t="web.saves" data-t-title="web.saves_title">Saves</button>
   </div>
 </div>
 <input id="import-saves" type="file" multiple accept=".sav,.zip,.scn,.mp,.ini,.dat">
+<dialog id="graphics-choice-dialog" aria-labelledby="graphics-first-title">
+  <h2 id="graphics-first-title" class="dialog-title" data-t="web.graphics_choose_title">Choose map graphics</h2>
+  <p class="dialog-text" data-t="web.graphics_choose_note">Choose once before entering the game. Later you can change Graphics in the toolbar; switching reloads the game.</p>
+  <p class="dialog-text" id="graphics-first-unavailable" hidden data-t="web.graphics_unavailable">The HD texture pack is not installed. Original graphics remain available.</p>
+  <div class="dialog-buttons">
+    <button id="graphics-first-classic" type="button" data-t="web.graphics_classic">Original</button>
+    <button id="graphics-first-hd" type="button" data-t="web.graphics_hd">High resolution</button>
+  </div>
+</dialog>
 <dialog id="saves-dialog">
   <h2 data-t="web.saves_heading">Saved games</h2>
   <p class="dim" data-t="web.saves_note">Your saved games, scenarios you made, <code>CIV.INI</code>, <code>CIV2.DAT</code> and

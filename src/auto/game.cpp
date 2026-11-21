@@ -958,6 +958,10 @@ void __cdecl intro_play_opening_video(void)
   RECT screen_rect2;
   int open_rc;
   const char *browser_skip_intro = getenv("CIV2_SKIP_OPENING");
+  /* Only the Web host may request the player's own AVI in HD mode.
+     Native desktop keeps its existing HD default; no user media is copied
+     into the public build or derived from the optional HD art pack. */
+  const char *browser_hd_opening = getenv("CIV2_BROWSER_HD_OPENING");
   
   player.construct();
   /* BF-297 (Peter Johnson's ledger): the audio's flags start clear, as the
@@ -981,14 +985,15 @@ void __cdecl intro_play_opening_video(void)
     str_clear((char *)path);
     str_append((char *)path,(const char *)&str_civ2_video_opening_avi);
     found = file_resolve_path((const char *)path);
-    /* (port) HD art skips the original opening, preserving the palette's
-       single random call. In the browser, do the same by default: when
-       OPENING.AVI renders black, its modal window otherwise blocks the
-       main menu until a user click. ?intro=play removes this env flag.
-       Native desktop builds are unchanged (no flag by default).
-       Keep the same palette/RNG path as the existing HD skip. */
-    if (found != 0 && (hd_art ||
-        (browser_skip_intro && browser_skip_intro[0] == '1' && !browser_skip_intro[1]))) {
+    /* Native desktop continues to skip the original AVI in HD art mode,
+       keeping its old palette/RNG path. The Web host explicitly permits the
+       player's locally installed OPENING.AVI in HD mode after its WebAudio
+       gesture gate; without that opt-in, this path stays unchanged.
+       ?intro=skip always wins even if both variables are present. */
+    if (found != 0 &&
+        ((browser_skip_intro && browser_skip_intro[0] == '1' && !browser_skip_intro[1]) ||
+         (hd_art && !(browser_hd_opening &&
+                      browser_hd_opening[0] == '1' && !browser_hd_opening[1])))) {
       player.palette.new_version();
       found = 0;
     }

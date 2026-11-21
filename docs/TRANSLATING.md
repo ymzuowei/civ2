@@ -354,6 +354,7 @@ binary-safe tooling and the existing historical-prefix, codepage and
 exact-checkout tests. This temporary English fallback is intentionally
 not a claim of completed German/Greek/Esperanto/Latin localization.
 
-The font reader now closes its UTF-8 translation files via a context
-manager, avoiding the prior nonfatal `ResourceWarning` during the
-user's Windows run. Full Windows WASM and gameplay F01–F08 remain pending.
+Both `tools/lang_fonts.py` and the actual warning source
+`tools/build_web.py::lang_file()` now close translation file handles
+with context managers, avoiding the prior nonfatal
+`tools/build_web.py:113 ResourceWarning` during the owner's Windows run. Full Windows WASM and gameplay F01–F08 remain pending.

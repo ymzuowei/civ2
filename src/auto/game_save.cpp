@@ -1,6 +1,7 @@
 /* The game, saving and loading: saved games, passwords, preferences: functions translated from the original
  * (tools/gen_c.py, now edited directly), in address order. */
 #include "auto_common.h"
+#include "../include/utf8.h" /* UTF-8 leader names: keep complete characters in filenames. */
 
 /* CIV2-T011: last successful manual save or loaded game's folder. This is
  * session state, not FileFolder (which changes on an unrelated file dialog).
@@ -838,6 +839,27 @@ i32 __cdecl save_write_game(const char *file_name,int is_scenario)
 
 /* 00475666: written by hand in src/game/retvals.cpp */
 
+/* The original Save As name begins with the leader's first two letters.
+ * For UTF-8 translations those are two characters, not two bytes: slicing
+ * at byte 2 broke the first Chinese character and painted a missing-glyph
+ * square in the browser. Legacy single-byte languages keep two bytes.
+ * If a translated name is malformed, never create a broken UTF-8 prefix. */
+static size_t save_leader_prefix_bytes(const char *name)
+{
+  int n = (int)strlen(name), at = 0, i;
+  for (i = 0; i < 2 && at < n; i++) {
+    int size = u8_len_at(name, n, at);
+    if (plat_text_utf8) {
+      int decoded_size;
+      if (u8_decode(name + at, n - at, &decoded_size) == U8_BAD)
+        break;
+      size = decoded_size;
+    }
+    at += size;
+  }
+  return (size_t)at;
+}
+
 /* 0047758c auto */
 void __cdecl game_save_dialog(int is_scenario)
 
@@ -885,7 +907,7 @@ void __cdecl game_save_dialog(int is_scenario)
       str_clear((file_name_buf + 1));
       leader_name = (i32)(civ_leader_name(human_civ[0]));
       crt_strcat(file_name_buf + 1,(const char *)((const void *)leader_name));
-      file_name_buf[3] = 0;
+      file_name_buf[1 + save_leader_prefix_bytes(file_name_buf + 1)] = 0;
       str_append((file_name_buf + 1),(const char *)&str_empty_96);
       str_ptr = file_name_buf;
       while (str_ptr = str_ptr + 1, *str_ptr != '\0') {

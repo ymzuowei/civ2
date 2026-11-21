@@ -79,8 +79,15 @@ class HdGridContrastContract(unittest.TestCase):
         values = [(w, alpha(w)) for w in (8, 32, 48, 56, 64, 72, 79, 80, 88)]
         self.assertEqual([a for _, a in values],
                          [120, 120, 120, 128, 147, 165, 181, 184, 184])
-        self.assertEqual(values, sorted(values))
+        self.assertTrue(all(
+            values[i][1] <= values[i + 1][1]
+            for i in range(len(values) - 1)
+        ))
         self.assertTrue(all(120 <= value <= 184 for _, value in values))
+        # Normal large-desktop zoom +2: tile 80 => original 184 intensity.
+        self.assertEqual(alpha((2 + 8) * 64 // 8), 184)
+        # Each smaller native zoom step diminishes only the HD accent.
+        self.assertEqual(alpha((0 + 8) * 64 // 8), 147)
 
 
     def test_city_radius_postpass_follows_all_neighbor_terrain_draws(self):

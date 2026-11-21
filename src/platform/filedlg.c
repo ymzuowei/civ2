@@ -204,7 +204,10 @@ static int folder_name_ok(const char *name)
     size_t n = strlen(name), stem = strcspn(name, ".");
     const char *devices[] = {"CON", "PRN", "AUX", "NUL"};
     size_t i;
-    if (!n || n > 120 || name[n - 1] == '.' || name[n - 1] == ' ')
+    /* Dot-prefixed folders are deliberately hidden by refill(), so never
+     * create a Save folder that the player cannot subsequently navigate. */
+    if (!n || n > 120 || name[0] == '.' || name[0] == ' ' ||
+        name[n - 1] == '.' || name[n - 1] == ' ')
         return 0;
     if (!strcmp(name, ".") || !strcmp(name, ".."))
         return 0;

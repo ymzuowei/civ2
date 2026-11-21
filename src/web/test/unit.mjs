@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import {vkOf, Wheel, desktopScale, desktopUiScale, initialDesktopGeometry, argbToRgba, liveDesktopResize, canvasFitSize, displayModeFromSearch} from '../host.js';
 import {MemFS, makeWasi, normalize} from '../wasi.js';
+import {createAudioVolume, audioLabels} from '../audio_volume.js';
 import {unzip, zip as makeZip, crc32} from '../zip.js';
 import {savesKind, playerFiles, importPath, savesToImport} from '../saves.js';
 import {deflateRawSync, inflateRawSync} from 'node:zlib';
@@ -517,5 +518,38 @@ for (const n of [0, 1, 55, 56, 63, 64, 65, 119, 120, 1000]) {
     const b = Uint8Array.from({length: n}, (_, i) => (i * 37 + n) & 255);
     assert.equal(Buffer.from(sha256js(b)).toString('hex'), createHash('sha256').update(b).digest('hex'));
 }
+
+// CIV2-T008: one persisted browser preference for effects, music and AVI.
+const prefs = new Map();
+const storage = {getItem: (key) => prefs.get(key) ?? null, setItem: (key, val) => prefs.set(key, val)};
+const master = createAudioVolume(storage);
+assert.equal(master.level, 100);
+assert.equal(master.gain, 1);
+assert.equal(master.muted, false);
+const gains = [];
+const off = master.subscribe((gain) => gains.push(gain));
+master.setLevel(35);
+assert.equal(master.gain, 0.35);
+master.setMuted(true);
+assert.equal(master.gain, 0);
+master.setLevel(70);
+assert.equal(master.gain, 0);  // changing slider while muted remains silent
+master.setMuted(false);
+assert.equal(master.gain, 0.7); // restores retained slider position
+assert.deepEqual(gains, [0.35, 0, 0, 0.7]);
+off();
+master.setLevel(150);
+assert.equal(master.level, 100);
+assert.equal(gains.length, 4);
+const reloadMaster = createAudioVolume(storage);
+assert.equal(reloadMaster.level, 100);
+assert.equal(reloadMaster.muted, false);
+reloadMaster.setLevel(-100);
+assert.equal(reloadMaster.level, 0);
+assert.equal(createAudioVolume({getItem: () => '{bad-json', setItem: () => {}}).gain, 1);
+assert.equal(createAudioVolume({getItem: () => '{"level":50,"muted":true}', setItem: () => {}}).gain, 0);
+assert.equal(audioLabels('zh-Hans').mute, '静音');
+assert.equal(audioLabels('zh-Hant').unmute, '取消靜音');
+assert.equal(audioLabels('en').volume, 'Volume');
 
 console.log('src/web unit tests passed');

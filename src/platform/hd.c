@@ -880,23 +880,22 @@ void hd_dc_polygon(DC *dc, const double *xy, int n, unsigned int c)
 /* A scroll bar arrow's chevron, centred at (cx, cy), pointing up, down,
    left or right (0 to 3), on the arrow's white (as scroll_theme.h's). */
 
-/* Leave ordinary grid pixels exactly as the game draws its original
-   map_grid_sprite: extra dark HD edges obscure textured terrain. Keep one
-   pale radius-only HD highlight, added after neighboring terrain has been
-   drawn. Fade only that added highlight as the native map zooms out.
-   Map scale (tile width) is independent of browser Fit/DPR scaling. */
+/* Fine-tune two independent overlays without touching the game's grid
+   sprites, terrain texture or input geometry. The normal grid gets only a
+   very light dark HD accent (40/255, not the former 118/255); the pale city
+   work-radius stays thin and fades slightly more at smaller native zoom.
+   Native map tile width is independent of browser Fit and device DPR. */
 static unsigned hd_radius_grid_strength(int tile_width)
 {
     unsigned strength;
-    /* A normal large-desktop map at zoom +2 uses an 80-pixel native tile.
-       From zoom +1 downwards the added highlight fades smoothly; retain
-       a legible minimum while the original radius sprite remains intact. */
+    /* Preserve a clear pale city cue but reduce its extra emphasis. The
+       original city-radius grid Sprite remains present at every zoom. */
     if (tile_width >= 80)
-        return 184u;
+        return 164u;
     if (tile_width <= 0)
-        return 120u;
-    strength = 184u * (unsigned)tile_width / 80u;
-    return strength < 120u ? 120u : strength;
+        return 104u;
+    strength = 164u * (unsigned)tile_width / 80u;
+    return strength < 104u ? 104u : strength;
 }
 
 void hd_map_grid_contrast(void *bits, int x, int y, int w, int h, int radius_tile)
@@ -904,18 +903,19 @@ void hd_map_grid_contrast(void *bits, int x, int y, int w, int h, int radius_til
     Bitmap *b;
     int d = hd_density, l, t, r, bot, ix, iy, edge;
     double path[10], stroke = 0.56, limit = stroke * stroke;
-    unsigned color = 0xf2eee4u;
+    unsigned color = radius_tile ? 0xf2eee4u : 0x0b1815u;
     unsigned strength;
-    if (!radius_tile || !hd_art || !bits || w < 2 || h < 2 ||
+    if (!hd_art || !bits || w < 2 || h < 2 ||
         !(b = bmp_of_bits(bits)) || !plane(b))
         return;
-    strength = hd_radius_grid_strength(w);
-    /* Only the pale radius uses one extra native pixel of anti-alias
-       sampling at a shared tile edge; bitmap bounds stay clipped. */
-    l = x - 1;
-    t = y - 1;
-    r = x + w + 1;
-    bot = y + h + 1;
+    strength = radius_tile ? hd_radius_grid_strength(w) : 40u;
+    /* Pale city-radius only: preserve the 1px AA seam margin. The ordinary
+       grid stays clipped to the original tile bounds and cannot overpaint
+       the white radius, which is drawn later in the final postpass. */
+    l = x - (radius_tile ? 1 : 0);
+    t = y - (radius_tile ? 1 : 0);
+    r = x + w + (radius_tile ? 1 : 0);
+    bot = y + h + (radius_tile ? 1 : 0);
     if (!clip_rect(b, &l, &t, &r, &bot))
         return;
     sync_rect(b, l, t, r, bot);

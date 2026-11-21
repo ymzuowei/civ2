@@ -103,7 +103,7 @@ class SaveFolderContractTests(unittest.TestCase):
         # translations stay unchanged; no transcoding or files generated.
         template = (ROOT / "data/native/lang/en.txt").read_bytes()
         def own_keys(data):
-            return set(re.findall(rb"(?m)^@@openciv2\\.([A-Za-z0-9_.-]+)\\r?$", data))
+            return set(re.findall(rb"(?m)^@@openciv2\.([A-Za-z0-9_.-]+)\r?$", data))
         expected = own_keys(template)
         folder = {k.encode("ascii") for k in (
             "file.new_folder", "file.create_folder", "file.folder_name",
@@ -122,7 +122,7 @@ class SaveFolderContractTests(unittest.TestCase):
                 self.assertEqual(expected - actual, folder if code in legacy else set())
                 self.assertEqual(actual - expected, set())
                 if code in legacy:
-                    blob = b"blob " + str(len(raw)).encode("ascii") + b"\\0" + raw
+                    blob = b"blob " + str(len(raw)).encode("ascii") + b"\0" + raw
                     self.assertEqual(hashlib.sha1(blob).hexdigest(), legacy[code],
                                      "Historical locale bytes must not be re-encoded")
 

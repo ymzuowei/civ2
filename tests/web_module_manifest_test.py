@@ -14,6 +14,8 @@ class BrowserModulePackagingTests(unittest.TestCase):
         manifest = page_manifest(ROOT / "tools/build_web.py")
         self.assertIn("main.js", manifest)
         self.assertIn("graphics_choice.js", manifest)
+        self.assertIn("audio_volume.js", manifest)
+        self.assertIn("toolbar.js", manifest)
         self.assertEqual(missing_modules(ROOT / "src/web", manifest), [])
 
     def test_generated_english_texts_are_not_source_tree_modules(self):

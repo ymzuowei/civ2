@@ -13,6 +13,9 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#ifdef _WIN32
+#include <direct.h>
+#endif
 
 char plat_game_dir[1024];       /* host directory of the game files */
 char plat_win_dir[1024];        /* host directory standing in for C:\WINDOWS */

@@ -38,6 +38,44 @@ class MasterAudioSourceContracts(unittest.TestCase):
         self.assertIn("controls.addEventListener('keydown', (e) => e.stopPropagation())", self.page)
         self.assertIn("controls.addEventListener('keyup', (e) => e.stopPropagation())", self.page)
 
+    def test_t012_mute_is_high_contrast_svg_and_fold_toggle_accessible(self):
+        toolbar = (ROOT / "src/web/toolbar.js").read_text(encoding="utf-8")
+        for marker in ('id="game-controls-content"', 'id="controls-toggle"',
+                       'aria-controls="game-controls-content"',
+                       'aria-expanded="true"', 'id="controls-toggle-chevron"',
+                       'id="audio-waves"', 'id="audio-slash"',
+                       '#game-controls #audio-mute[aria-pressed="true"]',
+                       '#game-controls .icon-button'):
+            self.assertIn(marker, self.html)
+        self.assertNotIn("🔊", self.html)
+        self.assertNotIn("🔇", self.html)
+        self.assertNotIn("audioMute.textContent =", self.page)
+        for marker in ("content.hidden = collapsed",
+                       "browserToolbar.setCollapsed(", "syncToolbar();",
+                       "chevron.setAttribute('d'", "$('audio-waves').hidden = muted",
+                       "$('audio-slash').hidden = !muted",
+                       "mode.title = hint", "syncDisplayHelp();"):
+            self.assertIn(marker, self.page)
+        self.assertIn("openciv2.browser-toolbar.v1", toolbar)
+        self.assertIn("getItem(TOOLBAR_KEY) === 'collapsed'", toolbar)
+        self.assertIn("setItem(TOOLBAR_KEY", toolbar)
+        self.assertNotIn("indexedDB", toolbar)
+        self.assertNotIn("new AudioContext", toolbar)
+        self.assertIn("import {createToolbarCollapse, toolbarLabels} from './toolbar.js'", self.page)
+        self.assertIn("'toolbar.js'", self.build)
+
+    def test_t012_display_help_explains_matching_scale_without_changing_math(self):
+        toolbar = (ROOT / "src/web/toolbar.js").read_text(encoding="utf-8")
+        host = (ROOT / "src/web/host.js").read_text(encoding="utf-8")
+        self.assertIn('aria-describedby="display-help"', self.html)
+        self.assertIn('id="display-help"', self.html)
+        self.assertIn('Pixel perfect: prefer whole-number pixel scaling', toolbar)
+        self.assertIn('两种模式可能看起来相同', toolbar)
+        self.assertIn("mode === 'fit' || available < 1 ? available : Math.floor(available)", host)
+        self.assertIn("window.dispatchEvent(new Event('civ2-display-change'))", self.page)
+        self.assertIn("controls.addEventListener('keydown', (e) => e.stopPropagation())", self.page)
+        self.assertIn("controls.addEventListener('keyup', (e) => e.stopPropagation())", self.page)
+
     def test_user_owned_game_content_and_autoplay_unchanged(self):
         self.assertIn("openciv2.browser-audio.v1", self.volume)
         self.assertNotIn("new AudioContext", self.volume)

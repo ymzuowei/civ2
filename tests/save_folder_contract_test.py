@@ -69,6 +69,7 @@ class SaveFolderContractTests(unittest.TestCase):
         self.assertIn('set_text(fd.folderbutton, extras_text(', self.dialog)
         self.assertIn('extras_text(creating ? "file.create_folder" : "file.new_folder")', self.dialog)
         self.assertIn("InvalidateRect(h, NULL, TRUE);", self.dialog)
+        self.assertIn("UpdateWindow(h);", self.dialog)
 
     def test_save_leader_prefix_preserves_complete_utf8_characters(self):
         source = self.save

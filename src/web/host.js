@@ -8,6 +8,7 @@
 // (drawing, input, sound), and the stack is wound back to go on.
 
 import {makeWasi, ExitStatus} from './wasi.js';
+import {wasm32Offset, wasm32Bytes, wasm32Words, makeWasm32DataView} from './wasm32.js';
 import {makeNet} from './net.js';
 
 const EV = {NONE: 0, QUIT: 1, KEYDOWN: 2, KEYUP: 3, MOTION: 4, BUTTONDOWN: 5, BUTTONUP: 6, EXPOSED: 7, COMMAND: 8,
@@ -152,6 +153,8 @@ export function argbToRgba(src, dst, n) {
 export async function runGame(opts) {
     const {canvas, fs} = opts;
     const councilTrace = !!opts.councilTrace;
+    const memoryTrace = !!opts.memoryTrace;
+    let lastMemoryLog = 0;
     const ctx = canvas.getContext('2d', {alpha: false});
     // (the game's text: Windows-1252, or its translation's code page)
     let latin = new TextDecoder('windows-1252');
@@ -159,13 +162,17 @@ export async function runGame(opts) {
         latin = new TextDecoder(opts.codepage || 'windows-1252');
     } catch (e) { /* (a code page the browser has not) */ }
     let exports, memory, asyncData = 0;
-    const dv = () => new DataView(memory.buffer);
+    const access = makeWasm32DataView(() => memory);
+    const dv = () => access;
     const cstr = (p) => {
         const m = new Uint8Array(memory.buffer);
-        let e = p;
-        while (m[e])
+        const start = wasm32Offset(p, 1, m.byteLength);
+        let e = start;
+        while (e < m.byteLength && m[e])
             e++;
-        return latin.decode(m.subarray(p, e));
+        if (e === m.byteLength)
+            throw new RangeError('Unterminated WASM32 text string');
+        return latin.decode(m.subarray(start, e));
     };
 
     // -- input: events queued for the game; a wait resolved by the next one
@@ -308,13 +315,23 @@ export async function runGame(opts) {
             return;
         const dst = new Uint32Array(image.data.buffer);
         if (stride === w * 4)
-            argbToRgba(new Uint32Array(memory.buffer, pixels, w * h), dst, w * h);
+            argbToRgba(wasm32Words(memory, pixels, w * h), dst, w * h);
         else
             for (let y = 0; y < h; y++)
-                argbToRgba(new Uint32Array(memory.buffer, pixels + y * stride, w), dst.subarray(y * w), w);
+                argbToRgba(wasm32Words(memory, pixels + y * stride, w), dst.subarray(y * w), w);
         ctx.putImageData(image, 0, 0);
-        if (opts.stats)
+        if (opts.stats) {
             opts.stats.memoryBytes = memory.buffer.byteLength;
+            opts.stats.memoryPeakBytes = Math.max(opts.stats.memoryPeakBytes || 0, opts.stats.memoryBytes);
+        }
+        if (memoryTrace && performance.now() - lastMemoryLog >= 60000) {
+            lastMemoryLog = performance.now();
+            console.info('civ2-memory-linear', {
+                atMs: Math.round(lastMemoryLog),
+                MiB: Math.round(memory.buffer.byteLength / 1048576),
+                peakMiB: Math.round((opts.stats?.memoryPeakBytes || memory.buffer.byteLength) / 1048576)
+            });
+        }
         if (opts.onFrame) {
             const f = opts.onFrame;
             opts.onFrame = null;
@@ -421,7 +438,7 @@ export async function runGame(opts) {
         host_quit: () => {},
         host_base_path: (buf, size) => {
             if (size)
-                new Uint8Array(memory.buffer)[buf] = 0;
+                wasm32Bytes(memory, buf, 1)[0] = 0;
             return 0;
         },
         host_open_window: (w, h) => {
@@ -497,8 +514,9 @@ export async function runGame(opts) {
             if (msg && size > 0) {
                 const text = new TextEncoder().encode(state < 0 ? '@hd.err.no_site_art' : '');
                 const n = Math.min(text.length, size - 1);
-                new Uint8Array(memory.buffer).set(text.subarray(0, n), msg);
-                new Uint8Array(memory.buffer)[msg + n] = 0;
+                const out = wasm32Bytes(memory, msg, size);
+                out.set(text.subarray(0, n));
+                out[n] = 0;
             }
             return state;
         },
@@ -506,7 +524,7 @@ export async function runGame(opts) {
         host_cursor_system: (kind) => cursorSlot({css: SYSTEM_CURSORS[kind] || 'default'}),
         host_cursor_image: (argb, w, h, x, y) => {
             const rgba = new Uint8ClampedArray(w * h * 4);
-            const src = new Uint32Array(memory.buffer, argb, w * h), dst = new Uint32Array(rgba.buffer);
+            const src = wasm32Words(memory, argb, w * h), dst = new Uint32Array(rgba.buffer);
             for (let i = 0; i < w * h; i++) {
                 const p = src[i];
                 dst[i] = (p & 0xff00ff00) | ((p & 0xff) << 16) | ((p >>> 16) & 0xff);
@@ -552,7 +570,7 @@ export async function runGame(opts) {
             if (!frames)
                 return;
             const buf = audio.createBuffer(d.ch, frames, d.freq);
-            const bytes = new Uint8Array(memory.buffer, data, frames * bps * d.ch);
+            const bytes = wasm32Bytes(memory, data, frames * bps * d.ch);
             const words = bps === 2 ? new Int16Array(bytes.slice().buffer) : null;
             for (let c = 0; c < d.ch; c++) {
                 const out = buf.getChannelData(c);
@@ -601,7 +619,7 @@ export async function runGame(opts) {
             if (!audio)
                 return 0;
             const token = ++music.token;
-            const bytes = new Uint8Array(memory.buffer, file, len).slice();
+            const bytes = wasm32Bytes(memory, file, len).slice();
             music.playing = true;
             audio.decodeAudioData(bytes.buffer).then((buf) => {
                 if (token !== music.token)
@@ -634,9 +652,9 @@ export async function runGame(opts) {
             if (size <= 0)
                 return 0;
             const b = new TextEncoder().encode(net.localAddr()).subarray(0, size - 1);
-            const m = new Uint8Array(memory.buffer);
-            m.set(b, buf);
-            m[buf + b.length] = 0;
+            const out = wasm32Bytes(memory, buf, size);
+            out.set(b);
+            out[b.length] = 0;
             return b.length;
         },
         host_net_udp_open: (port) => net.udpOpen(port),
@@ -654,12 +672,12 @@ export async function runGame(opts) {
         },
         host_net_tcp_connect: (h, ip, port) => net.tcpConnect(h, ip >>> 0, port),
         host_net_tcp_state: (h) => net.tcpState(h),
-        host_net_tcp_send: (h, p, n) => net.tcpSend(h, new Uint8Array(memory.buffer, p, n)),
+        host_net_tcp_send: (h, p, n) => net.tcpSend(h, wasm32Bytes(memory, p, n)),
         host_net_tcp_recv: (h, p, n) => {
             const r = net.tcpRecv(h, n);
             if (typeof r === 'number')
                 return r;
-            new Uint8Array(memory.buffer).set(r, p);
+            wasm32Bytes(memory, p, r.length).set(r);
             return r.length;
         },
         host_net_close: (h) => net.close(h),
@@ -775,6 +793,13 @@ export async function runGame(opts) {
                 code = e.code;
                 break;
             }
+            if (opts.stats)
+                opts.stats.memoryCrashBytes = memory.buffer.byteLength;
+            if (memoryTrace)
+                console.warn('civ2-memory-crash', {
+                    MiB: Math.round(memory.buffer.byteLength / 1048576),
+                    kind: e.name
+                });
             throw e;
         } finally {
             const busy = performance.now() - t;

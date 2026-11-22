@@ -402,7 +402,7 @@ static int plan_save_tree(SaveDeletePlan *plan, const char *win, int depth)
     char host[1024], spec[MAX_PATH], child[MAX_PATH], *base;
     WIN32_FIND_DATAA f;
     HANDLE h;
-    int initial_files = plan->files, initial_markers = plan->marked;
+    int marked_this = 0;
     if (depth > MAX_DELETE_DEPTH || !safe_save_target(win, host, sizeof host))
         return 0;
     /* Explicitly validate this is a folder, not a file. */
@@ -438,6 +438,7 @@ static int plan_save_tree(SaveDeletePlan *plan, const char *win, int depth)
                     FindClose(h); return 0;
                 }
             } else if (!strcmp(f.cFileName, SAVE_FOLDER_MARKER)) {
+                marked_this = 1;
                 plan->marked++;
                 if (!plan_add(plan, child, 0)) {
                     FindClose(h); return 0;
@@ -456,9 +457,11 @@ static int plan_save_tree(SaveDeletePlan *plan, const char *win, int depth)
         !strcasecmp(base + 1, "KINGS") || !strcasecmp(base + 1, "SOUNDS") ||
         !strcasecmp(base + 1, "SCENARIO") || !strcasecmp(base + 1, "DATA"))
         return 0;
-    /* A legacy user save folder may lack our marker, but must hold at
-     * least one SAV. Newly created empty folders have the marker. */
-    if (plan->files == initial_files && plan->marked == initial_markers)
+    /* A folder holding only SAV files is NOT proof it was created by
+     * our Save dialog: imported game trees can also contain SAVs.
+     * Require the persistent T011 marker on EACH folder in the plan,
+     * including empty folders. Old unmarked folders remain untouched. */
+    if (!marked_this)
         return 0;
     return plan_add(plan, win, 1);
 }

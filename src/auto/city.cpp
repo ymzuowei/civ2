@@ -947,9 +947,11 @@ void __cdecl city_assign_default_name(int city)
        would duplicate existing cities. The stable city-slot fallback below
        safely covers all subsequent cities. Do not change the separate
        world-wide 255-city limit or the serialized leader structure. */
-    if (leaders[civs[civ].tribe].city_name_index < 0)
-      leaders[civs[civ].tribe].city_name_index = 0;
-    if (leaders[civs[civ].tribe].city_name_index >= 120) {
+    /* New games initialize the counter to zero in civ_create/game_new.
+       A negative saved byte means corrupt/overflowed legacy progress:
+       never restart the list and repeat already used city names. */
+    if (leaders[civs[civ].tribe].city_name_index < 0 ||
+        leaders[civs[civ].tribe].city_name_index >= 120) {
       /* Nothing to open/close: the 121st and later city of this tribe
          receive a stable fallback without touching the text parser. */
       if (!cities[city].name[0])

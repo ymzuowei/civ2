@@ -25,10 +25,11 @@ class CityAndSaveManagement(unittest.TestCase):
                          self.city.index("/* 0043f7a7 auto */")]
         self.assertIn("civ = cities[city].owner;", body)
         self.assertIn("leaders[civs[civ].tribe].city_name_index >= 120", body)
-        self.assertIn("leaders[civs[civ].tribe].city_name_index = 0;", body)
-        self.assertIn("if (leaders[civs[civ].tribe].city_name_index >= 120)", body)
-        self.assertLess(body.index("city_name_index >= 120"), body.index("city_name_index++;"))
-        self.assertIn("return;", body[body.index("city_name_index >= 120"):body.index("city_name_index++;")])
+        self.assertNotIn("leaders[civs[civ].tribe].city_name_index = 0;", body)
+        self.assertIn("leaders[civs[civ].tribe].city_name_index < 0 ||", body)
+        self.assertIn("leaders[civs[civ].tribe].city_name_index >= 120)", body)
+        self.assertLess(body.index("city_name_index < 0 ||"), body.index("city_name_index++;"))
+        self.assertIn("return;", body[body.index("city_name_index < 0 ||"):body.index("city_name_index++;")])
         self.assertIn("skip_count = (uint)(unsigned char)", body)
         self.assertNotIn("city_name_index = '\\0';", body)
         self.assertIn("No EXTRA section: generate the next unique slot name.", body)
@@ -64,7 +65,7 @@ class CityAndSaveManagement(unittest.TestCase):
                       'strcasecmp(base + 1, "MUSIC")',
                       'strcasecmp(base + 1, "VIDEO")',
                       'strcasecmp(base + 1, "KINGS")',
-                      "if (plan->files == initial_files && plan->marked == initial_markers)",
+                      "if (!marked_this)", "marked_this = 1;",
                       "if (!plan_save_tree(&plan, target, 0))"):
             self.assertIn(token, self.file)
         self.assertIn("path_unlink_file(dirfd, path, len)", self.api)

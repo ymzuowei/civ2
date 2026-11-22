@@ -373,11 +373,13 @@ export async function runGame(opts) {
     }
     const audioOk = () => audio && audio.state === 'running';
     const music = {source: null, playing: false, token: 0};
-    // PCM effects, decoded music and native AVI audio use one gain bus.
-    // Create lazily: opening playback still needs its real user gesture.
-    let masterGain = null;
+    // T017: three-stage mixer. Existing master mute/level remains a common
+    // bus; music (CD tracks) and effects (PCM waveOut and AVI soundtrack)
+    // have their own gain stages. Changing one never changes the other.
+    // Gain nodes are created lazily after the existing user gesture path.
+    let masterGain = null, musicGain = null, effectsGain = null;
     let unsubscribeVolume = () => {};
-    function audioDestination() {
+    function audioDestination(channel = 'effects') {
         if (!audio)
             return null;
         if (!masterGain) {
@@ -385,11 +387,28 @@ export async function runGame(opts) {
             masterGain.gain.value = opts.audioVolume?.gain ?? 1;
             masterGain.connect(audio.destination);
             if (opts.audioVolume)
-                unsubscribeVolume = opts.audioVolume.subscribe((gain) => {
-                    masterGain.gain.value = gain;
+                unsubscribeVolume = opts.audioVolume.subscribe((master) => {
+                    masterGain.gain.value = master;
+                    if (musicGain)
+                        musicGain.gain.value = opts.audioVolume.musicGain;
+                    if (effectsGain)
+                        effectsGain.gain.value = opts.audioVolume.effectsGain;
                 });
         }
-        return masterGain;
+        if (channel === 'music') {
+            if (!musicGain) {
+                musicGain = audio.createGain();
+                musicGain.gain.value = opts.audioVolume?.musicGain ?? 1;
+                musicGain.connect(masterGain);
+            }
+            return musicGain;
+        }
+        if (!effectsGain) {
+            effectsGain = audio.createGain();
+            effectsGain.gain.value = opts.audioVolume?.effectsGain ?? 1;
+            effectsGain.connect(masterGain);
+        }
+        return effectsGain;
     }
 
     // -- network play: through the relay (opts.relay: 'ws://host:port')
@@ -541,7 +560,7 @@ export async function runGame(opts) {
             }
             const src = audio.createBufferSource();
             src.buffer = buf;
-            src.connect(audioDestination());
+            src.connect(audioDestination('effects'));
             const at = Math.max(audio.currentTime, d.end);
             src.start(at);
             d.end = at + buf.duration;
@@ -580,7 +599,7 @@ export async function runGame(opts) {
                     return;
                 const src = audio.createBufferSource();
                 src.buffer = buf;
-                src.connect(audioDestination());
+                src.connect(audioDestination('music'));
                 src.onended = () => {
                     if (token === music.token)
                         music.playing = false;
@@ -760,6 +779,8 @@ export async function runGame(opts) {
     }
     host.host_music_stop();
     unsubscribeVolume();
+    musicGain?.disconnect();
+    effectsGain?.disconnect();
     masterGain?.disconnect();
     return code;
 }

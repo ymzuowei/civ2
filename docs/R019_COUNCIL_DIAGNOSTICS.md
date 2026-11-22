@@ -70,3 +70,7 @@ not enter CI logs or public issues. No media is transferred to CI or repo.
 This is **diagnostic only**; even a native source test PASS does not prove
 the missing animation is a WASM-only load-efficiency bug. Do not convert,
 overwrite, or redistribute AVI media before measured results.
+
+### Source CI gate update
+
+First R019 pinned-source run [45040571175](https://github.com/ymzuowei/civ2-web/actions/runs/45040571175) failed before gameplay due a T017 browser unit test hardcoding the previous `!introDiagnose && !new URLSearchParams` logging condition. The new opt-in `councilTrace` parameter must be checked alongside `introDiagnose`. The browser unit now explicitly asserts both default-no-log and opt-in Council trace routing, without changing runtime playback. New exact-head source CI and Owner WASM build remain PENDING.

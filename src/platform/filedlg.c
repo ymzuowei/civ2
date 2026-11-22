@@ -201,7 +201,13 @@ static void refill(void)
     }
     qsort(items, (size_t)n, sizeof items[0], fd.by_date ? by_time : by_name);
     for (i = 0; i < n; i++) {
-        SendMessageA(fd.list, LB_ADDSTRING, 0, (LPARAM)items[i].text);
+        int row = (int)SendMessageA(fd.list, LB_ADDSTRING, 0, (LPARAM)items[i].text);
+        /* [..] is navigation, NEVER a multi-select/delete target.
+         * Protect the row in the native listbox's selection core, not
+         * just in the delete handler, including Shift ranges and click. */
+        if (row >= 0 && !strcmp(items[i].text, "[..]"))
+            SendMessageA(fd.list, LB_SETITEMDATA, (WPARAM)row,
+                         (LPARAM)CIV2_LB_UNSELECTABLE_DATA);
         fd.times[i] = items[i].time;
         free(items[i].text);
     }
@@ -471,46 +477,79 @@ static int plan_save_tree(SaveDeletePlan *plan, const char *win, int depth)
     return plan_add(plan, win, 1);
 }
 
+/* CIV2-T018: all selected rows are one batch. Nothing gets removed if
+ * any selected target is unsafe. A failure *during* filesystem removal can
+ * still leave a partial batch (the existing file API has no transaction). */
 static void delete_selected_save(void)
 {
-    char selected[MAX_PATH + 2], target[MAX_PATH], host[1024], prompt[512];
+    int selected_indices[MAX_ITEMS];
+    char selected[MAX_PATH + 2], one_name[MAX_PATH + 2];
+    char target[MAX_PATH], host[1024], prompt[512];
     SaveDeletePlan plan = {0};
-    int i, kind, sel = (int)SendMessageA(fd.list, LB_GETCURSEL, 0, 0);
-    if (fd.creating_folder || sel < 0 ||
-        SendMessageA(fd.list, LB_GETTEXT, (WPARAM)sel, (LPARAM)selected) <= 0)
+    int i, j, kind, selected_count, selected_files = 0, selected_folders = 0;
+    selected_count = (int)SendMessageA(fd.list, LB_GETSELCOUNT, 0, 0);
+    if (fd.creating_folder || selected_count <= 0)
         return;
-    if (!strcmp(selected, "[..]")) return;
-    kind = selected[0] == '[';
-    if (kind) {
-        size_t len = strlen(selected);
-        if (len < 3 || selected[len - 1] != ']') return;
-        selected[len - 1] = 0;
-        memmove(selected, selected + 1, len - 1);
-    } else if (!is_save_file(selected)) {
+    if (selected_count > MAX_ITEMS ||
+        (int)SendMessageA(fd.list, LB_GETSELITEMS, (WPARAM)selected_count,
+                          (LPARAM)selected_indices) != selected_count)
         return;
-    }
-    if (strlen(fd.dir) + strlen(selected) + 2 >= sizeof target) return;
-    join(target, sizeof target, fd.dir, selected);
-    if (!safe_save_target(target, host, sizeof host)) return;
     plan.items = calloc(MAX_DELETE_PLAN, sizeof *plan.items);
     if (!plan.items) return;
-    if (kind) {
-        if (!plan_save_tree(&plan, target, 0)) {
-            MessageBoxA(fd.dlg, extras_text("file.delete_refused"),
-                        extras_text("file.delete_title"), MB_OK | MB_ICONWARNING);
-            goto done;
+    one_name[0] = 0;
+    /* Resolve and preflight every selection BEFORE offering confirmation.
+     * File list includes [..] and imported game folders: reject the ENTIRE
+     * batch rather than silently deleting only some selected items. */
+    for (j = 0; j < selected_count; j++) {
+        int idx = selected_indices[j];
+        if (idx < 0 || idx >= MAX_ITEMS ||
+            SendMessageA(fd.list, LB_GETTEXT, (WPARAM)idx, (LPARAM)selected) <= 0 ||
+            !strcmp(selected, "[..]"))
+            goto refused;
+        kind = selected[0] == '[';
+        if (kind) {
+            size_t len = strlen(selected);
+            if (len < 3 || selected[len - 1] != ']')
+                goto refused;
+            selected[len - 1] = 0;
+            memmove(selected, selected + 1, len - 1);
+        } else if (!is_save_file(selected)) {
+            goto refused;
         }
-        snprintf(prompt, sizeof prompt, extras_text("file.delete_folder_confirm"),
-                 selected, plan.files - plan.marked);
+        if (strlen(fd.dir) + strlen(selected) + 2 >= sizeof target)
+            goto refused;
+        join(target, sizeof target, fd.dir, selected);
+        if (!safe_save_target(target, host, sizeof host) ||
+            kind_of(target) != kind)
+            goto refused;
+        if (kind) {
+            if (!plan_save_tree(&plan, target, 0))
+                goto refused;
+            selected_folders++;
+        } else {
+            if (!plan_add(&plan, target, 0))
+                goto refused;
+            selected_files++;
+        }
+        if (selected_count == 1)
+            snprintf(one_name, sizeof one_name, "%s", selected);
+    }
+    if (selected_count == 1) {
+        if (selected_folders) {
+            snprintf(prompt, sizeof prompt, extras_text("file.delete_folder_confirm"),
+                     one_name, plan.files - plan.marked);
+        } else {
+            snprintf(prompt, sizeof prompt, extras_text("file.delete_save_confirm"), one_name);
+        }
     } else {
-        if (!plan_add(&plan, target, 0)) goto done;
-        snprintf(prompt, sizeof prompt, extras_text("file.delete_save_confirm"), selected);
+        snprintf(prompt, sizeof prompt, extras_text("file.delete_batch_confirm"),
+                 selected_files, selected_folders, plan.files - plan.marked);
     }
     if (MessageBoxA(fd.dlg, prompt, extras_text("file.delete_title"),
                     MB_YESNO | MB_ICONWARNING) != IDYES)
         goto done;
-    /* All entries were checked before confirmation. Recheck each path
-     * immediately before deletion; errors stop without deleting others. */
+    /* Recheck each path immediately before deletion. Directory plan order
+     * is postorder: children first, folder last. No wildcard deletion. */
     for (i = 0; i < plan.count; i++) {
         SaveDeleteItem *entry = &plan.items[i];
         struct stat st;
@@ -531,6 +570,10 @@ static void delete_selected_save(void)
     SetWindowTextA(fd.name, "");
     refill();
     SetFocus(fd.list);
+    goto done;
+refused:
+    MessageBoxA(fd.dlg, extras_text("file.delete_refused"),
+                extras_text("file.delete_title"), MB_OK | MB_ICONWARNING);
 done:
     free(plan.items);
 }
@@ -543,6 +586,12 @@ static void accept(void)
     int k;
     if (fd.creating_folder) {
         create_folder();
+        return;
+    }
+    /* Multi-select is ONLY for Delete; normal Open/Save remains single-file. */
+    if (SendMessageA(fd.list, LB_GETSELCOUNT, 0, 0) > 1) {
+        MessageBoxA(fd.dlg, extras_text("file.select_one"),
+                    extras_text(fd.save ? "file.save_as" : "file.open"), MB_OK);
         return;
     }
     GetWindowTextA(fd.name, name, sizeof name);
@@ -631,9 +680,35 @@ static LRESULT CALLBACK dlg_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
             return 0;
         case ID_LIST: {
             char item[MAX_PATH + 2];
+            int selected = (int)SendMessageA(fd.list, LB_GETSELCOUNT, 0, 0);
             int i = (int)SendMessageA(fd.list, LB_GETCURSEL, 0, 0);
+            if (HIWORD(wp) != LBN_SELCHANGE && HIWORD(wp) != LBN_DBLCLK)
+                return 0;
             if (i < 0 || SendMessageA(fd.list, LB_GETTEXT, (WPARAM)i, (LPARAM)item) <= 0)
                 return 0;
+            /* An unselectable parent-directory entry still navigates
+             * normally on double-click. Single-click cannot select it,
+             * and no batch Delete may ever traverse to the parent. */
+            if (!strcmp(item, "[..]")) {
+                if (HIWORD(wp) == LBN_DBLCLK) {
+                    enter_dir("..");
+                    SetWindowTextA(fd.name, "");
+                } else {
+                    SetWindowTextA(fd.name, "");
+                    show_date(-1);
+                }
+                return 0;
+            }
+            if (selected != 1 ||
+                SendMessageA(fd.list, LB_GETSEL, (WPARAM)i, 0) != 1) {
+                /* More than one selection must never accidentally open/save
+                 * the last clicked item. Clear stale filename/date. */
+                if (HIWORD(wp) == LBN_SELCHANGE) {
+                    SetWindowTextA(fd.name, "");
+                    show_date(-1);
+                }
+                return 0;
+            }
             show_date(i);
             if (item[0] == '[') {
                 if (HIWORD(wp) == LBN_DBLCLK) {
@@ -713,7 +788,8 @@ WINBOOL plat_file_dialog(OPENFILENAMEA *ofn, int save)
     fd.dlg = CreateWindowExA(WS_EX_DLGMODALFRAME, "Civ2FileDialog", title, WS_POPUP | WS_CAPTION | WS_SYSMENU,
                              (screen_w - w) / 2, (screen_h - h) / 2, w, h, owner, NULL, NULL, NULL);
     fd.dirlabel = control("STATIC", "", SS_LEFT, 10, 8, w - 30, 18, ID_DIR);
-    fd.list = control("LISTBOX", "", WS_BORDER | WS_VSCROLL | LBS_NOTIFY, 10, 30, w - 30, 220, ID_LIST);
+    fd.list = control("LISTBOX", "", WS_BORDER | WS_VSCROLL | LBS_NOTIFY | LBS_EXTENDEDSEL,
+                      10, 30, w - 30, 220, ID_LIST);
     fd.namelabel = control("STATIC", extras_text("file.name"), SS_LEFT, NAME_CAPTION_X, 264, NAME_CAPTION_WIDTH, 20, -1);
     fd.name = control("EDIT", "", WS_BORDER | ES_AUTOHSCROLL, NAME_EDIT_X, 260, w - NAME_EDIT_X - 20, 24, ID_NAME);
     fd.date = control("STATIC", "", SS_LEFT, 85, 292, 335, 18, ID_DATE);

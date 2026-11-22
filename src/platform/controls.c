@@ -1042,7 +1042,7 @@ LRESULT ctl_edit_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
 typedef struct { char *text; ULONG_PTR data; int sel; } LbItem;
 typedef struct {
     LbItem *items;
-    int n, cap, cur, top, item_h;
+    int n, cap, cur, anchor, top, item_h;
     HFONT font;
     int focused;
     int vscroll;                /* created with WS_VSCROLL: shown when the items do not fit */
@@ -1073,6 +1073,8 @@ static int lb_insert(Window *w, int pos, const char *s, ULONG_PTR data)
     lb->n++;
     if (lb->cur >= pos)
         lb->cur++;
+    if (lb->anchor >= pos)
+        lb->anchor++;
     return pos;
 }
 
@@ -1208,6 +1210,36 @@ static void lb_wheel(Window *w, int delta)
     }
 }
 
+/* Windows LBS_EXTENDEDSEL: one anchor, plain click clears, Ctrl toggles,
+ * Shift selects a range, Ctrl+Shift adds the range. Keep LBS_MULTIPLESEL's
+ * original simple toggling for other controls. */
+static int lb_unselectable(Window *w, ListBox *lb, int i)
+{
+    return (w->style & LBS_EXTENDEDSEL) && i >= 0 && i < lb->n &&
+           lb->items[i].data == CIV2_LB_UNSELECTABLE_DATA;
+}
+
+static void lb_clear_selection(ListBox *lb)
+{
+    int k;
+    for (k = 0; k < lb->n; k++)
+        lb->items[k].sel = 0;
+}
+
+static void lb_select_range(Window *w, ListBox *lb, int target, int additive)
+{
+    int k, first = lb->anchor, last = target;
+    if (first < 0 || first >= lb->n)
+        first = lb->cur >= 0 && lb->cur < lb->n ? lb->cur : target;
+    lb->anchor = first;
+    if (!additive)
+        lb_clear_selection(lb);
+    if (first > last) { int tmp = first; first = last; last = tmp; }
+    for (k = first; k <= last; k++)
+        if (!lb_unselectable(w, lb, k))
+            lb->items[k].sel = 1;
+}
+
 static void lb_set_cur(Window *w, int i, int scroll)
 {
     ListBox *lb = lb_of(w);
@@ -1286,6 +1318,7 @@ LRESULT ctl_listbox_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
         lb = calloc(1, sizeof *lb);
         w->control = lb;
         lb->cur = -1;
+        lb->anchor = -1;
         lb->vscroll = (w->style & WS_VSCROLL) != 0;
         lb->font = default_font();
         text_metrics(font_face_of(lb->font), &tm);
@@ -1359,8 +1392,30 @@ LRESULT ctl_listbox_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
         SetFocus(h);
         i = lb->top + (short)HIWORD(lp) / (lb->item_h ? lb->item_h : 1);
         if (i >= 0 && i < lb->n) {
-            if (w->style & (LBS_MULTIPLESEL | LBS_EXTENDEDSEL))
+            if (lb_unselectable(w, lb, i)) {
+                /* [..] is navigation, not data: never select by plain,
+                 * Ctrl, Shift, or a double-click. Normal plain click
+                 * clears stale selection, preventing accidental Delete. */
+                if (GetKeyState(VK_CONTROL) >= 0 && GetKeyState(VK_SHIFT) >= 0) {
+                    lb_clear_selection(lb);
+                    lb->anchor = -1;
+                }
+            } else if (w->style & LBS_EXTENDEDSEL) {
+                int ctrl = GetKeyState(VK_CONTROL) < 0;
+                int shift = GetKeyState(VK_SHIFT) < 0;
+                if (shift) {
+                    lb_select_range(w, lb, i, ctrl);
+                } else if (ctrl) {
+                    lb->items[i].sel = !lb->items[i].sel;
+                    lb->anchor = i;
+                } else {
+                    lb_clear_selection(lb);
+                    lb->items[i].sel = 1;
+                    lb->anchor = i;
+                }
+            } else if (w->style & LBS_MULTIPLESEL) {
                 lb->items[i].sel = !lb->items[i].sel;
+            }
             lb_set_cur(w, i, 1);
             if (w->style & LBS_NOTIFY)
                 notify(h, m == WM_LBUTTONDBLCLK ? LBN_DBLCLK : LBN_SELCHANGE);
@@ -1383,7 +1438,23 @@ LRESULT ctl_listbox_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
            sent whenever there is an item to go to, even the current one
            (Down on the last item) */
         if (n >= 0) {
-            if (n != lb->cur)
+            if (w->style & LBS_EXTENDEDSEL) {
+                int ctrl = GetKeyState(VK_CONTROL) < 0;
+                int shift = GetKeyState(VK_SHIFT) < 0;
+                if (shift) {
+                    if (!lb_unselectable(w, lb, n))
+                        lb_select_range(w, lb, n, ctrl);
+                } else if (!ctrl) {
+                    lb_clear_selection(lb);
+                    if (!lb_unselectable(w, lb, n)) {
+                        lb->items[n].sel = 1;
+                        lb->anchor = n;
+                    } else {
+                        lb->anchor = -1;
+                    }
+                }
+            }
+            if (n != lb->cur || (w->style & LBS_EXTENDEDSEL))
                 lb_set_cur(w, n, 1);
             if (w->style & LBS_NOTIFY)
                 notify(h, LBN_SELCHANGE);
@@ -1428,6 +1499,8 @@ LRESULT ctl_listbox_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
         lb->n--;
         if (lb->cur == i) lb->cur = -1;
         else if (lb->cur > i) lb->cur--;
+        if (lb->anchor == i) lb->anchor = -1;
+        else if (lb->anchor > i) lb->anchor--;
         lb_update_scroll(w);
         InvalidateRect(h, NULL, TRUE);
         return lb->n;
@@ -1436,6 +1509,7 @@ LRESULT ctl_listbox_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
             free(lb->items[i].text);
         lb->n = 0;
         lb->cur = -1;
+        lb->anchor = -1;
         lb->top = 0;
         lb->wheel_delta = 0;
         lb_update_scroll(w);
@@ -1444,16 +1518,18 @@ LRESULT ctl_listbox_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
     case LB_SETSEL:
         if ((int)lp == -1) {
             for (i = 0; i < lb->n; i++)
-                lb->items[i].sel = (int)wp;
+                lb->items[i].sel = !lb_unselectable(w, lb, i) && (int)wp;
         } else if ((int)lp >= 0 && (int)lp < lb->n) {
-            lb->items[lp].sel = (int)wp;
+            lb->items[lp].sel = !lb_unselectable(w, lb, (int)lp) && (int)wp;
         }
         InvalidateRect(h, NULL, TRUE);
         return 0;
     case LB_GETSEL:
         if ((int)wp < 0 || (int)wp >= lb->n)
             return LB_ERR;
-        return (w->style & (LBS_MULTIPLESEL | LBS_EXTENDEDSEL)) ? lb->items[wp].sel : (int)wp == lb->cur;
+        return lb_unselectable(w, lb, (int)wp) ? 0 :
+               (w->style & (LBS_MULTIPLESEL | LBS_EXTENDEDSEL)) ?
+               lb->items[wp].sel : (int)wp == lb->cur;
     case LB_SETCURSEL:
         if ((int)wp >= lb->n)
             return LB_ERR;
@@ -1500,13 +1576,14 @@ LRESULT ctl_listbox_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
     case LB_GETSELCOUNT: {
         int n = 0;
         for (i = 0; i < lb->n; i++)
-            n += lb->items[i].sel;
+            if (!lb_unselectable(w, lb, i))
+                n += lb->items[i].sel;
         return n;
     }
     case LB_GETSELITEMS: {
         int n = 0;
         for (i = 0; i < lb->n && n < (int)wp; i++)
-            if (lb->items[i].sel)
+            if (lb->items[i].sel && !lb_unselectable(w, lb, i))
                 ((int *)lp)[n++] = i;
         return n;
     }
@@ -1518,6 +1595,9 @@ LRESULT ctl_listbox_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
         if ((int)wp < 0 || (int)wp >= lb->n)
             return LB_ERR;
         lb->items[wp].data = (ULONG_PTR)lp;
+        if (lb_unselectable(w, lb, (int)wp))
+            lb->items[wp].sel = 0;
+        InvalidateRect(h, NULL, TRUE);
         return TRUE;
     case LB_SETITEMHEIGHT:
         lb->item_h = LOWORD(lp);

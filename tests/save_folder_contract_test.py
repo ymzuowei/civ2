@@ -253,7 +253,8 @@ class SaveFolderContractTests(unittest.TestCase):
 
     def test_translation_keys_exist(self):
         keys = ("file.new_folder", "file.create_folder", "file.folder_name",
-                "file.folder_invalid", "file.folder_exists", "file.folder_failed")
+                "file.folder_invalid", "file.folder_exists", "file.folder_failed",
+                "file.delete_batch_confirm", "file.select_one")
         # The English template and actual owner-facing EN/zh-Hans/zh-Hant
         # must localize every key. The remaining four historic locales may
         # use the already-supported English runtime fallback ONLY for these
@@ -300,6 +301,7 @@ class SaveFolderContractTests(unittest.TestCase):
             # keys use the English native fallback until localized separately.
             "file.delete_title", "file.delete_save_confirm",
             "file.delete_folder_confirm", "file.delete_failed", "file.delete_refused",
+            "file.delete_batch_confirm", "file.select_one",
         )}
         legacy = {
             "de": "40d7f6a5eac8b7739df98f9cd19db5b5160fa4b7",

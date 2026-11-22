@@ -49,7 +49,8 @@ class CityAndSaveManagement(unittest.TestCase):
         self.assertIn("MessageBoxA(fd.dlg, prompt", self.file)
         self.assertIn("MB_YESNO | MB_ICONWARNING", self.file)
         self.assertIn("if (!safe_save_target(entry->path, host, sizeof host)) break;", self.file)
-        self.assertIn("if (!strcmp(selected, \"[..]\")) return;", self.file)
+        self.assertIn('!strcmp(selected, "[..]")', self.file)
+        self.assertIn("CIV2_LB_UNSELECTABLE_DATA", self.file)
         self.assertIn("plan_save_tree", self.file)
         self.assertIn("MAX_DELETE_DEPTH 12", self.file)
         self.assertIn("MAX_DELETE_PLAN 4096", self.file)
@@ -83,7 +84,8 @@ class CityAndSaveManagement(unittest.TestCase):
                       self.file)
         self.assertIn("else if (is_save_file(f.cFileName))", self.file)
         self.assertIn("Non-save content: never destroy native game assets.", self.file)
-        self.assertIn("if (!strcmp(selected, \"[..]\")) return;", self.file)
+        self.assertIn('!strcmp(selected, "[..]")', self.file)
+        self.assertIn("CIV2_LB_UNSELECTABLE_DATA", self.file)
         self.assertIn("MB_YESNO | MB_ICONWARNING", self.file)
 
     def test_dual_audio_and_compact_ui_do_not_intercept_game_keys(self):

@@ -291,9 +291,9 @@ class SaveFolderContractTests(unittest.TestCase):
         # fallback keys allowed by this source test. No legacy locale
         # file is edited or re-encoded to satisfy this assertion.
         checker = (ROOT / "tests/lang_test.py").read_text(encoding="utf-8")
-        match = re.search(r"folder_keys\\s*=\\s*\\{([^}]*)\\}", checker, re.S)
+        match = re.search(r"folder_keys\s*=\s*\{([^}]*)\}", checker, re.S)
         self.assertIsNotNone(match, "language checker must define its fallback set")
-        allowed = set(re.findall(r"'(file\\.[a-z_]+)'", match.group(1)))
+        allowed = set(re.findall(r"'(file\.[a-z_]+)'", match.group(1)))
         expected = {
             "file.new_folder", "file.create_folder", "file.folder_name",
             "file.folder_invalid", "file.folder_exists", "file.folder_failed",

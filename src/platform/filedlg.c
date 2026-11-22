@@ -311,8 +311,14 @@ static void create_folder(void)
                         extras_text("file.new_folder"), MB_OK | MB_ICONWARNING);
             return;
         }
-        fputs("OpenCiv2 user save folder\\n", f);
-        fclose(f);
+        if (fputs("OpenCiv2 user save folder\n", f) == EOF || fclose(f) != 0) {
+            remove(host);
+            plat_host_path(path, host, sizeof host, 0);
+            rmdir(host);
+            MessageBoxA(fd.dlg, extras_text("file.folder_failed"),
+                        extras_text("file.new_folder"), MB_OK | MB_ICONWARNING);
+            return;
+        }
     }
     folder_mode(0);
     enter_dir(name);
@@ -350,6 +356,21 @@ static int safe_save_target(const char *win, char *host, size_t size)
         host[root] != '/' || !host[root + 1])
         return 0;
 #ifndef _WIN32
+    /* Reject links in *any* component below the game root, not merely
+     * links chosen as final targets. Browser MemFS has no symlink type. */
+    {
+        char walk[1024];
+        size_t i;
+        snprintf(walk, sizeof walk, "%s", host);
+        for (i = root + 1; walk[i]; i++) {
+            if (walk[i] == '/') {
+                walk[i] = 0;
+                if (lstat(walk, &st) || S_ISLNK(st.st_mode))
+                    return 0;
+                walk[i] = '/';
+            }
+        }
+    }
     if (lstat(host, &st) || S_ISLNK(st.st_mode))
         return 0;
 #else

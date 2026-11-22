@@ -17,6 +17,8 @@ class MasterAudioSourceContracts(unittest.TestCase):
         cls.volume = (ROOT / "src/web/audio_volume.js").read_text(encoding="utf-8")
         cls.grid = (ROOT / "src/platform/hd.c").read_text(encoding="utf-8")
         cls.build = (ROOT / "tools/build_web.py").read_text(encoding="utf-8")
+        cls.native_sound = (ROOT / "src/auto/sound.cpp").read_text(encoding="utf-8")
+        cls.platform_sound = (ROOT / "src/platform/sound.c").read_text(encoding="utf-8")
 
     def test_native_audio_streams_are_routed_to_independent_channels(self):
         self.assertEqual(self.host.count("src.connect(audioDestination('music'));"), 1)
@@ -32,10 +34,28 @@ class MasterAudioSourceContracts(unittest.TestCase):
         self.assertIn("masterGain = audio.createGain();", self.host)
         self.assertIn("masterGain.connect(audio.destination);", self.host)
         self.assertIn("masterGain.gain.value = opts.audioVolume?.gain ?? 1;", self.host)
-        self.assertIn("opts.audioVolume.subscribe((gain)", self.host)
+        self.assertIn("opts.audioVolume.subscribe((master)", self.host)
+        self.assertIn("masterGain.gain.value = master;", self.host)
+        self.assertIn("musicGain.gain.value = opts.audioVolume.musicGain;", self.host)
+        self.assertIn("effectsGain.gain.value = opts.audioVolume.effectsGain;", self.host)
         self.assertIn("masterGain?.disconnect();", self.host)
         self.assertIn("audioVolume: browserAudio", self.page)
         self.assertIn("audioContext: introAudio", self.page)
+
+    def test_avi_advisor_wonder_and_opening_pcm_audio_uses_effects_not_music(self):
+        # AVI audio streams attach to the original waveOut mixing pipeline.
+        # The same waveOut path handles PCM effects; CD tracks alone go to
+        # the independent music bus. This source gate cannot prove playback.
+        self.assertIn("player->audio.attach_stream(avi_play.audio_stream[0]);",
+                      self.native_sound)
+        self.assertIn("AVIStreamRead(source->avi_stream,", self.native_sound)
+        self.assertIn("waveOutWrite(", self.native_sound)
+        self.assertIn("host_audio_queue(w->dev, hdr->lpData, hdr->dwBufferLength);",
+                      self.platform_sound)
+        self.assertIn("host_audio_queue(snd_dev, buf + data, len);",
+                      self.platform_sound)
+        self.assertIn("src.connect(audioDestination('effects'));", self.host)
+        self.assertIn("src.connect(audioDestination('music'));", self.host)
 
     def test_toolbar_controls_and_no_input_forwarding(self):
         for needle in ("id=\"audio-volume\"", 'type="range"', 'id="audio-mute"',

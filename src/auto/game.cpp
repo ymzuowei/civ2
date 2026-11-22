@@ -1827,7 +1827,11 @@ void __cdecl game_autosave(int civ)
     text_clear();
     leader_name = civ_leader_name(civ);
     text_append(leader_name);
-    textbuf.buf[2] = 0;
+    /* The original two-byte cut split a three-byte Han character in
+     * UTF-8 locales. Match Save As: two complete leader characters,
+     * still exactly two bytes for legacy single-byte translations.
+     * Use the identical prefix for current and rotated backup SAVs. */
+    textbuf.buf[game_save_leader_prefix_bytes(textbuf.buf)] = 0;
     str_trim((char *)&textbuf.buf);
     text_append((const char *)&str_empty_99);
     text_append_label(0x5c);

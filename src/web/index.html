@@ -114,10 +114,20 @@
   #game-controls .icon-button:active { padding: 0; background: #314c60; box-shadow: none; }
   #game-controls .icon-button svg { width: 1.35rem; height: 1.35rem; display: block; }
   #game-controls #audio-mute[aria-pressed="true"] { background: #772c36; color: #fff; }
-  #game-controls .audio-group { display: flex; align-items: center; gap: 0.25rem;
+  #game-controls .audio-group { position: relative; display: flex; align-items: center; gap: 0.25rem;
                                 border-left: 1px solid #888; padding-left: 0.4rem; }
-  #game-controls #audio-volume { width: 6rem; margin: 0; accent-color: #e1dccb; cursor: pointer; }
-  #game-controls #audio-level { min-width: 2.5rem; text-align: right; font: 12px/1.3 sans-serif; }
+  /* T017: keep all three volume sliders in a small, opt-in drop-down.
+     Closed: only two icons occupy the game's upper-right toolbar. */
+  #game-controls .audio-mixer-panel { position: absolute; top: calc(100% + 0.45rem); right: 0;
+      width: 12.5rem; box-sizing: border-box; padding: 0.55rem; border: 1px solid #bbb;
+      box-shadow: 0 3px 8px #0009; background: #1a2731; color: #fff;
+      display: grid; gap: 0.4rem; font: 12px/1.3 sans-serif; }
+  #game-controls .audio-row { display: grid; align-items: center; grid-template-columns: 2.8rem minmax(0,1fr) 2.4rem;
+      gap: 0.25rem; }
+  #game-controls .audio-row label { display: block; margin: 0; }
+  #game-controls .audio-row input[type=range] { min-width: 0; width: 100%; margin: 0; accent-color: #e1dccb; cursor: pointer; }
+  #game-controls .audio-row output { text-align: right; font: 11px/1.3 sans-serif; }
+  #game-controls #audio-mixer-toggle[aria-expanded=true] { background: #314c60; }
   #game-controls input:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   #game-controls label { display: flex; align-items: center; gap: 0.3rem; white-space: nowrap; }
   #game-controls select { font: inherit; min-height: 1.75rem; max-width: 11rem; }
@@ -128,7 +138,7 @@
   @media (max-width: 500px) {
     #game-controls { gap: 0.15rem; padding: 0.2rem; font-size: 12px; justify-content: flex-end; }
     #game-controls-content { gap: 0.15rem; flex-wrap: wrap; justify-content: flex-end; }
-    #game-controls #audio-volume { width: 4.5rem; }
+    #game-controls .audio-mixer-panel { width: 11.2rem; }
     #game-controls button { padding: 0.15rem 0.3rem; }
     #game-controls select { max-width: 7rem; }
   }
@@ -221,10 +231,33 @@
       </select>
       <span id="display-help" hidden>Pixel perfect prefers whole-number scaling; Fit viewport also allows fractional scaling. They may look identical if the game already fits.</span>
     </label>
-    <div class="audio-group" role="group" aria-labelledby="audio-label">
-      <label id="audio-label" for="audio-volume">Volume</label>
-      <input id="audio-volume" type="range" min="0" max="100" step="1" value="100" aria-label="Volume">
-      <output id="audio-level" for="audio-volume">100%</output>
+    <div class="audio-group" role="group" aria-label="Audio">
+      <button id="audio-mixer-toggle" class="icon-button" type="button" aria-label="Audio levels"
+              aria-controls="audio-mixer-panel" aria-expanded="false" title="Audio levels">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 6h16M4 12h16M4 18h16"/>
+          <circle cx="9" cy="6" r="2" fill="currentColor" stroke="#1b3548"/>
+          <circle cx="16" cy="12" r="2" fill="currentColor" stroke="#1b3548"/>
+          <circle cx="11" cy="18" r="2" fill="currentColor" stroke="#1b3548"/>
+        </svg>
+      </button>
+      <div id="audio-mixer-panel" class="audio-mixer-panel" role="group" aria-label="Audio levels" hidden>
+        <div class="audio-row">
+          <label id="audio-label" for="audio-volume">Master</label>
+          <input id="audio-volume" type="range" min="0" max="100" step="1" value="100" aria-label="Master">
+          <output id="audio-level" for="audio-volume">100%</output>
+        </div>
+        <div class="audio-row">
+          <label id="audio-music-label" for="audio-music">Music</label>
+          <input id="audio-music" type="range" min="0" max="100" step="1" value="100" aria-label="Music">
+          <output id="audio-music-level" for="audio-music">100%</output>
+        </div>
+        <div class="audio-row">
+          <label id="audio-effects-label" for="audio-effects">Effects</label>
+          <input id="audio-effects" type="range" min="0" max="100" step="1" value="100" aria-label="Effects">
+          <output id="audio-effects-level" for="audio-effects">100%</output>
+        </div>
+      </div>
       <button id="audio-mute" class="icon-button" type="button" aria-label="Mute" aria-pressed="false" title="Mute">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path d="M3 9h5l5-4v14l-5-4H3z" fill="currentColor" stroke="currentColor" stroke-linejoin="round"/>

@@ -16,6 +16,39 @@ import {iniGet, iniSet, hdWanted, skipBrowserOpening, openingVideoPresent, openi
 import {match} from '../locale.js';
 import {makeNet} from '../net.js';
 import {GRAPHICS_PREFERENCE_KEY, graphicsFromQuery, resolveGraphicsPreference, hdArg} from '../graphics_choice.js';
+import {wasm32Offset, wasm32Bytes, wasm32Words, makeWasm32DataView} from '../wasm32.js';
+
+// CIV2-B012: imported WASM i32 pointers above 2 GiB arrive negative in JS.
+// Arithmetic checks use a synthetic byteLength: never allocate 2 GiB in CI.
+const crashSignedPointer = -2121969888; // Owner crash on 2026-11-23
+const crashUnsignedPointer = 0x81854f20;
+assert.equal(wasm32Offset(crashSignedPointer, 128, crashUnsignedPointer + 1024), crashUnsignedPointer);
+assert.equal(wasm32Offset(crashUnsignedPointer, 128, crashUnsignedPointer + 1024), crashUnsignedPointer);
+assert.throws(() => wasm32Offset(crashSignedPointer, 128, crashUnsignedPointer + 127), RangeError);
+assert.throws(() => wasm32Offset(crashSignedPointer, 128, 512 * 1048576), RangeError);
+assert.throws(() => wasm32Offset(-1, 2, 0xffffffff), RangeError);
+assert.throws(() => wasm32Offset(40, -3, 64), RangeError);
+assert.throws(() => wasm32Offset(Number.NaN, 1, 64), RangeError);
+assert.equal(wasm32Offset(64, 0, 64), 64);
+const bridgeMemory = new WebAssembly.Memory({initial: 1, maximum: 2});
+const bridgeView = makeWasm32DataView(() => bridgeMemory);
+bridgeView.setUint32(32, 0x12345678, true);
+assert.equal(bridgeView.getUint32(32, true), 0x12345678);
+assert.equal(wasm32Words(bridgeMemory, 32, 1)[0], 0x12345678);
+wasm32Bytes(bridgeMemory, 64, 4).set([1, 2, 3, 4]);
+assert.deepEqual([...wasm32Bytes(bridgeMemory, 64, 4)], [1, 2, 3, 4]);
+assert.throws(() => wasm32Words(bridgeMemory, 33, 1), RangeError);
+assert.throws(() => wasm32Bytes(bridgeMemory, -1, 10), RangeError);
+bridgeMemory.grow(1); // cached DataView must not access a detached old buffer
+bridgeView.setBigUint64(70000, 0x1234n, true);
+assert.equal(new DataView(bridgeMemory.buffer).getBigUint64(70000, true), 0x1234n);
+// A normal directory read still returns the WASI header and entry bytes.
+const bridgeFS = new MemFS();
+bridgeFS.mkdirs('/civ2');
+const bridgeWasi = makeWasi(bridgeFS, [], {}, () => bridgeMemory);
+assert.equal(bridgeWasi.fd_readdir(3, 1024, 512, 0n, 256), 0);
+assert.ok(bridgeView.getUint32(256, true) >= 48);
+assert.throws(() => bridgeWasi.fd_readdir(3, -1, 512, 0n, 256), RangeError);
 
 // Native and web language aliases distinguish Taiwan's traditional from
 // Mainland/Singapore's simplified Chinese without changing existing saves.

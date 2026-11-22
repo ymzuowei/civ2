@@ -21,6 +21,12 @@
 #include "win32_api.h"
 #include "plat_files.h"
 
+/* A per-row protection sentinel for the native emulated Win32 LISTBOX.
+ * Used ONLY by Civ2's Save/Load LBS_EXTENDEDSEL list to prevent the
+ * parent-directory [..] navigation entry from ever being selected.
+ * Double-click navigation still works. */
+#define CIV2_LB_UNSELECTABLE_DATA ((ULONG_PTR)-1)
+
 /* ---- handles ---- */
 
 typedef enum {

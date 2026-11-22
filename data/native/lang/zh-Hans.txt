@@ -275,6 +275,11 @@ HD 图形
 @@openciv2.file.delete_folder_confirm
 确定删除存档文件夹 %s 及其中的 %d 个存档吗？
 删除后无法恢复。
+@@openciv2.file.delete_batch_confirm
+确定删除选中的 %d 个存档文件及 %d 个文件夹（共包含 %d 个存档文件）吗？
+删除后无法恢复。
+@@openciv2.file.select_one
+读取或保存时只能选择一个存档。要批量删除，请使用 Delete 键。
 @@openciv2.file.delete_failed
 有些文件未能删除，请检查剩余内容。
 @@openciv2.file.delete_refused

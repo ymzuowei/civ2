@@ -273,6 +273,11 @@ HD 圖形
 @@openciv2.file.delete_folder_confirm
 確定刪除存檔資料夾 %s 及其中 %d 個存檔嗎？
 刪除後無法復原。
+@@openciv2.file.delete_batch_confirm
+確定刪除選取的 %d 個存檔檔案及 %d 個資料夾（共包含 %d 個存檔檔案）嗎？
+刪除後無法復原。
+@@openciv2.file.select_one
+讀取或儲存時只能選擇一個存檔。批次刪除請使用 Delete 鍵。
 @@openciv2.file.delete_failed
 部分檔案無法刪除，請檢查剩餘內容。
 @@openciv2.file.delete_refused

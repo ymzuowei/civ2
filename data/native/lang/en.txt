@@ -272,6 +272,11 @@ This cannot be undone.
 @@openciv2.file.delete_folder_confirm
 Delete saved-game folder %s and its %d saves?
 This cannot be undone.
+@@openciv2.file.delete_batch_confirm
+Delete %d selected save files and %d folders (%d save files in total)?
+This cannot be undone.
+@@openciv2.file.select_one
+Select one save file to open or save. Use Delete to remove multiple items.
 @@openciv2.file.delete_failed
 Could not delete every selected save item; remaining files were left untouched.
 @@openciv2.file.delete_refused

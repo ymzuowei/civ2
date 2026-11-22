@@ -49,7 +49,8 @@ class CityAndSaveManagement(unittest.TestCase):
         self.assertIn("MessageBoxA(fd.dlg, prompt", self.file)
         self.assertIn("MB_YESNO | MB_ICONWARNING", self.file)
         self.assertIn("if (!safe_save_target(entry->path, host, sizeof host)) break;", self.file)
-        self.assertIn("if (!strcmp(selected, \"[..]\")) return;", self.file)
+        self.assertIn('!strcmp(selected, "[..]")', self.file)
+        self.assertIn("CIV2_LB_UNSELECTABLE_DATA", self.file)
         self.assertIn("plan_save_tree", self.file)
         self.assertIn("MAX_DELETE_DEPTH 12", self.file)
         self.assertIn("MAX_DELETE_PLAN 4096", self.file)
@@ -65,7 +66,7 @@ class CityAndSaveManagement(unittest.TestCase):
                       'strcasecmp(base + 1, "MUSIC")',
                       'strcasecmp(base + 1, "VIDEO")',
                       'strcasecmp(base + 1, "KINGS")',
-                      "if (!marked_this && plan->files - plan->marked == saves_before)",
+                      "if (!marked_this && plan->files - plan->marked == saves_before &&",
                       "int saves_before = plan->files - plan->marked;",
                       "marked_this = 1;",
                       "if (!plan_save_tree(&plan, target, 0))"):
@@ -79,11 +80,15 @@ class CityAndSaveManagement(unittest.TestCase):
         # T011 folders predated the T017 marker; reject unsafe unmarked
         # empty/mixed/game-resource trees, accept save-only legacy trees.
         self.assertIn("int saves_before = plan->files - plan->marked;", self.file)
-        self.assertIn("if (!marked_this && plan->files - plan->marked == saves_before)",
+        self.assertIn("entries_here = 0;", self.file)
+        self.assertIn("entries_here++;", self.file)
+        self.assertIn("!(depth == 0 && entries_here == 0)", self.file)
+        self.assertIn("if (!marked_this && plan->files - plan->marked == saves_before &&",
                       self.file)
         self.assertIn("else if (is_save_file(f.cFileName))", self.file)
         self.assertIn("Non-save content: never destroy native game assets.", self.file)
-        self.assertIn("if (!strcmp(selected, \"[..]\")) return;", self.file)
+        self.assertIn('!strcmp(selected, "[..]")', self.file)
+        self.assertIn("CIV2_LB_UNSELECTABLE_DATA", self.file)
         self.assertIn("MB_YESNO | MB_ICONWARNING", self.file)
 
     def test_dual_audio_and_compact_ui_do_not_intercept_game_keys(self):

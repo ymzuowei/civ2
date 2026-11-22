@@ -151,6 +151,7 @@ export function argbToRgba(src, dst, n) {
 // -> the game's exit code
 export async function runGame(opts) {
     const {canvas, fs} = opts;
+    const councilTrace = !!opts.councilTrace;
     const ctx = canvas.getContext('2d', {alpha: false});
     // (the game's text: Windows-1252, or its translation's code page)
     let latin = new TextDecoder('windows-1252');
@@ -561,6 +562,14 @@ export async function runGame(opts) {
             const src = audio.createBufferSource();
             src.buffer = buf;
             src.connect(audioDestination('effects'));
+            // Late PCM scheduling can result when synchronous WASM seeks
+            // hold the page thread while the WebAudio clock keeps advancing.
+            // Log time metadata only, never copyrighted audio content.
+            if (councilTrace && d.end > 0 && audio.currentTime - d.end > 0.05)
+                console.info('council-trace webaudio-queue-gap', {
+                    dev, gapMs: Math.round((audio.currentTime - d.end) * 1000),
+                    atMs: Math.round(performance.now())
+                });
             const at = Math.max(audio.currentTime, d.end);
             src.start(at);
             d.end = at + buf.duration;
@@ -756,6 +765,7 @@ export async function runGame(opts) {
     const stats = opts.stats || {};
     stats.busyMs = 0;           // time in the game's code
     stats.resumes = 0;          // its stack wound back after a wait
+    let councilLongTasks = 0;  // bounded metadata-only diagnostics, opt-in
     for (;;) {
         const t = performance.now();
         try {
@@ -767,7 +777,12 @@ export async function runGame(opts) {
             }
             throw e;
         } finally {
-            stats.busyMs += performance.now() - t;
+            const busy = performance.now() - t;
+            stats.busyMs += busy;
+            if (councilTrace && busy >= 50 && councilLongTasks++ < 40)
+                console.info('council-trace wasm-block', {
+                    busyMs: Math.round(busy), atMs: Math.round(performance.now())
+                });
         }
         if (exports.asyncify_get_state() !== 1)
             break;              // returned from main

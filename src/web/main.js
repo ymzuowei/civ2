@@ -937,10 +937,13 @@ async function play(store) {
     if (hdMovieOptIn)
         env.CIV2_BROWSER_HD_OPENING = '1';
     const introDiagnose = new URLSearchParams(location.search).get('intro') === 'diagnose';
+    const councilTrace = new URLSearchParams(location.search).get('councilTrace') === '1';
     if (introDiagnose)
         env.CIV2_LOG_VIDEO = '1';
+    if (councilTrace)
+        env.CIV2_LOG_COUNCIL = '1';
     // A diagnostic trace must not be redirected to /dev/null.
-    if (!introDiagnose && !new URLSearchParams(location.search).has('log'))
+    if (!introDiagnose && !councilTrace && !new URLSearchParams(location.search).has('log'))
         env.CIV2_HOOK_LOG = '/dev/null';
     // (tests, src/web/test/smoke.mjs: files and settings of a replay)
     if (window.civ2Test)
@@ -949,7 +952,7 @@ async function play(store) {
     try {
         window.civ2Stats = {};
         code = await runGame({wasm: site.wasm, fs, audioContext: introAudio,
-                              audioVolume: browserAudio,
+                              audioVolume: browserAudio, councilTrace,
                               onFrame: () => {
                                   timing.frame = Math.round(performance.now());
                                   $('loading').hidden = true;

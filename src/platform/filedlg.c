@@ -403,6 +403,9 @@ static int plan_save_tree(SaveDeletePlan *plan, const char *win, int depth)
     WIN32_FIND_DATAA f;
     HANDLE h;
     int marked_this = 0;
+    /* Distinguish pre-T017 user Save folders from an empty or unfamiliar
+       unmarked game/resource folder. Count actual SAV files, not markers. */
+    int saves_before = plan->files - plan->marked;
     if (depth > MAX_DELETE_DEPTH || !safe_save_target(win, host, sizeof host))
         return 0;
     /* Explicitly validate this is a folder, not a file. */
@@ -457,11 +460,13 @@ static int plan_save_tree(SaveDeletePlan *plan, const char *win, int depth)
         !strcasecmp(base + 1, "KINGS") || !strcasecmp(base + 1, "SOUNDS") ||
         !strcasecmp(base + 1, "SCENARIO") || !strcasecmp(base + 1, "DATA"))
         return 0;
-    /* A folder holding only SAV files is NOT proof it was created by
-     * our Save dialog: imported game trees can also contain SAVs.
-     * Require the persistent T011 marker on EACH folder in the plan,
-     * including empty folders. Old unmarked folders remain untouched. */
-    if (!marked_this)
+    /* Marker-bearing T017 folders may be empty. Older T011 user folders
+     * were created BEFORE the marker existed, so accept legacy folders
+     * only when their inspected subtree contains at least one SAV.
+     * An empty unmarked folder has no evidence of save ownership and
+     * must remain protected. Any foreign file/link still fails above.
+     * The selected folder still requires an explicit Yes confirmation. */
+    if (!marked_this && plan->files - plan->marked == saves_before)
         return 0;
     return plan_add(plan, win, 1);
 }

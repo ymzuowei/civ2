@@ -65,13 +65,26 @@ class CityAndSaveManagement(unittest.TestCase):
                       'strcasecmp(base + 1, "MUSIC")',
                       'strcasecmp(base + 1, "VIDEO")',
                       'strcasecmp(base + 1, "KINGS")',
-                      "if (!marked_this)", "marked_this = 1;",
+                      "if (!marked_this && plan->files - plan->marked == saves_before)",
+                      "int saves_before = plan->files - plan->marked;",
+                      "marked_this = 1;",
                       "if (!plan_save_tree(&plan, target, 0))"):
             self.assertIn(token, self.file)
         self.assertIn("path_unlink_file(dirfd, path, len)", self.api)
         self.assertIn("fs.changed(p, true);", self.api)
         self.assertIn("path_remove_directory(dirfd, path, len)", self.api)
         self.assertIn("if (fs.list(p).length)", self.api)
+
+    def test_legacy_pre_marker_save_folders_are_delete_eligible_only_with_savs(self):
+        # T011 folders predated the T017 marker; reject unsafe unmarked
+        # empty/mixed/game-resource trees, accept save-only legacy trees.
+        self.assertIn("int saves_before = plan->files - plan->marked;", self.file)
+        self.assertIn("if (!marked_this && plan->files - plan->marked == saves_before)",
+                      self.file)
+        self.assertIn("else if (is_save_file(f.cFileName))", self.file)
+        self.assertIn("Non-save content: never destroy native game assets.", self.file)
+        self.assertIn("if (!strcmp(selected, \"[..]\")) return;", self.file)
+        self.assertIn("MB_YESNO | MB_ICONWARNING", self.file)
 
     def test_dual_audio_and_compact_ui_do_not_intercept_game_keys(self):
         self.assertIn("src.connect(audioDestination('music'));", self.host)

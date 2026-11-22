@@ -102,6 +102,8 @@ void hd_picture_done(void *bits);
 
 /* The game drew this rectangle anew (DibSurface::fill_rect): it shows as
    the game's pixels even where they did not change. */
+/* Native map-grid/city-radius sprite contrast, only on an HD art plane. */
+void hd_map_grid_contrast(void *bits, int x, int y, int w, int h, int radius_tile);
 void hd_bits_redrawn(void *bits, int x, int y, int w, int h);
 /* ... only its pixels where mask (w x h, row by row) is not 0, in one call
    (the surface found once, not for each pixel). */

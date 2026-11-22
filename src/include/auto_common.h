@@ -83,6 +83,15 @@ static inline void editor_copy_pool_name(char *dest, const char *src, size_t wid
 }
 /* The interface additions (docs/EXTRAS.md): extra_ui(X_...), marked X<n>. */
 #include "extras.h"
+/* CIV2-T011: route original relative autosave names into the directory of
+ * the last successful manual Save/Load, without changing their rotation. */
+void game_save_autosave_reset(void);
+/* Shared with Save As and Autosave: two complete leader characters in
+ * UTF-8; exactly the original first two bytes in legacy single-byte mode. */
+size_t game_save_leader_prefix_bytes(const char *name);
+int game_save_autosave_enter(char *previous, int n);
+void game_save_autosave_leave(const char *previous);
+
 /* The sounds played and videos looked for, logged in a replay for the
  * comparison with the original (CIV2_CALL_LOG, src/platform/replay.c). */
 EXTERN_C void replay_log_sound(int effect, int mode, int loop);

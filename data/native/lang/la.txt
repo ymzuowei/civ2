@@ -14576,3 +14576,17 @@ Ad fenestram aptare
 Plena tegmen
 @@openciv2.web.exit_fullscreen
 Exire e pleno tegmine
+@@openciv2.web.graphics_label
+Imagines
+@@openciv2.web.graphics_choose_title
+Elige imagines tabulae
+@@openciv2.web.graphics_choose_note
+Ante primum ludum elige imagines pristinas aut altae resolutionis. Postea in indice imaginum mutare potes; ludus denuo incipiet.
+@@openciv2.web.graphics_classic
+Pristinae
+@@openciv2.web.graphics_hd
+Alta resolutio
+@@openciv2.web.graphics_unavailable
+Imagines altae resolutionis nondum adsunt. Imagines pristinae manent.
+@@openciv2.web.graphics_switch_confirm
+Prius statum ludi serva. Imaginibus mutatis ludus iterum aperietur, et motus nondum servati peribunt. Pergere?

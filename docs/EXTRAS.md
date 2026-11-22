@@ -62,6 +62,17 @@ game starts.
 
 The Open and Save dialogs can list files newest first (the Sort button), and they open in the folder of the last file loaded or saved. Both are remembered in CIV.INI under `[OpenCiv2]` as `FileSort=` and `FileFolder=`.
 
+**Save folders and autosaves (CIV2-T011).** The native-style **Save As** dialog has **New Folder**. Choose it, enter a single folder name (for example `20261121`), and press Enter or Create. The dialog enters the new folder while retaining the suggested save filename. After **successfully** manually saving the current game there, subsequent automatic saves and their backup rotation use that same folder, exactly as with the original game's directory-based save organization. Canceling or failing to save does not change the auto-save destination. Loading a saved game from a folder rebinds autosaves to that folder; starting a new game resets the auto-save destination to the game's default folder until the player saves it elsewhere. Merely browsing another folder or loading unrelated files does not silently change the active game's autosave target.
+
+In the browser, folders live in the virtual `/civ2` filesystem; after a saved file is written they persist through IndexedDB and can be recovered on refresh. Empty folders without files are not separately persisted by the current store. **Saves → Export saves** includes the original relative nested Save paths and a small `openciv2-saves-manifest.json` metadata entry; importing that ZIP into a different browser/profile restores those folders. Original game assets are not included. Older and foreign ZIPs without the manifest retain the existing safety-first behavior of flattening unknown outer folders. No browser upload of owned files occurs except local selection via the player's browser, and no server/cloud save service is introduced.
+
+**New-folder language compatibility:** all six labels are translated in
+English, Simplified Chinese and Traditional Chinese. German, Greek,
+Esperanto and Latin currently use the native English text fallback for
+those six newly introduced labels; their older translated texts and
+historical binary encodings remain intact. The other translations are
+still required to be complete. See [TRANSLATING.md](TRANSLATING.md).
+
 ## Screen scale
 
 The game opens in a window, maximized to fill the screen. To play full screen instead, tick Full
@@ -179,3 +190,162 @@ players' units only: the computer players play by the original rules.
 | `PopulationLimit=` | Raises the highest population a civilization can reach, in units of 10,000 people (32000 to 3275800; the original is 32000, which is 320 million). The Hall of Fame still records at most 320 million. |
 | `GoldLimit=` | Raises the most gold a treasury can hold (30000 to 1000000; the original is 30000). |
 | `MapTilesLimit=` | Raises the largest custom world, as width × height in squares (10000 to 32767; the original is 10000). Each side is still 20 to 250 squares. The dialog's text still says 10,000. |
+
+## CIV2-T011 — Owner Save dialog UI and UTF-8 filename follow-up (2026-11-21)
+
+Owner's real Chrome HD session with the compiled T011 candidate confirmed that
+**New Folder** creates the selected `20261121` directory inside the game's
+virtual `Z:\\civ2` save root; manual `20261121/_b3460.sav` is present
+in the matching **Load** dialog; after subsequent turns the folder contains
+additional `_自动*.SAV` files. Therefore **F01 and F02 PASS** for this
+scenario (including original per-folder automatic save placement); cross-
+campaign and browser-refresh/ZIP coverage are still pending.
+
+Three visible shortcomings were reproduced:
+
+- **Save-dialog path label stale after folder creation.** The list followed
+  `fd.dir`, but `refill()` only called `SetWindowTextA` on the STATIC
+  label. The custom UI control does **not** automatically repaint on
+  `WM_SETTEXT` (the existing `set_text()` helper intentionally calls
+  `InvalidateRect` afterward). Fix: use `set_text(fd.dirlabel, label)`
+  for every refill. The Load dialog in the same folder already displayed
+  `Z:\\civ2\\20261121` properly, so there is no path persistence rewrite.
+
+- **"新建文件夹" button compressed.** The original 108 logical-pixel button
+  could overlap Chinese glyphs at browser scaling. Only the Save dialog
+  grows from 440 to 480 logical pixels; its folder button grows to 140,
+  list/directory/edit controls gain available width and Save/Cancel shift
+  to preserve separate hit targets. Load dialog remains 440. No change to
+  window scaling, font pipeline or HD/Classic map.
+
+- **The leading box in the default `□_b3460.sav`.** The decompiled
+  original `game_save_dialog()` used `file_name_buf[3] = 0`: with the
+  filename starting at `file_name_buf + 1` this cuts the leader's name
+  at **two raw bytes**. A UTF-8 Chinese character needs three bytes,
+  so the source produced an invalid leading sequence and a replacement
+  glyph. Fix: use the existing `u8_len_at` / `u8_decode` helpers to
+  preserve **two whole characters**, or two original bytes in single-byte
+  locales. Invalid UTF-8 stops before the damaged character. The original
+  year/era suffix, SAV extension, manual save/load and auto-save rotation
+  logic remain unchanged. Existing oddly named files are **not**
+  renamed/deleted/migrated; they remain loadable.
+
+Regression tests `tests/save_folder_contract_test.py` cover the redraw,
+actual control geometry and source UTF-8 character boundary contract.
+**These three fixes remain source-only until a new D:-local Windows WASM
+build and owner browser re-test.** F03/F04/full F05/F06/F07/F08 are not
+inferred from the current screenshots.
+
+## CIV2-T011 — Save dialog caption ghosting follow-up (2026-11-22)
+
+Owner Chrome re-test after the UTF-8 filename-prefix and Save dialog
+width corrections confirmed **the default prefix now renders as Chinese**
+(e.g. `武则_b3460.sav`), and actual Save As navigation shows the correct
+folder in the file list. Existing F01/F02 folder-save/autosave evidence
+remains valid. Two screenshots still expose **overprinted directory and
+label glyphs** after switching Save dialog folders, even when the
+internal `fd.dir` state and Load dialog paths are correct.
+
+Source root cause: the emulated Win32 `STATIC` control in
+`src/platform/controls.c::ctl_static_proc()` calls
+`DrawTextA` with `TRANSPARENT` background on a **retained** top-level
+window surface, but does **not** fill its old pixels first. The earlier
+`set_text()` change in `src/platform/filedlg.c` invalidated the
+label, yet repaint merely drew new glyphs over the old ones. Increasing
+button width or invalidating again cannot erase retained glyphs.
+
+Minimal fix: in the STATIC renderer, only when the parent window's
+class is `Civ2FileDialog`, clear the control's own client rectangle
+using the same `COLOR_3DFACE` background already used by the
+native BUTTON renderer, **before** drawing the new caption. Other
+STATIC controls retain their original transparent rendering (including
+possible game artwork overlays). `set_text()` now also calls
+`UpdateWindow(h)` after invalidation, so the current path is painted
+before the next input is handled. The label text and filesystem are
+unchanged. The observed `创建` vs `新建文件夹` button captions
+are expected create-folder mode vs normal mode, **not** a new width bug.
+
+`tests/save_folder_contract_test.py` guards the targeted paint order,
+normal/create button transition, and immediate repaint, in addition to
+previous UTF-8, ZIP and autosave coverage. The new native change
+**requires a fresh Windows WASM build** for owner visual acceptance;
+the previous screenshot does **not** verify this renderer fix.
+Never rename/delete a player's existing save to test it. Avoid all HD
+colour, grid, audio, private asset or other repository changes.
+
+## CIV2-T011 — File-name caption ghosting, separate from directory header (2026-11-22)
+
+Owner's latest screenshot after the initial STATIC background repair shows the
+top `文件夹：Z:\\civ2\\20261122` caption readable, with a working
+`武则_b3460.sav` default prefix. However the *separate lower-left*
+caption is still visibly overlaid: old `文件夹名称：` pixels and
+new `文件名：` appear together as `文件名名称：`.
+**Do not close this issue merely because the top directory caption
+is now correct.** This appears after switching folder-creation mode
+back to ordinary filename mode; both strings use the same STATIC HWND.
+
+The extra corrective measures are limited to the Save As dialog:
+* Reserve 155 logical pixels for the longer Chinese name caption, and
+  start its edit field at x=175 instead of x=130 so the label cannot
+  intrude on the editor.
+* Before changing the mode caption, erase the entire previous label strip
+  via the **parent dialog DC**, using its `COLOR_3DFACE` background.
+  This clears retained old glyphs even if a prior child paint escaped
+  its clipped region; then set and immediately repaint the one STATIC.
+  Never erase the adjacent edit input or any map pixels.
+* Render file-dialog STATIC captions as *one line* with `DT_SINGLELINE`
+  instead of `DT_WORDBREAK`, so changing Chinese captions cannot create
+  clipped/ghosted wrapped lines. All non-file-dialog STATIC renderers
+  keep their existing behavior.
+
+The translation strings themselves remain correct:
+`file.name = 文件名：`, `file.folder_name = 文件夹名称：`.
+Source regressions now explicitly cover changing both states and the
+dedicated background wipe. This newest candidate requires another
+owner-local D:-only WASM/browser visual test; source tests alone do not
+prove the rendered overlap has disappeared. The earlier F01/F02 and
+UTF-8 filename PASS evidence remains, with F03–F08 unverified.
+
+## CIV2-T014 — Native autosave Unicode prefix / remaining Save lifecycle contracts (2026-11-22)
+
+After owner acceptance of T011 F01/F02 and T013 F07a/F07b/F07c,
+we reviewed the remaining T011 F03, F04, F05, F06 and F08 gates.
+The native `game_save_dialog()` default filename had already been
+corrected to keep the leader's first two **complete UTF-8 characters**,
+which the owner confirmed fixed the visible Chinese white-square
+prefix. However `game_autosave()` in `src/auto/game.cpp` still
+truncated the leader with `textbuf.buf[2] = 0`: two raw bytes
+in UTF-8 can leave a truncated 3-byte Han character. Both the
+current automatic SAV filename and its backup/rotation filename
+were built from this malformed prefix. This is a **source finding**,
+not a claim of newly observed or corrupted existing player saves.
+
+**Narrow fix:** export the already-accepted
+`game_save_leader_prefix_bytes()` helper from `game_save.cpp`
+through `auto_common.h`, and use it when naming **both** newly
+written automatic saves and backup files in `game.cpp`. In
+UTF-8 mode the helper validates and preserves two complete
+characters; in the legacy single-byte locales it continues to
+use exactly the original first two bytes. The autosave cadence,
+`(game.turn & 4U) == 0` backup condition, remove→rename→write
+sequence, original suffixes, selected-folder routing and game
+engine state remain unchanged.
+
+**Compatibility:** Previously written legacy autosaves are
+not deleted, renamed, migrated or rewritten. The new valid
+Chinese prefix may create a *newly named* autosave alongside
+previous malformed/old-name files; therefore the next actual
+owner check must verify existing saves can still be loaded and
+new files rotate correctly. Do not use destructive cleanup to
+make file names appear consistent.
+
+`tests/save_folder_contract_test.py` adds F03/F04/F05/F06/F08
+structural regression for successful-save-only folder switching,
+cancel/failed-save isolation, successful-load-only restoration,
+new-game reset to root, missing destination fail-closed,
+and backup renames within the temporarily selected folder.
+These tests **do not** replace compiled Windows WASM or Owner
+browser checks; F03, F04, full F05, F06 and F08 remain **PENDING**.
+T013 F07 all owner PASS remains untouched. No Original/HD
+graphics, audio, toolbar, Display, CI runner, or existing
+browser-owned game content modifications.

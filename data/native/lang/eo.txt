@@ -14581,3 +14581,17 @@ Adapti al fenestro
 Plenekrane
 @@openciv2.web.exit_fullscreen
 Forlasi plenekranon
+@@openciv2.web.graphics_label
+Grafiko
+@@openciv2.web.graphics_choose_title
+Elektu mapan grafikon
+@@openciv2.web.graphics_choose_note
+Antau la unua ludo elektu originalan au altdistingivan grafikon. Vi povas sangi poste el la grafika menuo; tio relanos la ludon.
+@@openciv2.web.graphics_classic
+Originala
+@@openciv2.web.graphics_hd
+Alta distingivo
+@@openciv2.web.graphics_unavailable
+La HD-grafiko ne estas instalita. La originala grafiko restas disponebla.
+@@openciv2.web.graphics_switch_confirm
+Unue konservu la nunan ludon. Sangi la grafikon relanos la ludon kaj perdigos nekonservitajn movojn. Cu daurigi?

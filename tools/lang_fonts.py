@@ -100,7 +100,8 @@ def utf8_translations():
     """{path: text} of the translations in UTF-8"""
     out = {}
     for path in sorted(glob.glob(os.path.join(LANG, '*.txt'))):
-        data = open(path, 'rb').read()
+        with open(path, 'rb') as stream:
+            data = stream.read()
         lines = data.split(b'\n')
         for i, line in enumerate(lines):
             if line.rstrip(b'\r') == b'@@codepage':

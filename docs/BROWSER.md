@@ -49,6 +49,46 @@ replace the game files or remove them.
 
 Music plays where the game's folder has it (`Music/TrackNN.ogg`).
 
+## Browser toolbar — fold, sound and presentation (CIV2-T012)
+
+The upper-right floating **Game controls** toolbar can fold into a single
+high-contrast chevron button. Click it again (or activate with Enter/Space
+while focused) to reopen Graphics, Display, Volume, Fullscreen and Saves.
+The toolbar is **expanded on first use** so new players can discover its
+controls; your later fold/unfold choice is kept in browser `localStorage`
+under `openciv2.browser-toolbar.v1`. Browser storage being blocked is
+harmless and leaves controls available. Folding never changes the game's
+native canvas dimensions, moves the active unit or modifies the original
+game files, IndexedDB or SAV contents. Keyboard events while using toolbar
+controls remain isolated from the game's input handling.
+
+The mute button has a **high-contrast white speaker SVG** with clear waves
+when sound is on and a bold crossed-out symbol on a dark contrasting button
+when muted. The SVG icon has no independent keyboard focus; the existing
+button still supports focus, `aria-pressed`, the player's language and a
+localized tooltip. Muting retains the existing volume slider and WebAudio
+master GainNode behavior, which applies to current music, effects and the
+owner-supplied original opening video.
+
+**Display mode explanation:** `Pixel perfect` prefers whole-number
+upscaling (1×/2×/3×...), keeping source pixels sharp where possible.
+`Fit viewport` can also use fractional upscaling (e.g. 1.875×) to fill
+more available screen space uniformly. Both preserve the original game's
+logical desktop, aspect ratio and save state, and neither changes the HD
+pack resolution. At exactly 1× or another integer available ratio, or
+when the viewport is too small and the canvas must be shrunk, **the two
+modes can look identical**. Because the normal browser desktop is often
+allocated to match the viewport at startup, seeing no visual difference
+on a particular monitor is expected, not necessarily a rendering bug.
+Hover or focus the Display chooser for an explanation of the currently
+selected mode; Chinese labels/tooltips are provided without rewriting
+the legacy native translation files.
+
+These are **browser-presentation controls**. Public static builds remain
+BYO-only by default and must not embed commercially owned BIN/CUE/AVI
+assets. Runtime visual/accessibility verification on actual Chrome/Edge
+is separate from source tests and the compiled WASM gate.
+
 ## A site with the game on it (GAME=1)
 
 `make web GAME=1` (with `HD=1` as well, usually) puts the installed game (`~/Civ2`, or
@@ -250,10 +290,113 @@ Example starting address: `http://127.0.0.1:8000/?lang=zh-CN&display=fit`. To ch
 **Acceptance:** manually test Chrome and Edge at 1920×1080 / 2560×1440 / 4K with Windows DPI 100/125/150%, during animation and with save dialogs, city windows, advisor panels and cursor hit testing. The UI implementation and CI tests do not by themselves prove all monitor/DPI combinations; do not close [CIV2-T006](https://github.com/ymzuowei/civ2-web/issues/23) before owner visual acceptance.
 
 
-## Browser startup: black opening movie until mouse click (CIV2-B006)
+## Browser opening movie: visible playback and browser audio activation (CIV2-B006)
 
-The browser smoke suite documents that an owned `Video/OPENING.AVI` lasts about 92 seconds and that a key skips it to show the main menu. In the original source, `main_frame_create()` opens that video **before** the menu. Its modal video window has a black background; a mouse click directly invokes `intro_video_on_click()` and ends the opening. The owner observed a black screen on first visit that went straight to the menu after one click, on consecutive builds. This is not a sign that `civ2.wasm` failed to load, and the optional BYO `game/index.json` / HD `hd/pack.json` 404 probes are unrelated.
+The original owned `Video/OPENING.AVI` plays before the main menu. The owner's initial browser observation was an entirely black modal movie window until a click skipped it; the black rendering root cause is not proven. The first source workaround (baseline OpenCiv2 `981a8bbd`) unconditionally skipped the opening and made menu startup reliable, but omitted the original movie. **That workaround is not acceptable as final video parity.**
 
-**Browser-specific behavior:** default start skips **only the opening AVI**, so main menu appears without click. It uses the narrow transient WASI env flag `CIV2_SKIP_OPENING=1`; `src/auto/game.cpp` follows the same existing palette/RNG handling as the HD-art opening skip, rather than generating a synthetic pointer event or tampering with the video decoder. The original native desktop startup remains unchanged; gameplay advisor/wonder animations remain available. To **opt in** to the original opening for diagnosis, open `http://127.0.0.1:8000/?intro=play`, optionally combined with `?lang=zh-CN&display=fit&intro=play`. If its rendering is black, clicking can still skip the video, and its decoder problem can be investigated independently.
+**Current experimental Web behavior (Draft OpenCiv2 PR #11):** when `Video/OPENING.AVI` is found among user-owned files already imported into this browser, the page presents a **Play** button outside the native movie Canvas. The user clicks once to create/resume a WebAudio context under a genuine browser gesture; the game then receives the same context and follows its original opening playback path. This first click is not consumed by `intro_video_on_click()` as Skip. If the AVI is absent, the game loads the main menu without showing a Play gate. When the movie is visible, its own click or key handling can still skip it.
 
-The new startup policy does not clear browser IndexedDB, reimport owned CUE/BIN, modify `CIV.INI`, access E: game media in CI or affect saved-game data. If the game starts without opening media at all, its main menu continues to work. **Owner visual acceptance is required** on a fully restarted browser tab with original local game data: refresh and wait without touching keyboard/mouse; menu should appear, with `window.civ2Timing.frame` present. Audio may still require a browser user gesture for playback, but that must not prevent visuals.
+Startup URLs (all on the same `http://127.0.0.1:8000` origin, preserving IndexedDB and original games/saves):
+- Default `/?lang=zh-CN&display=fit`: attempt original opening when the owned AVI exists, with the browser Play gate.
+- `/?intro=play`: explicitly opt in to the opening (same behavior as default; kept for comparison and old bookmarked URLs).
+- `/?intro=skip`: **explicit recovery only**, bypasses the opening AVI and goes directly to the menu; never treat skip as full defect resolution.
+- `/?intro=diagnose`: request local AVI decoder/renderer diagnostic logging without redirecting the platform log to `/dev/null`. Inspect browser DevTools only; no licensed media or complete browser profile should be uploaded.
+
+**Important limitations:** the AudioContext-start restriction is a plausible reason for the original black video and audio-driven clock stalling, not a confirmed root cause. Native Indeo4 decoding, palette conversion, frame presentation and audio progress require real owned AVI/browser verification. A passing Node unit test or a game reaching the main menu does **not** prove video parity. Check changing movie frames, the soundtrack, normal completion and click/Space skip, plus 1440p resize, advisors/wonders and saves. Do not change the original Windows/macOS standalone path, synthetic-input behavior, save data, the legally imported media, or the original frozen baseline.
+
+### Browser audio-start race eliminated in the candidate
+
+The first Play gesture originally called `audio.resume()` without waiting for a running AudioContext, then immediately started the original audio-clocked AVI. The candidate now **awaits actual `running` state**, bounded to three seconds, before starting the game. If browser audio activation is denied or stalls, the session uses existing `CIV2_NOSOUND=1` behavior so the *original movie remains eligible to play on a wall clock*, rather than being skipped or held by a suspended audio clock. This is a graceful silent fallback, **not** soundtrack acceptance. Unit tests cover running, resumed, denied and indefinitely pending AudioContext behavior without commercial game media. Verify original opening frames plus soundtrack on actual user-owned AVI before closing CIV2-B006.
+
+### B006 read-only decoder/clock triage
+
+For a player-owned `OPENING.AVI`, use `/?lang=zh-CN&display=fit&intro=diagnose` and inspect local browser DevTools. The original native `avi_update_frame` path now logs a **rate-limited once-per-second** `video: clock playing=... audio=... paused=... frame=... tick=...` line *only* with `CIV2_LOG_VIDEO`. Existing `src/platform/video.c` logs indicate AVI stream reads and decoded Indeo frame output. These combined signals distinguish (a) an audio/game clock that does not advance, (b) a decoder returning no drawable frames, and (c) a presentation/palette fault after decoded frames. This diagnostics-only code does **not** alter playback, store/upload media, log frame contents or imply the original AVI is accepted. The owner should report frame-motion/sound results, with only non-sensitive bounded diagnostics if relevant.
+
+### B006 — HD art / original opening interlock
+
+The original `intro_play_opening_video` path already skips `OPENING.AVI` when the user selected HD artwork (`hd_art`), independently of browser policy. Earlier draft browser code still showed an unnecessary **Play** audio-unlock gate when the local AVI existed in HD mode. The browser now uses the same initial HD mode decision (`hdWanted`) before requesting a gesture. Classic/standard artwork with a local movie still gets the Play gate and the original AVI; `?intro=skip` still bypasses it. This correction does not claim that the original HD engine plays the movie or change any existing game/HD preference; decide separately whether HD artwork plus an opening movie is an intended future parity requirement.
+
+**HD pack availability matters:** `hdWanted` means the user requested HD, not necessarily that the art loaded. Native `hd_art` only turns on after successfully opening the local pack. The browser gate therefore checks the actual kept `atlas-hd.pack` presence: when the pack is missing and the game falls back to classic art, original AVI playback still receives the browser Play/audio gesture. It does not change the user's HD configuration.
+
+### B006 local-only startup state (no media exposure)
+
+The owner can inspect **`window.civ2Intro`** in Chrome/Edge DevTools during/after browser launch, including when an AVI modal remains black. It reports five safe fields: `ownedOpeningPresent`, `hdArtAvailable`, `skipRequested`, `gestureRequired` and `audio` (`not-required`, `pending`, `running`, `silent-fallback`). It never copies or logs the AVI, media paths, CD image, save names or game file bytes. An `ownedOpeningPresent:false` result means the original video was not imported into the browser's IndexedDB and cannot be diagnosed as a decoder failure. `gestureRequired:false` with `hdArtAvailable:true` reflects the original game's HD skip policy. If the audio state is `running` but the frame stays black, compare optional `?intro=diagnose` native clock/frame logs before changing the codec. Browser-owned media remains local.
+
+### B006 interrupted large toolchain download (owner build recovery)
+
+The owner's 2026-11-20 Windows candidate build reached the pinned WASI SDK 25.0 GitHub download, which broke around 38.3%; the old `curl | tar` tried to decompress partial bytes and failed repeatedly (curl 18/23, gzip/tar EOF). This is a download/extraction problem, not an AVI/WASM compilation failure. `tools/fetch-toolchain.sh` now supports the **optional locally downloaded, pinned** `CIV2_TOOLCHAIN_ARCHIVE_DIR`, or uses resumable `curl -C - -o` for the archive before extracting. The Windows SDK release asset must be exactly **520273336 bytes**, and gzip/tar must be readable. Extraction is staged and installed only after compiler/sysroot checks; only unique temporary staging is removed, not fonts, source or incomplete prior extraction. The vendor 25.0 release did not advertise a SHA-256 in the GitHub API, so archive size, gzip integrity and expected filenames are **not cryptographic proof of origin**; obtain the file from the official versioned GitHub release URL. A separately downloaded `wabt-1.0.41-windows-x64.tar.gz` can be staged into the same directory. No CD media is downloaded or uploaded. A clean reviewed candidate Web checkout is needed to use this newer upstream pin; old 745b77f continues using streaming behavior.
+
+### CIV2-B006 — Windows Python → MSYS sh → tar archive path regression (2026-11-20)
+
+Owner verified `wasi-sdk-25.0-x86_64-windows.tar.gz` has the official 520273336-byte length in `D:\DevCache\CIV2Web\Candidate\Downloads`. On the first offline-import attempt the asset was detected but `tar` failed with **`Cannot connect to D: resolve failed`**. This is not evidence of archive corruption: Windows Python's subprocess supplied the archive directory as `D:\...\` to MSYS `sh`; GNU `tar` interprets the colon as a remote host. The downloader now converts Windows drive paths to Git Bash `/d/...` via `cygpath -u` before archive file operations, retaining already-POSIX paths unchanged. It still validates the exact official asset size and tar integrity before staged extraction. New media-free shell regression tests execute the normalization against mocked `cygpath` for backslash and forward-slash Windows paths, already-POSIX paths and invalid paths. The local owner should still test `tar -tzf /d/DevCache/CIV2Web/Candidate/Downloads/wasi-sdk-25.0-x86_64-windows.tar.gz` once; this reads only the archive and does not unpack or delete it. Actual WASM compilation remains PENDING until rerun on the updated pinned source.
+
+### CIV2-B006 — WABT 1.0.41 Windows archive filename vs directory name (2026-11-20)
+
+The owner's latest Windows build confirmed **`CIV2_TOOLCHAIN_INSTALLED=wasi-sdk`** after reusing their official, 520273336-byte local SDK tarball. The subsequent WABT download reached 100%, but the first offline installer emitted `wabt-1.0.41-windows-x64: unexpected archive layout`. This is an install script naming error, not a failed WASM compiler run: the platform-specific asset filename is `wabt-1.0.41-windows-x64.tar.gz`, while the release tarball's internal root is `wabt-1.0.41/`. The old upstream installer itself expected `mv wabt-1.0.41 wabt`. The staged installer now uses the correct `wabt-1.0.41` root while retaining the exact pinned 1.0.41 Windows x64 asset and pre-downloaded archive. Media-free tests build a tiny synthetic tarball and execute the exact POSIX staged install function, checking both successful expected-root installation and rejection of an unexpected root. No user media, original CD image or local SDK is touched by these tests. The trusted-main Runner's D: cache and the owner's D: Candidate cache remain separate; full WASM compilation and AVI+audio visual acceptance are still pending.
+
+### CIV2-B006 — actual Windows WASM compiler checkpoint (2026-11-20)
+
+On the owner's manually built Draft `f9c11206`, both pinned WASI SDK and WABT archive installation hurdles were passed, and the compiler reached `src/auto/sound.cpp`. Clang then reported **`use of undeclared identifier 'plat_log'` at line 2867**. The AVI diagnostics introduced `plat_log(...)` from C platform source `src/platform/util.c` without declaring it to the game's compiled-as-C++ translation unit. `sound.cpp` now has the small, localized `EXTERN_C void plat_log(const char *fmt, ...);` declaration before its first use, matching the platform C symbol without pulling unrelated platform internals into the game. Lightweight source tests check declaration order and, if native C/C++ compilers are available, link a tiny C logger with an equivalent C++ caller to catch name-mangling regressions. The actual owner WASM compiler and original AVI playback must be re-run; this fix is not an assertion of full build or AVI acceptance. Existing D: SDK/WABT, CJK and build caches are retained.
+
+**Stronger CI guard (media-free):** `tests/avi_diag_source_syntax_test.py` uses the public generated thunk names and hosted/native C++ compiler to `-fsyntax-only` the real 3,500-line `src/auto/sound.cpp` translation unit (not merely the synthetic C ABI caller). It needs only public `src/include`, `src/auto`, `src/data/state`, `src/platform` headers, `tools`, and `re/functions.tsv`; it never fetches WASI SDK, original CD media or extracted game binaries. This closes the precise test gap in the previous static-only PR gates. Actual wasm32 code generation and linking still require the owner's D: candidate build.
+
+**Host-only layout caveat:** the hosted C++ source syntax probe explicitly disables `static_assert(...)` using `-Dstatic_assert(...)=''` because hosted Linux is a 64-bit pointer ABI while original Civ II struct layouts assert 32-bit sizes/offsets. This exception applies **only to the hosted syntax test** and is not used by `build_native.py --target wasm`, which continues to enforce real wasm32 layout/compile/link checks. The supplementary host test still catches undeclared C++ identifiers and invalid source syntax; it is not an ABI or real WASM PASS.
+
+**Legacy C++ pointer conversions:** a second hosted 64-bit Linux check exposed nine existing game-source casts from pointer to 32-bit `int/i32/u32`, which are valid in the target wasm32 pointer model but are errors under 64-bit Clang. For the supplementary **host-only syntax check**, choose GNU `g++ -fpermissive` and continue to disable original-layout static assertions; undeclared C++ identifiers still fail. These relaxed host syntax flags are **never** applied to the owner's real wasm32 WASI compilation, which remains strict. No original game data is required.
+
+### B006 Binaryen 130 manual/offline D: archive (2026-11-20)
+
+The owner successfully built the **actual Windows wasm32 core** (`built build\\wasm\\civ2.wasm`), then began `fetch-toolchain.sh web` (Binaryen 130) at 1.5%. The current Windows public BYO build has **one remaining mandatory downloadable archive above 20 MiB**: `binaryen-version_130-x86_64-windows.tar.gz` (official GitHub version_130 asset: **80320428 bytes**, SHA-256 `cc09c874f4332d00aa32ab72745a9b98c9a172f795762f21d03e70638a3f7f4c`). The new `fetch-toolchain.sh web` consumes that official asset from the existing D:-only `CIV2_TOOLCHAIN_ARCHIVE_DIR` if available, otherwise downloads resumably to the ignored D: toolchain dir. It verifies size, gzip/tar contents, **pinned SHA-256 without network on Windows**, and the expected `binaryen-version_130/bin/wasm-opt.exe` before atomic install to `tools/toolchain/binaryen`. Existing owner-installed WASI SDK, WABT and fonts are never cleared. No Windows browser build requires the optional Linux-only Node/Chrome Headless Shell downloads. The currently running old owner checkout does **not** gain this fix mid-process: finish/stop that command before switching to the reviewed new candidate. Synthetic-tar tests require no proprietary game media and no full toolchain.
+
+### CIV2-T006 — first-play browser graphics selection (2026-11-20)
+
+One-time Original / High resolution prompt before the first game startup with neither explicit `?hd=` URL nor saved browser artwork preference. It offers HD only if the verified site or IndexedDB art exists; Original remains available. Browser preference saved in existing IndexedDB meta key `graphics-art-choice-v1`, not in CIV.INI or game saves. A top-right Graphics selector switches later with a save-first warning before page reload; explicit `?hd=0/1` always overrides for manual comparisons. Existing native Classic-mode override still has precedence, no game-rule mutation. Both Chinese language variants translated. The original AVI activation gate remains unchanged. Actual Windows owner WASM and browser acceptance pending.
+
+
+### CIV2-B006 — Restore local original opening AVI with HD graphics (2026-11-21)
+
+**Owner finding:** after switching the browser from Original to the independently downloadable HD art pack, the original startup animation no longer appears. This has two verified source causes, not a missing graphic in the pack: `intro_play_opening_video()` historically bypassed the movie whenever `hd_art` was active, and `openingVideoNeedsGesture()` deliberately suppressed the browser's audio-click gate for HD. Previous `?intro=play` could not override the native `hd_art` skip. Source patch restores a **Web-only explicit opt-in**, without silently altering native desktop behaviour.
+
+The Web host inspects only its existing IndexedDB list for the user's previously imported `Video/OPENING.AVI` (case insensitive). If the original AVI is present and `?intro=skip` is not selected, it uses the existing real-user-click WebAudio activation gate in **both Original and HD** modes. With a verified loaded HD pack, it also sets ephemeral WASI environment `CIV2_BROWSER_HD_OPENING=1` to bypass **only** the native `hd_art` opening skip. The explicit `CIV2_SKIP_OPENING=1` remains highest priority; on a native desktop build with no Web flag the existing HD skip/palette behaviour is unchanged. Missing owned AVI never triggers an activation dialog. When WebAudio is denied, the existing wall-clock movie fallback continues without sound. Diagnostic booleans `window.civ2Intro.ownedOpeningPresent`, `.hdArtAvailable`, `.hdMovieOptIn`, `.gestureRequired` and `.audio` reveal the decision without dumping game filenames, paths or bytes. `?intro=diagnose` enables video timing/decoding logs; `?intro=skip` remains the recovery option if a local codec produces black/blocked playback.
+
+**HD pack is not a standalone game.** `hd/atlas-hd.pack` is an optional art-only add-on (delivered as `C2ATLAS1` / `hd/pack.json`, checked and cached in browser IndexedDB). It does not include or replace the user's original `Civ2Art.dll`, `RULES.TXT`, optional `Video/OPENING.AVI`, game music/sounds and other owned data. `main.js::findGame()` still requires `Civ2Art.dll` + `RULES.TXT` or installation from the user's selected CUE/CD source; a fresh browser profile with the WebAssembly engine and HD atlas alone cannot enter normal Civilization II gameplay. Once the original game has been imported locally, switching graphics modes reuses the same IndexedDB files without reimporting, uploading to the static server, resetting browser saves or changing the game's rules. The public site still includes **no commercial media**. This resolves the "independent art pack" vs "independent runnable game" distinction.
+
+**Status:** source and regression changes committed in stacked Draft #12 / Web Draft #41; real Windows WASM compilation and the actual HD+AVI video, audio, natural end and Skip behaviour remain separate pending tests. Do **not** claim the restored video displays correctly until the owner confirms. Keep the already visually accepted HD grid renderer unchanged.
+
+## CIV2-T013 — Save ZIP restore path identity and browser safety
+
+The native game treats its virtual Windows-like file paths as
+**case-insensitive**, but browser IndexedDB keys are case-sensitive.
+Before this update, `savesToImport()` reused names already present in
+the destination profile but did not check **other files being imported
+in the same batch**. A ZIP could create both `Campaign/ROME.SAV`
+and `campaign/rome.sav`, even though the game's file system treats
+them as one file; different entries could also create both
+`Campaign/` and `campaign/` folder spellings in a fresh profile.
+
+Imported files now maintain an in-memory, lowercase **staged-path
+index** as they are read. The first normalized filename (or an
+existing destination filename) remains the stable key, while the last
+imported entry for that same case-insensitive path supplies its data.
+The case of newly created parent folders is reused consistently for
+later files in the same import; independent campaign folders and
+nested autosaves stay separate. Normal self-exported ZIP manifest
+paths remain nested, foreign/untagged ZIPs retain their existing
+legacy flattening behavior, and existing `civ.ini` casing is
+preserved. The normal file/path safety checks still apply.
+
+An IndexedDB `putMany()` transaction finishes *before* the
+runtime WASI in-memory file system is updated, so a failing browser
+store does not partially change a running game's save files. These
+are ordinary in-memory and Node/CI tests; they **do not** import,
+delete, rename, scan or migrate anyone's real game files.
+
+**Owner F07 acceptance still needed:** export an existing set of
+different campaign folders via the Saves menu, import it into a
+fresh browser profile at the **same `127.0.0.1:8000` origin in
+that profile**, and verify the nested .SAV names and their contents,
+normal loading, independent autosave destinations and re-import
+without extra case-variant keys. Do not use the owner's only profile
+as a destructive test or clear IndexedDB to simulate a fresh profile.
+T011 F03–F06/F08 remain separate pending tests, and toolbar T012
+and Display behavior must remain unchanged.

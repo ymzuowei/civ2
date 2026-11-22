@@ -941,9 +941,25 @@ void __cdecl city_assign_default_name(int city)
   do {
     attempt++;
     if (2 < attempt) break;
-    leaders[civs[civ].tribe].city_name_index = leaders[civs[civ].tribe].city_name_index + 1
-    ;
-    skip_count = (uint)leaders[civs[civ].tribe].city_name_index;
+    /* CIV2-T017: this per-tribe counter is a SIGNED byte and CITY.TXT
+       plus EXTRA are finite for every tribe (including all AI opponents).
+       Never wrap or RESTART names at the first one after exhaustion: that
+       would duplicate existing cities. The stable city-slot fallback below
+       safely covers all subsequent cities. Do not change the separate
+       world-wide 255-city limit or the serialized leader structure. */
+    /* New games initialize the counter to zero in civ_create/game_new.
+       A negative saved byte means corrupt/overflowed legacy progress:
+       never restart the list and repeat already used city names. */
+    if (leaders[civs[civ].tribe].city_name_index < 0 ||
+        leaders[civs[civ].tribe].city_name_index >= 120) {
+      /* Nothing to open/close: the 121st and later city of this tribe
+         receive a stable fallback without touching the text parser. */
+      if (!cities[city].name[0])
+        snprintf(cities[city].name, sizeof cities[city].name, "City %03d", city + 1);
+      return;
+    }
+    leaders[civs[civ].tribe].city_name_index++;
+    skip_count = (uint)(unsigned char)leaders[civs[civ].tribe].city_name_index;
     __chdir(((i8 *)&net_map_lock_slots_block.scenario_dir_path));
     result = text_open_section((const char *)&str_city,(const char *)section_name);
     if (result != 0) {
@@ -959,10 +975,8 @@ void __cdecl city_assign_default_name(int city)
     }
     if (0 < (int)skip_count) {
       result = text_open_section(0,(const char *)&str_extra);
-      if (result != 0) {
-        leaders[civs[civ].tribe].city_name_index = '\0';
-        continue;
-      }
+      if (result != 0)
+        break; /* No EXTRA section: generate the next unique slot name. */
       for (; 0 < (int)skip_count; skip_count--) {
         text_read_line(1);
         len = _strlen(textbuf.buf);
@@ -970,14 +984,23 @@ void __cdecl city_assign_default_name(int city)
         break;
       }
     }
-    if ((int)skip_count < 1) {
+    if ((int)skip_count < 1 && textbuf.buf[0] && textbuf.buf[0] != '@') {
       _memset(cities[city].name,0,0x10);
       _strncpy(cities[city].name,textbuf.buf,0xf);
       break;
     }
-    leaders[civs[civ].tribe].city_name_index = '\0';
+    /* Both named lists ended without another usable entry. Do not reset
+       the index to 0 and reuse Shanghai/another tribe's first name. */
+    break;
   } while( true );
   text_close_file();
+  /* A finite CITY.TXT/@EXTRA list may be exhausted for the player's tribe
+     OR an AI opponent. A deleted/malformed list may fail altogether. Never
+     leave the new city with an empty name or read past the end of a section.
+     The city slot is unique across all 8 civilizations and <255, including
+     load/replay, so the fallback fits the classic 15-byte name field. */
+  if (!cities[city].name[0])
+    snprintf(cities[city].name, sizeof cities[city].name, "City %03d", city + 1);
   return;
 }
 

@@ -2,6 +2,11 @@
  * (tools/gen_c.py, now edited directly), in address order. */
 #include "auto_common.h"
 
+/* The opt-in AVI clock trace calls src/platform/util.c's C logger.
+ * Game sources compile as C++; keep the declaration's C linkage so the
+ * WASM link resolves the platform function without name mangling. */
+EXTERN_C void plat_log(const char *fmt, ...);
+
 /* 00419c8b auto */
 void __cdecl snd_menu_end(void)
 
@@ -2854,6 +2859,20 @@ void __cdecl avi_update_frame(AviPlayer *player)
   }
   if (avi_play.file_loaded == 0) {
     return;
+  }
+  /* CIV2-B006: opt-in, rate-limited trace for the original opening and
+     other AVI players. Compare the playback clock/frame counter against
+     platform/video.c's "video: read frame" and "video: frame" logs to tell
+     clock stalls from codec or presentation failures. Never log media bytes. */
+  if (getenv("CIV2_LOG_VIDEO")) {
+    static DWORD last_video_trace_ms = 0;
+    DWORD video_trace_now = timeGetTime();
+    if (last_video_trace_ms == 0 || video_trace_now - last_video_trace_ms >= 1000) {
+      last_video_trace_ms = video_trace_now;
+      plat_log("video: clock playing=%d audio=%d paused=%d frame=%lu tick=%lu\n",
+          (int)avi_play.playing, (int)player->has_audio, (int)player->paused,
+          (unsigned long)player->cur_frame, (unsigned long)video_trace_now);
+    }
   }
   if (avi_play.playing != 0) {
     if (player->has_audio == 0) {

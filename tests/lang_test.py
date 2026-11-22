@@ -110,7 +110,21 @@ def main():
             fail('%s: no "needs review by a native speaker" in its header' % name)
         keys = {k[9:] for k in texts if k.startswith('openciv2.')}
         other = {k for k in texts if not k.startswith('openciv2.') and k != 'codepage'}
-        for k in sorted(set(en) - keys):
+        # T011's native extras_text() already falls back to the English
+        # texts.h label when a translated entry is absent. Keep legacy
+        # codepage translations BYTE-EXACT: the six folder labels and five
+        # T017 confirmed-Delete labels use the English native fallback in
+        # four historical language packs. All prior keys remain strict.
+        folder_keys = {
+            'file.new_folder', 'file.create_folder', 'file.folder_name',
+            'file.folder_invalid', 'file.folder_exists', 'file.folder_failed',
+            'file.delete_title', 'file.delete_save_confirm',
+            'file.delete_folder_confirm', 'file.delete_failed',
+            'file.delete_refused',
+        }
+        fallback_languages = {'de', 'el', 'eo', 'la'}
+        permitted = folder_keys if code in fallback_languages else set()
+        for k in sorted((set(en) - keys) - permitted):
             fail('%s: missing %s' % (name, k))
         for k in sorted(keys - set(en)):
             fail('%s: %s is not in the template' % (name, k))

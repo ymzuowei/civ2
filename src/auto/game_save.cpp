@@ -1,6 +1,49 @@
 /* The game, saving and loading: saved games, passwords, preferences: functions translated from the original
  * (tools/gen_c.py, now edited directly), in address order. */
 #include "auto_common.h"
+#include "../include/utf8.h" /* UTF-8 leader names: keep complete characters in filenames. */
+
+/* CIV2-T011: last successful manual save or loaded game's folder. This is
+ * session state, not FileFolder (which changes on an unrelated file dialog).
+ * Loading a game from a folder restores its autosave route after page refresh.
+ * Starting a new game resets to the original root autosave location. */
+static char selected_autosave_folder[260];
+
+void game_save_autosave_reset(void)
+{
+  selected_autosave_folder[0] = 0;
+}
+
+static void game_save_autosave_follow(const char *file_name)
+{
+  const char *slash = _strrchr(file_name, '\\');
+  size_t count;
+  if (!slash)
+    slash = _strrchr(file_name, '/');
+  if (!slash || (count = (size_t)(slash - file_name)) >= sizeof selected_autosave_folder) {
+    game_save_autosave_reset();
+    return;
+  }
+  /* Include the trailing slash for drive roots such as "Z:\\". */
+  count += count && file_name[count - 1] == ':' ? 1 : 0;
+  memcpy(selected_autosave_folder, file_name, count);
+  selected_autosave_folder[count] = 0;
+}
+
+int game_save_autosave_enter(char *previous, int n)
+{
+  if (!selected_autosave_folder[0])
+    return 0; /* No manual save yet: preserve classic root autosaves. */
+  if (!__getcwd(previous, n))
+    return -1;
+  /* Fail closed: do not overwrite a root autosave if this folder vanished. */
+  return __chdir(selected_autosave_folder) == 0 ? 1 : -1;
+}
+
+void game_save_autosave_leave(const char *previous)
+{
+  __chdir(previous);
+}
 
 /* 00472f7b auto */
 void __cdecl save_pack_layout_rects(void)
@@ -796,6 +839,27 @@ i32 __cdecl save_write_game(const char *file_name,int is_scenario)
 
 /* 00475666: written by hand in src/game/retvals.cpp */
 
+/* Save As and automatic saves begin with the leader's first two letters.
+ * For UTF-8 translations those are two characters, not two bytes: slicing
+ * at byte 2 broke the first Chinese character and painted a missing-glyph
+ * square in the browser. Legacy single-byte languages keep two bytes.
+ * If a translated name is malformed, never create a broken UTF-8 prefix. */
+size_t game_save_leader_prefix_bytes(const char *name)
+{
+  int n = (int)strlen(name), at = 0, i;
+  for (i = 0; i < 2 && at < n; i++) {
+    int size = u8_len_at(name, n, at);
+    if (plat_text_utf8) {
+      int decoded_size;
+      if (u8_decode(name + at, n - at, &decoded_size) == U8_BAD)
+        break;
+      size = decoded_size;
+    }
+    at += size;
+  }
+  return (size_t)at;
+}
+
 /* 0047758c auto */
 void __cdecl game_save_dialog(int is_scenario)
 
@@ -843,7 +907,7 @@ void __cdecl game_save_dialog(int is_scenario)
       str_clear((file_name_buf + 1));
       leader_name = (i32)(civ_leader_name(human_civ[0]));
       crt_strcat(file_name_buf + 1,(const char *)((const void *)leader_name));
-      file_name_buf[3] = 0;
+      file_name_buf[1 + game_save_leader_prefix_bytes(file_name_buf + 1)] = 0;
       str_append((file_name_buf + 1),(const char *)&str_empty_96);
       str_ptr = file_name_buf;
       while (str_ptr = str_ptr + 1, *str_ptr != '\0') {
@@ -941,6 +1005,7 @@ void __cdecl game_save_dialog(int is_scenario)
         result = save_write_game((file_name_buf + 1),is_scenario);
         if (result == 0) {
           if (is_scenario == 0) {
+            game_save_autosave_follow(file_name_buf + 1);
             if (game.multiplayer == 2) {
               text_set_string_arg(0,(file_name_buf + 1));
               popup_game((const char *)&str_emailsaved);
@@ -1098,6 +1163,8 @@ int __cdecl game_load_dialog(int is_scenario,i32 unused_arg,int show_title)
     snd_play_effect(SND_MENUOK,0,0,0);
     load_error = save_read_game(file_path);
     if (load_error == 0) {
+      if (is_scenario == 0)
+        game_save_autosave_follow(file_path);
       ui_flush_input();
       if ((scenario_events_loaded == 0) && ((game.game_flags & GAME_SCENARIO) != 0)) {
         scenario_events_loaded = 0;

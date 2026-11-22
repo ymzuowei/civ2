@@ -13,6 +13,9 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#ifdef _WIN32
+#include <direct.h>
+#endif
 
 char plat_game_dir[1024];       /* host directory of the game files */
 char plat_win_dir[1024];        /* host directory standing in for C:\WINDOWS */
@@ -124,6 +127,17 @@ int plat_chdir(const char *win)
     char host[1024];
     plat_host_path(win, host, sizeof host, 0);
     return chdir(host) ? -1 : 0;
+}
+
+int plat_mkdir(const char *win)
+{
+    char host[1024];
+    plat_host_path(win, host, sizeof host, 1);
+#ifdef _WIN32
+    return _mkdir(host);
+#else
+    return mkdir(host, 0777);
+#endif
 }
 
 int plat_getcwd(char *win, int n)

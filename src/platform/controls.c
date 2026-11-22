@@ -2368,8 +2368,26 @@ LRESULT ctl_static_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
         HDC hdc = BeginPaint(h, &ps);
         RECT r;
         GetClientRect(h, &r);
-        SetBkMode(hdc, TRANSPARENT);
-        DrawTextA(hdc, w->text, -1, &r, DT_WORDBREAK);
+        /* The Save/Load dialog reuses STATIC captions for its current
+         * directory and file/folder name. A transparent DrawTextA on the
+         * retained top-level window surface OVERPRINTS the old characters
+         * after WM_SETTEXT. InvalidateRect alone cannot erase those pixels.
+         * Repaint this dialog's normal button-face background first, just
+         * as the BUTTON renderer already does. Other game STATIC controls
+         * may intentionally overlay artwork: keep their existing behavior. */
+        if (w->parent && w->parent->cls &&
+            strcmp(w->parent->cls->name, "Civ2FileDialog") == 0) {
+            FillRect(hdc, &r, GetSysColorBrush(COLOR_3DFACE));
+            /* Names/paths in a 20px high native dialog label are ONE
+             * line. DT_WORDBREAK could paint a second line into the
+             * retained surface on a font/zoom boundary. */
+            SetBkMode(hdc, TRANSPARENT);
+            DrawTextA(hdc, w->text, -1, &r,
+                      DT_SINGLELINE | DT_LEFT | DT_VCENTER | DT_NOPREFIX);
+        } else {
+            SetBkMode(hdc, TRANSPARENT);
+            DrawTextA(hdc, w->text, -1, &r, DT_WORDBREAK);
+        }
         EndPaint(h, &ps);
         return 0;
     }

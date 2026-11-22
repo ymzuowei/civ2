@@ -2,18 +2,23 @@
 // the game (host.js) on the canvas.
 
 import {MemFS} from './wasi.js';
+import {GRAPHICS_PREFERENCE_KEY, resolveGraphicsPreference, graphicsFromQuery, hdArg} from './graphics_choice.js';
 import {runGame} from './host.js';
+import {createAudioVolume, audioLabels} from './audio_volume.js';
+import {createToolbarCollapse, toolbarLabels} from './toolbar.js';
 import {openStore} from './store.js';
 import {unzip} from './zip.js';
 import {exportSaves, importSaves} from './saves.js';
 import {findDisc} from './setup_run.js';
 import {packFrom, keepPack, loadPack, download, siteArt} from './hdpack.js';
-import {hdWanted, iniGet, iniSet, skipBrowserOpening} from './options.js';
+import {hdWanted, iniGet, iniSet, skipBrowserOpening, openingVideoPresent, openingVideoNeedsGesture, resumeOpeningAudioContext, siteBundlesGame} from './options.js';
 import {t, languages, pageLanguage, urlLanguage, withLanguage, useLanguage, langFile, parseLang, match} from './i18n.js';
 
 const GAME = '/civ2', DATA = '/data';
 let pageLang = 'en';        // the page's language (i18n.js: ?lang=CODE, else English)
 const $ = (id) => document.getElementById(id);
+const browserAudio = createAudioVolume();
+const browserToolbar = createToolbarCollapse();
 // (on the set-up page, and over the screen until the game's first frame)
 const status = (s) => {
     $('status').textContent = s;
@@ -343,10 +348,40 @@ function savesControls(store) {
 // game's logical desktop or its stored game files. The query string also
 // makes a chosen mode easy to share/reproduce across browser refreshes.
 function displayControls() {
-    const controls = $('game-controls'), mode = $('display-mode');
-    const fullscreen = $('fullscreen'), game = $('game'), canvas = $('screen');
+    const controls = $('game-controls'), content = $('game-controls-content');
+    const toggle = $('controls-toggle'), chevron = $('controls-toggle-chevron');
+    const mode = $('display-mode'), fullscreen = $('fullscreen'), game = $('game'), canvas = $('screen');
+    const toolbarText = toolbarLabels(pageLang);
+    controls.setAttribute('aria-label', toolbarText.group);
+    const syncToolbar = () => {
+        const collapsed = browserToolbar.collapsed;
+        content.hidden = collapsed;
+        if (collapsed) {
+            $('audio-mixer-panel').hidden = true;
+            $('audio-mixer-toggle').setAttribute('aria-expanded', 'false');
+        }
+        controls.dataset.collapsed = String(collapsed);
+        toggle.setAttribute('aria-expanded', String(!collapsed));
+        const action = collapsed ? toolbarText.expand : toolbarText.collapse;
+        toggle.setAttribute('aria-label', action);
+        toggle.title = action;
+        // The toolbar is anchored on the right: fold right, unfold left.
+        chevron.setAttribute('d', collapsed ? 'M15 5l-7 7 7 7' : 'M9 5l7 7-7 7');
+    };
+    toggle.addEventListener('click', () => {
+        browserToolbar.setCollapsed(!browserToolbar.collapsed);
+        syncToolbar();
+    });
+    syncToolbar();
     mode.value = new URLSearchParams(location.search).get('display') === 'fit' ? 'fit' : 'integer';
+    const syncDisplayHelp = () => {
+        const hint = mode.value === 'fit' ? toolbarText.fit : toolbarText.integer;
+        $('display-help').textContent = hint;
+        mode.title = hint;
+    };
+    syncDisplayHelp();
     mode.addEventListener('change', () => {
+        syncDisplayHelp();
         const url = new URL(location.href);
         if (mode.value === 'fit')
             url.searchParams.set('display', 'fit');
@@ -360,6 +395,97 @@ function displayControls() {
     // not to the running Civilization II engine's keyboard event handler.
     controls.addEventListener('keydown', (e) => e.stopPropagation());
     controls.addEventListener('keyup', (e) => e.stopPropagation());
+    // T017 compact audio popover: music and effects levels are independent.
+    // UI writes only the browser's existing localStorage key, not CITY.TXT,
+    // SAVs, or the game's CIV.INI. No AudioContext is started by a slider.
+    const audioSlider = $('audio-volume'), audioMute = $('audio-mute');
+    const musicSlider = $('audio-music'), effectsSlider = $('audio-effects');
+    const audioLevel = $('audio-level'), labels = audioLabels(pageLang);
+    const mixerToggle = $('audio-mixer-toggle'), audioPanel = $('audio-mixer-panel');
+    // A reused localhost origin can mix an OLD cached browser-audio module
+    // with new HTML/main.js. Never show undefined% or pretend the extra
+    // sliders work when the old module has no music/effects API.
+    const mixerCompatible = typeof browserAudio.setMusicLevel === 'function' &&
+        typeof browserAudio.setEffectsLevel === 'function' &&
+        Number.isFinite(browserAudio.musicLevel) &&
+        Number.isFinite(browserAudio.effectsLevel);
+    const zhAudio = /^zh[-_](hans|cn|sg)/i.test(pageLang);
+    const musicLabel = labels.music || (zhAudio ? '音乐' : 'Music');
+    const effectsLabel = labels.effects || (zhAudio ? '音效' : 'Effects');
+    const mixerLabel = labels.mixer || (zhAudio ? '音量设置' : 'Audio levels');
+    $('audio-label').textContent = labels.volume;
+    $('audio-music-label').textContent = musicLabel;
+    $('audio-effects-label').textContent = effectsLabel;
+    audioSlider.setAttribute('aria-label', labels.volume);
+    musicSlider.setAttribute('aria-label', musicLabel);
+    effectsSlider.setAttribute('aria-label', effectsLabel);
+    mixerToggle.setAttribute('aria-label', mixerLabel);
+    mixerToggle.title = mixerLabel;
+    audioPanel.setAttribute('aria-label', mixerLabel);
+    if (!mixerCompatible) {
+        const hint = 'Outdated audio module. Hard reload this tab (Ctrl+Shift+R).';
+        audioPanel.title = hint;
+        mixerToggle.title = hint;
+        musicSlider.disabled = true;
+        effectsSlider.disabled = true;
+        console.warn('CIV2_T017_STALE_AUDIO_MODULE:', hint);
+    }
+    function setMixerOpen(open) {
+        const shown = !!open && !browserToolbar.collapsed;
+        audioPanel.hidden = !shown;
+        mixerToggle.setAttribute('aria-expanded', String(shown));
+    }
+    mixerToggle.addEventListener('click', () => setMixerOpen(audioPanel.hidden));
+    document.addEventListener('click', (e) => {
+        if (!mixerToggle.parentElement.contains(e.target))
+            setMixerOpen(false);
+    });
+    controls.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !audioPanel.hidden) {
+            setMixerOpen(false);
+            mixerToggle.focus();
+        }
+    });
+    function syncAudioControls() {
+        audioSlider.value = String(browserAudio.level);
+        audioLevel.textContent = browserAudio.level + '%';
+        if (mixerCompatible) {
+            musicSlider.value = String(browserAudio.musicLevel);
+            $('audio-music-level').textContent = browserAudio.musicLevel + '%';
+            effectsSlider.value = String(browserAudio.effectsLevel);
+            $('audio-effects-level').textContent = browserAudio.effectsLevel + '%';
+        } else {
+            // Keep the previous sliders stable when Master moves.
+            $('audio-music-level').textContent = '—';
+            $('audio-effects-level').textContent = '—';
+        }
+        const muted = browserAudio.muted;
+        $('audio-waves').style.display = muted ? 'none' : '';
+        $('audio-slash').style.display = muted ? '' : 'none';
+        const action = muted ? labels.unmute : labels.mute;
+        audioMute.setAttribute('aria-label', action);
+        audioMute.title = action;
+        audioMute.setAttribute('aria-pressed', String(muted));
+    }
+    audioSlider.addEventListener('input', () => {
+        browserAudio.setLevel(Number(audioSlider.value));
+        syncAudioControls();
+    });
+    musicSlider.addEventListener('input', () => {
+        if (!mixerCompatible) return;
+        browserAudio.setMusicLevel(Number(musicSlider.value));
+        syncAudioControls();
+    });
+    effectsSlider.addEventListener('input', () => {
+        if (!mixerCompatible) return;
+        browserAudio.setEffectsLevel(Number(effectsSlider.value));
+        syncAudioControls();
+    });
+    audioMute.addEventListener('click', () => {
+        browserAudio.setMuted(!browserAudio.muted);
+        syncAudioControls();
+    });
+    syncAudioControls();
     const syncFullscreen = () => {
         const on = document.fullscreenElement === game;
         fullscreen.textContent = t(on ? 'web.exit_fullscreen' : 'web.enter_fullscreen');
@@ -380,6 +506,50 @@ function displayControls() {
     });
     document.addEventListener('fullscreenchange', syncFullscreen);
     syncFullscreen();
+}
+
+// One-time first-play choice, kept outside native game files and saves.
+function firstGraphicsDialog(available) {
+    const dialog = $('graphics-choice-dialog');
+    const classic = $('graphics-first-classic'), hd = $('graphics-first-hd');
+    hd.disabled = !available;
+    $('graphics-first-unavailable').hidden = available;
+    dialog.showModal();
+    return new Promise((resolve) => {
+        const choose = (mode) => {
+            classic.onclick = hd.onclick = null;
+            dialog.close();
+            resolve(mode);
+        };
+        classic.onclick = () => choose('classic');
+        hd.onclick = () => choose('hd');
+        dialog.oncancel = (e) => e.preventDefault();
+    });
+}
+
+async function graphicsControls(store) {
+    const select = $('graphics-mode');
+    select.value = graphicsFromQuery(location.search) ||
+        (await store.getMeta(GRAPHICS_PREFERENCE_KEY)) || 'classic';
+    const dialog = $('graphics-choice-dialog');
+    dialog.addEventListener('keydown', (e) => e.stopPropagation());
+    dialog.addEventListener('keyup', (e) => e.stopPropagation());
+    select.addEventListener('change', async () => {
+        const choice = select.value;
+        const old = graphicsFromQuery(location.search) ||
+            (await store.getMeta(GRAPHICS_PREFERENCE_KEY)) || 'classic';
+        if (running && !confirm(t('web.graphics_switch_confirm'))) {
+            select.value = old;
+            $('screen').focus();
+            return;
+        }
+        // Flush only files the game has already written: no false autosave.
+        await window.civ2Flush?.();
+        await store.setMeta(GRAPHICS_PREFERENCE_KEY, choice);
+        const url = new URL(location.href);
+        url.searchParams.set('hd', hdArg(choice));
+        location.assign(url.href);
+    });
 }
 
 // ---- the HD graphics' art (hdpack.js), as CIV.INI asks for it (options.js) ----
@@ -466,8 +636,14 @@ function fromSite() {
 
 // The site's copy of the game, or null: {core: {size, files}, files: [[path, size]]}
 let siteGameP = null;
-const siteGame = () => siteGameP || (siteGameP = fetch('game/index.json', {cache: 'no-cache'})
-    .then((r) => (r.ok ? r.json() : null)).catch(() => null));
+// BYO-only static builds deliberately have no game/ directory. The build
+// stamps this bit in index.html so the browser never generates a harmless
+// but noisy 404 merely to discover that there is no bundled game.
+const siteGame = () => siteGameP || (siteGameP =
+    siteBundlesGame(document)
+        ? fetch('game/index.json', {cache: 'no-cache'})
+            .then((r) => (r.ok ? r.json() : null)).catch(() => null)
+        : Promise.resolve(null));
 
 // A first visit to such a site: its copy kept in this browser, without
 // asking (the set-up page's choice is not shown: ?setup shows it), on one
@@ -547,6 +723,41 @@ async function installFromSite(store, g, first) {
     keep(files.length, files.length);
 }
 
+// The first click goes to a browser button, never to the game's movie window
+// (which treats a click as SKIP). A running WebAudio context is passed into the
+// later WASM host; constructing it only after asynchronous startup is too late
+// for Chrome/Edge autoplay restrictions.
+function unlockOpeningAudio() {
+    const gate = $('intro-gate'), button = $('intro-start');
+    gate.hidden = false;
+    $('loading').hidden = true;
+    button.focus();
+    return new Promise((resolve) => {
+        button.onclick = async () => {
+            button.disabled = true;
+            let audio = null, ready = false;
+            try {
+                audio = new AudioContext();
+                // resume() is invoked during the actual button click. Do not
+                // start an audio-clocked AVI until WebAudio is RUNNING.
+                ready = await resumeOpeningAudioContext(audio);
+            } catch (e) {
+                console.warn('Opening audio unavailable:', e);
+            }
+            if (!ready) {
+                console.warn('Opening audio did not start: playing the original movie using its wall clock without sound');
+                if (audio)
+                    audio.close().catch(() => {});
+                audio = null;
+            }
+            button.onclick = null;
+            button.disabled = false;
+            gate.hidden = true;
+            resolve(audio);
+        };
+    });
+}
+
 async function play(store) {
     // (the game files and saved games kept for good: without this the browser
     // may clear them when disk space runs low, Safari after a week unused)
@@ -566,6 +777,12 @@ async function play(store) {
     const query = new URLSearchParams(location.search), args = ['civ2', GAME];
     const iniName = (await store.keys()).find((k) => /^civ\.ini$/i.test(k));
     const ini = iniOf(iniName ? [[iniName, await store.get(iniName)]] : []).text;
+    const [siteAvailable, cacheAvailable] = await Promise.all([siteHdP, keptP]);
+    const graphics = await resolveGraphicsPreference(store, location.search,
+        !!(siteAvailable || cacheAvailable), firstGraphicsDialog);
+    $('graphics-mode').value = graphics;
+    if (!query.has('hd'))
+        query.set('hd', hdArg(graphics));
     const hd = hdWanted(ini, query.get('hd')) >= 0;
     // (the art: where the site has it, for the game's OpenCiv2 Options; kept
     // in this browser once downloaded, used then even where the site has none)
@@ -676,18 +893,54 @@ async function play(store) {
     running = fs;
     window.civ2Flush = () => (timer ? (clearTimeout(timer), flush()) : Promise.resolve());
     window.addEventListener('pagehide', () => window.civ2Flush());
+    // A movie with sound needs a real browser activation. Do not consume
+    // its first click on the canvas: the native AVI handler would skip it.
+    // No gate is shown when the locally imported OPENING.AVI is absent.
+    // HD art is enabled only after the local HD pack successfully loads.
+    // Unlike native desktop, Web HD may play the owned opening when present:
+    // it explicitly opts in below, after the browser audio gesture gate.
+    const hdArtAvailable = hd && !!window.civ2Hd?.packBytes;
+    const introNeedsGesture = openingVideoNeedsGesture(entries, hdArtAvailable, location.search);
+    const hdMovieOptIn = hdArtAvailable && introNeedsGesture;
+    // Diagnostics record booleans/states only: no game filenames, bytes, save
+    // names or local E: paths. The owner can inspect window.civ2Intro in
+    // DevTools even if a modal AVI remains black before the main menu.
+    window.civ2Intro = {
+        ownedOpeningPresent: openingVideoPresent(entries),
+        hdArtAvailable,
+        hdMovieOptIn,
+        skipRequested: skipBrowserOpening(location.search),
+        gestureRequired: introNeedsGesture,
+        audio: introNeedsGesture ? 'pending' : 'not-required'
+    };
+    const introAudio = introNeedsGesture ? await unlockOpeningAudio() : null;
+    window.civ2Intro.audio = !introNeedsGesture ? 'not-required'
+        : introAudio ? 'running' : 'silent-fallback';
     status(t('web.starting', Math.round(performance.now() - t0)));
     const canvas = $('screen');
     canvas.focus();
     // (the platform's log: ?log, in the console)
     // (Auto, the system's language: English)
     const env = {CIV2_DATA: DATA, CIV2_SYSTEM_LANG: 'en'};
-    // Browser-only startup policy; do not send a fake mouse click to the
-    // game or alter its modal input. This env is runtime-only: no CIV.INI,
-    // imported E: media or IndexedDB save changes.
+    // If the user's browser denied the Play gesture, do not give the AVI a
+    // permanently suspended audio clock. The existing native no-sound
+    // fallback keeps the *movie* running on wall time (no silent movie skip).
+    if (introNeedsGesture && !introAudio)
+        env.CIV2_NOSOUND = '1';
+    // Browser-only explicit escape hatch; playable opening is the goal.
+    // ?intro=diagnose logs local decode/presentation failures to DevTools.
     if (skipBrowserOpening(location.search))
         env.CIV2_SKIP_OPENING = '1';
-    if (!new URLSearchParams(location.search).has('log'))
+    // Original HD native art mode skips AVI. Override only for the browser
+    // with a locally owned video and audio-gesture/fallback prepared. Never
+    // set this for missing media or explicit ?intro=skip.
+    if (hdMovieOptIn)
+        env.CIV2_BROWSER_HD_OPENING = '1';
+    const introDiagnose = new URLSearchParams(location.search).get('intro') === 'diagnose';
+    if (introDiagnose)
+        env.CIV2_LOG_VIDEO = '1';
+    // A diagnostic trace must not be redirected to /dev/null.
+    if (!introDiagnose && !new URLSearchParams(location.search).has('log'))
         env.CIV2_HOOK_LOG = '/dev/null';
     // (tests, src/web/test/smoke.mjs: files and settings of a replay)
     if (window.civ2Test)
@@ -695,7 +948,8 @@ async function play(store) {
     let code;
     try {
         window.civ2Stats = {};
-        code = await runGame({wasm: site.wasm, fs,
+        code = await runGame({wasm: site.wasm, fs, audioContext: introAudio,
+                              audioVolume: browserAudio,
                               onFrame: () => {
                                   timing.frame = Math.round(performance.now());
                                   $('loading').hidden = true;
@@ -722,6 +976,8 @@ async function play(store) {
         status(t('web.stopped', e.message));
     }
     await window.civ2Flush();
+    if (introAudio)
+        await introAudio.close().catch(() => {});
     running = null;
     $('game').hidden = true;
     showSetup(store, true);
@@ -797,6 +1053,7 @@ async function main() {
     const store = await mark('store', openStore(() =>
         status(t('web.other_tab'))));
     savesControls(store);
+    await graphicsControls(store);
     // (the relay's dialog keeps the keys from the game)
     const rd = $('relay-dialog');
     rd.addEventListener('keydown', (e) => e.stopPropagation());

@@ -78,9 +78,55 @@ export function hdWanted(ini, query) {
     return parseInt(iniGet(ini, SECTION, 'GraphicsDensity') || '0', 10) || 0;
 }
 
-// In the browser an imported OPENING.AVI may be black, yet its native modal
-// movie window keeps the main menu hidden until the player clicks to skip.
-// Prefer a usable first launch. An explicit URL opt-in preserves the movie.
+// Never silently remove the original opening movie from a player's licensed
+// game. ?intro=skip is an explicit escape hatch for diagnostics/recovery;
+// browser audio must first be unlocked with a real user gesture (main.js).
 export function skipBrowserOpening(search = '') {
-    return new URLSearchParams(search).get('intro') !== 'play';
+    return new URLSearchParams(search).get('intro') === 'skip';
+}
+
+// Only the owner's local, installed movie triggers the intro audio gate.
+// Missing original media must still reach the main menu without interaction.
+export function openingVideoPresent(entries) {
+    return entries.some(([name]) => /(?:^|\/)video\/opening\.avi$/i.test(name.replace(/\\/g, '/')));
+}
+
+// The browser may opt into the owner's original OPENING.AVI in either art
+// mode. HD/native desktop's historical skip is preserved unless the Web host
+// explicitly sets CIV2_BROWSER_HD_OPENING. Only ask for a user gesture when
+// that owned AVI exists and ?intro=skip has not been selected.
+export function openingVideoNeedsGesture(entries, _hd, search = '') {
+    return !skipBrowserOpening(search) && openingVideoPresent(entries);
+}
+
+
+// The user gesture must actually make WebAudio RUNNING before the native
+// AVI audio clock can safely become the frame clock. Call this directly from
+// a click handler: resume() runs synchronously up to its returned Promise.
+// A bounded wait prevents indefinite black-modal startup on denied audio.
+export async function resumeOpeningAudioContext(context, timeoutMs = 3000) {
+    if (!context || context.state === 'closed')
+        return false;
+    if (context.state === 'running')
+        return true;
+    let timer;
+    try {
+        const resumed = context.resume();
+        return await Promise.race([
+            Promise.resolve(resumed).then(() => context.state === 'running', () => false),
+            new Promise((resolve) => { timer = setTimeout(() => resolve(false), timeoutMs); })
+        ]);
+    } catch (e) {
+        return false;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+
+// Bundled-game availability is a build-time property, not browser storage.
+// A public BYO build has no game/index.json; don't probe a known-absent
+// endpoint on every single-player launch (and don't clear any saved media).
+export function siteBundlesGame(page) {
+    return page.querySelector('meta[name="openciv2-bundled-game"]')?.content === '1';
 }

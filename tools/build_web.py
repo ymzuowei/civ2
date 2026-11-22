@@ -63,6 +63,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths  # noqa: E402
+from check_web_modules import missing_modules  # noqa: E402
 
 ROOT = paths.ROOT
 OUT = os.path.join(ROOT, 'build', 'web')
@@ -72,8 +73,27 @@ BINARYEN = os.environ.get('BINARYEN') or os.path.join(ROOT, 'tools', 'toolchain'
 ASYNC_IMPORTS = ['host.host_wait_event', 'host.host_poll_event', 'host.host_delay_ms', 'host.host_message_box',
                  'host.host_restart']
 PAGE = ['index.html', 'main.js', 'host.js', 'wasi.js', 'store.js', 'zip.js', 'saves.js', 'setup_run.js',
-        'setup_worker.js', 'net.js', 'hdpack.js', 'options.js', 'i18n.js', 'locale.js']
+        'setup_worker.js', 'net.js', 'hdpack.js', 'options.js', 'i18n.js', 'locale.js',
+        'graphics_choice.js', 'audio_volume.js', 'toolbar.js']
 FONTS = ['fonts_win.bin', 'fonts_win_aa.bin']
+
+SITE_GAME_MARKER = '<meta name="openciv2-bundled-game" content="0">'
+
+
+def mark_bundled_game(index_path, enabled):
+    """Ensure the built HTML accurately records whether GAME=1 was packaged.
+
+    The source HTML is always BYO-only. Do not modify the original page,
+    cached game files or existing browser IndexedDB.
+    """
+    with open(index_path, encoding='utf-8') as f:
+        page = f.read()
+    if page.count(SITE_GAME_MARKER) != 1:
+        raise ValueError('Missing or repeated bundled-game HTML marker')
+    if enabled:
+        with open(index_path, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(page.replace(
+                SITE_GAME_MARKER, '<meta name="openciv2-bundled-game" content="1">'))
 LANG = os.path.join(ROOT, 'data', 'native', 'lang')
 
 
@@ -90,7 +110,8 @@ def english_texts():
 
 def lang_file(path):
     """A translation file: (its code page, {key: text}), as src/web/i18n.js reads it."""
-    data = open(path, 'rb').read()
+    with open(path, 'rb') as stream:
+        data = stream.read()
     cp = 'windows-1252'
     lines = data.decode('latin-1').splitlines()
     for i, line in enumerate(lines):
@@ -323,6 +344,13 @@ def build_setup():
 
 
 def main():
+    # Node tests import directly from src/web; the actual static site needs
+    # every relative ES module imported by main.js or a Worker copied too.
+    # Fail before compiling WASM if the published PAGE manifest is incomplete.
+    missing = missing_modules(SRC, PAGE)
+    if missing:
+        raise SystemExit('\n'.join(missing))
+    print('CIV2_BROWSER_MODULE_MANIFEST=PASS')
     if '--no-module' not in sys.argv:
         run([sys.executable, os.path.join(ROOT, 'tools', 'build_port.py'), 'module'])
     wasm_opt = os.path.join(BINARYEN, 'bin', 'wasm-opt')
@@ -337,6 +365,12 @@ def main():
     build_setup()
     for f in PAGE:
         shutil.copy(os.path.join(SRC, f), os.path.join(OUT, f))
+    # GAME=0 ships no licensed media; the browser skips game/index.json
+    # entirely instead of issuing an expected 404 on every page load.
+    mark_bundled_game(
+        os.path.join(OUT, 'index.html'),
+        os.environ.get('GAME', '') not in ('', '0'),
+    )
     if os.path.exists(os.path.join(OUT, 'choices.json')):
         os.remove(os.path.join(OUT, 'choices.json'))     # (an older build's)
     shutil.copy(os.path.join(ROOT, 'data', 'hd-pack.json'), os.path.join(OUT, 'hd-pack.json'))

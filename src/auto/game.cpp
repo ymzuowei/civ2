@@ -958,6 +958,10 @@ void __cdecl intro_play_opening_video(void)
   RECT screen_rect2;
   int open_rc;
   const char *browser_skip_intro = getenv("CIV2_SKIP_OPENING");
+  /* Only the Web host may request the player's own AVI in HD mode.
+     Native desktop keeps its existing HD default; no user media is copied
+     into the public build or derived from the optional HD art pack. */
+  const char *browser_hd_opening = getenv("CIV2_BROWSER_HD_OPENING");
   
   player.construct();
   /* BF-297 (Peter Johnson's ledger): the audio's flags start clear, as the
@@ -981,14 +985,15 @@ void __cdecl intro_play_opening_video(void)
     str_clear((char *)path);
     str_append((char *)path,(const char *)&str_civ2_video_opening_avi);
     found = file_resolve_path((const char *)path);
-    /* (port) HD art skips the original opening, preserving the palette's
-       single random call. In the browser, do the same by default: when
-       OPENING.AVI renders black, its modal window otherwise blocks the
-       main menu until a user click. ?intro=play removes this env flag.
-       Native desktop builds are unchanged (no flag by default).
-       Keep the same palette/RNG path as the existing HD skip. */
-    if (found != 0 && (hd_art ||
-        (browser_skip_intro && browser_skip_intro[0] == '1' && !browser_skip_intro[1]))) {
+    /* Native desktop continues to skip the original AVI in HD art mode,
+       keeping its old palette/RNG path. The Web host explicitly permits the
+       player's locally installed OPENING.AVI in HD mode after its WebAudio
+       gesture gate; without that opt-in, this path stays unchanged.
+       ?intro=skip always wins even if both variables are present. */
+    if (found != 0 &&
+        ((browser_skip_intro && browser_skip_intro[0] == '1' && !browser_skip_intro[1]) ||
+         (hd_art && !(browser_hd_opening &&
+                      browser_hd_opening[0] == '1' && !browser_hd_opening[1])))) {
       player.palette.new_version();
       found = 0;
     }
@@ -1809,13 +1814,24 @@ void __cdecl game_autosave(int civ)
   char *leader_name;
   i8 backup_path[0x200];  /* BF-046 (Peter Johnson's ledger): the original's
                              80, less than its label */
+  char previous_dir[260];
+  int routed;
   
   if (human_civ[0] == civ) {
+    /* Keep original autosave filenames and backup rotation in the current
+     * campaign's last successful Save (or Load) folder. */
+    routed = game_save_autosave_enter(previous_dir, sizeof previous_dir);
+    if (routed < 0)
+      return; /* Missing folder: do not overwrite a root autosave instead. */
     save_set_file_ext(0);
     text_clear();
     leader_name = civ_leader_name(civ);
     text_append(leader_name);
-    textbuf.buf[2] = 0;
+    /* The original two-byte cut split a three-byte Han character in
+     * UTF-8 locales. Match Save As: two complete leader characters,
+     * still exactly two bytes for legacy single-byte translations.
+     * Use the identical prefix for current and rotated backup SAVs. */
+    textbuf.buf[game_save_leader_prefix_bytes(textbuf.buf)] = 0;
     str_trim((char *)&textbuf.buf);
     text_append((const char *)&str_empty_99);
     text_append_label(0x5c);
@@ -1830,6 +1846,8 @@ void __cdecl game_autosave(int civ)
       crt_rename(textbuf.buf,backup_path);
     }
     save_write_game((const char *)&textbuf.buf,0);
+    if (routed > 0)
+      game_save_autosave_leave(previous_dir);
   }
   return;
 }
@@ -3580,6 +3598,8 @@ void __cdecl game_init_new(void)
   iptr j;
   iptr leader;
   
+  /* A new game must not reuse the previous campaign's autosave folder. */
+  game_save_autosave_reset();
   scenario_reset_params();
   destroyed_civs_clear();
   for (leader = 0; leader < 8; leader++) {

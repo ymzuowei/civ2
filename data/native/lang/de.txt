@@ -14575,3 +14575,17 @@ An Fenster anpassen
 Vollbild
 @@openciv2.web.exit_fullscreen
 Vollbild verlassen
+@@openciv2.web.graphics_label
+Grafik
+@@openciv2.web.graphics_choose_title
+Kartendarstellung wählen
+@@openciv2.web.graphics_choose_note
+Wählen Sie vor dem Spiel eine Darstellung. Später können Sie im Grafikmenü wechseln; dabei wird das Spiel neu geladen.
+@@openciv2.web.graphics_classic
+Original
+@@openciv2.web.graphics_hd
+Hohe Auflösung
+@@openciv2.web.graphics_unavailable
+Die HD-Kartengrafik ist nicht installiert. Die Originalgrafik bleibt verfügbar.
+@@openciv2.web.graphics_switch_confirm
+Speichern Sie zuerst Ihren aktuellen Spielzug. Ein Wechsel lädt das Spiel neu und verwirft ungespeicherte Züge. Fortfahren?

@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OpenCiv2</title>
+<!-- Build-time mode: 0 means the player imports game files locally. -->
+<meta name="openciv2-bundled-game" content="0">
+<!-- Avoid a stray /favicon.ico 404; no extra binary image file required. -->
+<link rel="icon" href="data:,">
 <style>
   /* the game's look, drawn here (none of the game's own files: the page comes before them):
      the main menu's brown desktop, its dialogs' grey marble in a bevelled frame, Times */
@@ -84,14 +88,48 @@
   #loading { position: fixed; z-index: 3; left: 0; right: 0; top: 45%; margin: 0; padding: 0 1rem; text-align: center;
              font: 1.2rem var(--serif); color: #f4f0e6; text-shadow: 1px 1px 0 #000; pointer-events: none; }
   #game { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #000; }
+  /* Only when the locally imported original OPENING.AVI exists: a real
+     user gesture unlocks WebAudio before the movie's modal loop starts.
+     Keep this gate outside the original game canvas/input surface. */
+  #intro-gate { position: absolute; z-index: 2; display: flex; flex-direction: column; align-items: center;
+                gap: 0.4rem; padding: 1rem 1.5rem; text-align: center; background: var(--face) var(--marble);
+                border: 3px solid; border-color: var(--hi) var(--dark) var(--dark) var(--hi); }
+  #intro-gate small { font: 0.75rem/1.2 var(--serif); }
   [hidden] { display: none !important; }
   /* Compact, keyboard-accessible display controls above, not inside, the
      original game canvas. Never reflow the native game-window geometry. */
   #game-controls { position: fixed; top: 0.4rem; right: 0.4rem; z-index: 1;
                    display: flex; align-items: center; gap: 0.35rem; max-width: calc(100vw - 0.8rem);
                    padding: 0.25rem 0.35rem; background: rgba(30, 30, 30, 0.82); color: #fff;
-                   font: 14px/1.25 var(--serif); opacity: 0.66; border: 1px solid #777; }
+                   font: 14px/1.25 var(--serif); opacity: 0.90; border: 1px solid #777; }
   #game-controls:hover, #game-controls:focus-within { opacity: 1; }
+  /* Collapsing hides the controls, not the handle: the original canvas and
+     keyboard focus remain untouched. The toolbar expands to the left. */
+  #game-controls-content { display: flex; align-items: center; gap: 0.35rem; min-width: 0; }
+  #game-controls[data-collapsed="true"] { opacity: 0.93; }
+  #game-controls .icon-button { flex: 0 0 auto; display: inline-flex; align-items: center;
+                 justify-content: center; min-width: 2.1rem; width: 2.1rem; height: 1.85rem;
+                 padding: 0; background: #1b3548; color: #fff; border: 1px solid #f2f7fa;
+                 box-shadow: inset 0 0 0 1px #2f4b60; }
+  #game-controls .icon-button:active { padding: 0; background: #314c60; box-shadow: none; }
+  #game-controls .icon-button svg { width: 1.35rem; height: 1.35rem; display: block; }
+  #game-controls #audio-mute[aria-pressed="true"] { background: #772c36; color: #fff; }
+  #game-controls .audio-group { position: relative; display: flex; align-items: center; gap: 0.25rem;
+                                border-left: 1px solid #888; padding-left: 0.4rem; }
+  /* T017: keep all three volume sliders in a small, opt-in drop-down.
+     Closed: only two icons occupy the game's upper-right toolbar. */
+  #game-controls .audio-mixer-panel { position: absolute; top: calc(100% + 0.45rem); right: 0;
+      width: 15rem; box-sizing: border-box; padding: 0.55rem; border: 1px solid #bbb;
+      box-shadow: 0 3px 8px #0009; background: #1a2731; color: #fff;
+      display: grid; gap: 0.4rem; font: 12px/1.3 sans-serif; }
+  #game-controls .audio-mixer-panel[hidden] { display: none; }
+  #game-controls .audio-row { display: grid; align-items: center; grid-template-columns: 3.25rem minmax(0,1fr) 2.6rem;
+      gap: 0.25rem; }
+  #game-controls .audio-row label { display: block; margin: 0; }
+  #game-controls .audio-row input[type=range] { min-width: 0; width: 100%; margin: 0; accent-color: #e1dccb; cursor: pointer; }
+  #game-controls .audio-row output { text-align: right; font: 11px/1.3 sans-serif; }
+  #game-controls #audio-mixer-toggle[aria-expanded=true] { background: #314c60; }
+  #game-controls input:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   #game-controls label { display: flex; align-items: center; gap: 0.3rem; white-space: nowrap; }
   #game-controls select { font: inherit; min-height: 1.75rem; max-width: 11rem; }
   #game-controls button { font: inherit; min-height: 1.75rem; margin: 0; min-width: 0;
@@ -99,7 +137,9 @@
   #game-controls select:focus-visible, #game-controls button:focus-visible {
                           outline: 2px solid #fff; outline-offset: 2px; }
   @media (max-width: 500px) {
-    #game-controls { gap: 0.15rem; padding: 0.2rem; font-size: 12px; }
+    #game-controls { gap: 0.15rem; padding: 0.2rem; font-size: 12px; justify-content: flex-end; }
+    #game-controls-content { gap: 0.15rem; flex-wrap: wrap; justify-content: flex-end; }
+    #game-controls .audio-mixer-panel { width: 11.2rem; }
     #game-controls button { padding: 0.15rem 0.3rem; }
     #game-controls select { max-width: 7rem; }
   }
@@ -173,18 +213,82 @@
  </section>
 </div>
 <div id="game" hidden><canvas id="screen" tabindex="0"></canvas>
-  <div id="game-controls" role="group" aria-labelledby="display-label">
+  <div id="intro-gate" hidden role="group" aria-label="OPENING.AVI">
+    <small>OPENING.AVI</small>
+    <button id="intro-start" type="button" data-t="web.play">Play</button>
+  </div>
+  <div id="game-controls" role="group" aria-label="Game controls">
+    <div id="game-controls-content">
+    <label><span data-t="web.graphics_label">Graphics</span>
+      <select id="graphics-mode" aria-label="Graphics">
+        <option value="classic" data-t="web.graphics_classic">Original</option>
+        <option value="hd" data-t="web.graphics_hd">High resolution</option>
+      </select>
+    </label>
     <label><span id="display-label" data-t="web.display">Display</span>
-      <select id="display-mode">
+      <select id="display-mode" aria-describedby="display-help">
         <option value="integer" data-t="web.display_integer">Pixel perfect</option>
         <option value="fit" data-t="web.display_fit">Fit viewport</option>
       </select>
+      <span id="display-help" hidden>Pixel perfect prefers whole-number scaling; Fit viewport also allows fractional scaling. They may look identical if the game already fits.</span>
     </label>
+    <div class="audio-group" role="group" aria-label="Audio">
+      <button id="audio-mixer-toggle" class="icon-button" type="button" aria-label="Audio levels"
+              aria-controls="audio-mixer-panel" aria-expanded="false" title="Audio levels">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 6h16M4 12h16M4 18h16"/>
+          <circle cx="9" cy="6" r="2" fill="currentColor" stroke="#1b3548"/>
+          <circle cx="16" cy="12" r="2" fill="currentColor" stroke="#1b3548"/>
+          <circle cx="11" cy="18" r="2" fill="currentColor" stroke="#1b3548"/>
+        </svg>
+      </button>
+      <div id="audio-mixer-panel" class="audio-mixer-panel" role="group" aria-label="Audio levels" hidden>
+        <div class="audio-row">
+          <label id="audio-label" for="audio-volume">Master</label>
+          <input id="audio-volume" type="range" min="0" max="100" step="1" value="100" aria-label="Master">
+          <output id="audio-level" for="audio-volume">100%</output>
+        </div>
+        <div class="audio-row">
+          <label id="audio-music-label" for="audio-music">Music</label>
+          <input id="audio-music" type="range" min="0" max="100" step="1" value="100" aria-label="Music">
+          <output id="audio-music-level" for="audio-music">100%</output>
+        </div>
+        <div class="audio-row">
+          <label id="audio-effects-label" for="audio-effects">Effects</label>
+          <input id="audio-effects" type="range" min="0" max="100" step="1" value="100" aria-label="Effects">
+          <output id="audio-effects-level" for="audio-effects">100%</output>
+        </div>
+      </div>
+      <button id="audio-mute" class="icon-button" type="button" aria-label="Mute" aria-pressed="false" title="Mute">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M3 9h5l5-4v14l-5-4H3z" fill="currentColor" stroke="currentColor" stroke-linejoin="round"/>
+          <path id="audio-waves" d="M16 9a4 4 0 0 1 0 6m2-9a8 8 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+          <path id="audio-slash" d="M16 8l6 8m0-8l-6 8" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" style="display:none"/>
+        </svg>
+      </button>
+    </div>
     <button id="fullscreen" type="button" data-t="web.enter_fullscreen">Fullscreen</button>
     <button id="saves-open" title="Export or import saved games" data-t="web.saves" data-t-title="web.saves_title">Saves</button>
+    </div>
+    <button id="controls-toggle" class="icon-button" type="button" aria-expanded="true"
+            aria-controls="game-controls-content" aria-label="Collapse controls" title="Collapse controls">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path id="controls-toggle-chevron" d="M9 5l7 7-7 7" fill="none" stroke="currentColor"
+              stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
   </div>
 </div>
 <input id="import-saves" type="file" multiple accept=".sav,.zip,.scn,.mp,.ini,.dat">
+<dialog id="graphics-choice-dialog" aria-labelledby="graphics-first-title">
+  <h2 id="graphics-first-title" class="dialog-title" data-t="web.graphics_choose_title">Choose map graphics</h2>
+  <p class="dialog-text" data-t="web.graphics_choose_note">Choose once before entering the game. Later you can change Graphics in the toolbar; switching reloads the game.</p>
+  <p class="dialog-text" id="graphics-first-unavailable" hidden data-t="web.graphics_unavailable">The HD texture pack is not installed. Original graphics remain available.</p>
+  <div class="dialog-buttons">
+    <button id="graphics-first-classic" type="button" data-t="web.graphics_classic">Original</button>
+    <button id="graphics-first-hd" type="button" data-t="web.graphics_hd">High resolution</button>
+  </div>
+</dialog>
 <dialog id="saves-dialog">
   <h2 data-t="web.saves_heading">Saved games</h2>
   <p class="dim" data-t="web.saves_note">Your saved games, scenarios you made, <code>CIV.INI</code>, <code>CIV2.DAT</code> and

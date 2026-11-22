@@ -949,8 +949,13 @@ void __cdecl city_assign_default_name(int city)
        world-wide 255-city limit or the serialized leader structure. */
     if (leaders[civs[civ].tribe].city_name_index < 0)
       leaders[civs[civ].tribe].city_name_index = 0;
-    if (leaders[civs[civ].tribe].city_name_index >= 120)
-      break;
+    if (leaders[civs[civ].tribe].city_name_index >= 120) {
+      /* Nothing to open/close: the 121st and later city of this tribe
+         receive a stable fallback without touching the text parser. */
+      if (!cities[city].name[0])
+        snprintf(cities[city].name, sizeof cities[city].name, "City %03d", city + 1);
+      return;
+    }
     leaders[civs[civ].tribe].city_name_index++;
     skip_count = (uint)(unsigned char)leaders[civs[civ].tribe].city_name_index;
     __chdir(((i8 *)&net_map_lock_slots_block.scenario_dir_path));

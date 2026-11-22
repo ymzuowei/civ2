@@ -277,6 +277,8 @@ HD 图形
 删除后无法恢复。
 @@openciv2.file.delete_failed
 有些文件未能删除，请检查剩余内容。
+@@openciv2.file.delete_refused
+只能删除自建存档目录和存档文件。含其他文件的目录受到保护。
 @@openciv2.file.not_found
 找不到文件：%s。
 @@openciv2.file.replace

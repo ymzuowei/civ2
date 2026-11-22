@@ -941,9 +941,16 @@ void __cdecl city_assign_default_name(int city)
   do {
     attempt++;
     if (2 < attempt) break;
-    leaders[civs[civ].tribe].city_name_index = leaders[civs[civ].tribe].city_name_index + 1
-    ;
-    skip_count = (uint)leaders[civs[civ].tribe].city_name_index;
+    /* CIV2-T017: the original's per-tribe index is a signed byte. Some
+       AI games run past their tribe's finite CITY.TXT and EXTRA lists.
+       Bound the counter before increment, also for nonhuman civilizations;
+       never wrap it into a negative read count. The engine's separate
+       overall 255-city limit and save layout are not changed. */
+    if (leaders[civs[civ].tribe].city_name_index < 0 ||
+        leaders[civs[civ].tribe].city_name_index >= 120)
+      leaders[civs[civ].tribe].city_name_index = 0;
+    leaders[civs[civ].tribe].city_name_index++;
+    skip_count = (uint)(unsigned char)leaders[civs[civ].tribe].city_name_index;
     __chdir(((i8 *)&net_map_lock_slots_block.scenario_dir_path));
     result = text_open_section((const char *)&str_city,(const char *)section_name);
     if (result != 0) {
@@ -970,7 +977,7 @@ void __cdecl city_assign_default_name(int city)
         break;
       }
     }
-    if ((int)skip_count < 1) {
+    if ((int)skip_count < 1 && textbuf.buf[0] && textbuf.buf[0] != '@') {
       _memset(cities[city].name,0,0x10);
       _strncpy(cities[city].name,textbuf.buf,0xf);
       break;
@@ -978,6 +985,13 @@ void __cdecl city_assign_default_name(int city)
     leaders[civs[civ].tribe].city_name_index = '\0';
   } while( true );
   text_close_file();
+  /* A finite CITY.TXT/@EXTRA list may be exhausted for the player's tribe
+     OR an AI opponent. A deleted/malformed list may fail altogether. Never
+     leave the new city with an empty name or read past the end of a section.
+     The city slot is unique across all 8 civilizations and <255, including
+     load/replay, so the fallback fits the classic 15-byte name field. */
+  if (!cities[city].name[0])
+    snprintf(cities[city].name, sizeof cities[city].name, "City %03d", city + 1);
   return;
 }
 

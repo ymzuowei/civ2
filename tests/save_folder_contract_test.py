@@ -285,7 +285,7 @@ class SaveFolderContractTests(unittest.TestCase):
                 self.assertTrue(text.startswith("; OpenCiv2:"))
 
 
-    def test_all_locale_keys_match_template_except_exact_six_native_fallbacks(self):
+    def test_all_locale_keys_match_template_with_exact_legacy_fallbacks(self):
         # Source-only CI must catch a newly added English key BEFORE the
         # owner spends time on a full D:-isolated WASM build. Historic binary
         # translations stay unchanged; no transcoding or files generated.

@@ -119,10 +119,11 @@
   /* T017: keep all three volume sliders in a small, opt-in drop-down.
      Closed: only two icons occupy the game's upper-right toolbar. */
   #game-controls .audio-mixer-panel { position: absolute; top: calc(100% + 0.45rem); right: 0;
-      width: 12.5rem; box-sizing: border-box; padding: 0.55rem; border: 1px solid #bbb;
+      width: 15rem; box-sizing: border-box; padding: 0.55rem; border: 1px solid #bbb;
       box-shadow: 0 3px 8px #0009; background: #1a2731; color: #fff;
       display: grid; gap: 0.4rem; font: 12px/1.3 sans-serif; }
-  #game-controls .audio-row { display: grid; align-items: center; grid-template-columns: 2.8rem minmax(0,1fr) 2.4rem;
+  #game-controls .audio-mixer-panel[hidden] { display: none; }
+  #game-controls .audio-row { display: grid; align-items: center; grid-template-columns: 3.25rem minmax(0,1fr) 2.6rem;
       gap: 0.25rem; }
   #game-controls .audio-row label { display: block; margin: 0; }
   #game-controls .audio-row input[type=range] { min-width: 0; width: 100%; margin: 0; accent-color: #e1dccb; cursor: pointer; }

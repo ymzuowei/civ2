@@ -98,6 +98,9 @@ class CityAndSaveManagement(unittest.TestCase):
         self.assertIn("openciv2.browser-audio.v1", self.volume)
         self.assertIn("browserAudio.setMusicLevel(", self.page)
         self.assertIn("browserAudio.setEffectsLevel(", self.page)
+        self.assertIn("const mixerCompatible = typeof browserAudio.setMusicLevel === 'function'", self.page)
+        self.assertIn("musicSlider.disabled = true;", self.page)
+        self.assertIn("effectsSlider.disabled = true;", self.page)
         self.assertIn("audioPanel.hidden = !shown;", self.page)
         self.assertIn("controls.addEventListener('keydown', (e) => e.stopPropagation());", self.page)
         for ident in ('id="audio-music"', 'id="audio-effects"',

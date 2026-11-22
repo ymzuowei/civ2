@@ -402,15 +402,34 @@ function displayControls() {
     const musicSlider = $('audio-music'), effectsSlider = $('audio-effects');
     const audioLevel = $('audio-level'), labels = audioLabels(pageLang);
     const mixerToggle = $('audio-mixer-toggle'), audioPanel = $('audio-mixer-panel');
+    // A reused localhost origin can mix an OLD cached browser-audio module
+    // with new HTML/main.js. Never show undefined% or pretend the extra
+    // sliders work when the old module has no music/effects API.
+    const mixerCompatible = typeof browserAudio.setMusicLevel === 'function' &&
+        typeof browserAudio.setEffectsLevel === 'function' &&
+        Number.isFinite(browserAudio.musicLevel) &&
+        Number.isFinite(browserAudio.effectsLevel);
+    const zhAudio = /^zh[-_](hans|cn|sg)/i.test(pageLang);
+    const musicLabel = labels.music || (zhAudio ? '音乐' : 'Music');
+    const effectsLabel = labels.effects || (zhAudio ? '音效' : 'Effects');
+    const mixerLabel = labels.mixer || (zhAudio ? '音量设置' : 'Audio levels');
     $('audio-label').textContent = labels.volume;
-    $('audio-music-label').textContent = labels.music;
-    $('audio-effects-label').textContent = labels.effects;
+    $('audio-music-label').textContent = musicLabel;
+    $('audio-effects-label').textContent = effectsLabel;
     audioSlider.setAttribute('aria-label', labels.volume);
-    musicSlider.setAttribute('aria-label', labels.music);
-    effectsSlider.setAttribute('aria-label', labels.effects);
-    mixerToggle.setAttribute('aria-label', labels.mixer);
-    mixerToggle.title = labels.mixer;
-    audioPanel.setAttribute('aria-label', labels.mixer);
+    musicSlider.setAttribute('aria-label', musicLabel);
+    effectsSlider.setAttribute('aria-label', effectsLabel);
+    mixerToggle.setAttribute('aria-label', mixerLabel);
+    mixerToggle.title = mixerLabel;
+    audioPanel.setAttribute('aria-label', mixerLabel);
+    if (!mixerCompatible) {
+        const hint = 'Outdated audio module. Hard reload this tab (Ctrl+Shift+R).';
+        audioPanel.title = hint;
+        mixerToggle.title = hint;
+        musicSlider.disabled = true;
+        effectsSlider.disabled = true;
+        console.warn('CIV2_T017_STALE_AUDIO_MODULE:', hint);
+    }
     function setMixerOpen(open) {
         const shown = !!open && !browserToolbar.collapsed;
         audioPanel.hidden = !shown;
@@ -430,10 +449,16 @@ function displayControls() {
     function syncAudioControls() {
         audioSlider.value = String(browserAudio.level);
         audioLevel.textContent = browserAudio.level + '%';
-        musicSlider.value = String(browserAudio.musicLevel);
-        $('audio-music-level').textContent = browserAudio.musicLevel + '%';
-        effectsSlider.value = String(browserAudio.effectsLevel);
-        $('audio-effects-level').textContent = browserAudio.effectsLevel + '%';
+        if (mixerCompatible) {
+            musicSlider.value = String(browserAudio.musicLevel);
+            $('audio-music-level').textContent = browserAudio.musicLevel + '%';
+            effectsSlider.value = String(browserAudio.effectsLevel);
+            $('audio-effects-level').textContent = browserAudio.effectsLevel + '%';
+        } else {
+            // Keep the previous sliders stable when Master moves.
+            $('audio-music-level').textContent = '—';
+            $('audio-effects-level').textContent = '—';
+        }
         const muted = browserAudio.muted;
         $('audio-waves').style.display = muted ? 'none' : '';
         $('audio-slash').style.display = muted ? '' : 'none';
@@ -447,10 +472,12 @@ function displayControls() {
         syncAudioControls();
     });
     musicSlider.addEventListener('input', () => {
+        if (!mixerCompatible) return;
         browserAudio.setMusicLevel(Number(musicSlider.value));
         syncAudioControls();
     });
     effectsSlider.addEventListener('input', () => {
+        if (!mixerCompatible) return;
         browserAudio.setEffectsLevel(Number(effectsSlider.value));
         syncAudioControls();
     });

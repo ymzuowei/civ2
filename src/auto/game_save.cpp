@@ -839,12 +839,12 @@ i32 __cdecl save_write_game(const char *file_name,int is_scenario)
 
 /* 00475666: written by hand in src/game/retvals.cpp */
 
-/* The original Save As name begins with the leader's first two letters.
+/* Save As and automatic saves begin with the leader's first two letters.
  * For UTF-8 translations those are two characters, not two bytes: slicing
  * at byte 2 broke the first Chinese character and painted a missing-glyph
  * square in the browser. Legacy single-byte languages keep two bytes.
  * If a translated name is malformed, never create a broken UTF-8 prefix. */
-static size_t save_leader_prefix_bytes(const char *name)
+size_t game_save_leader_prefix_bytes(const char *name)
 {
   int n = (int)strlen(name), at = 0, i;
   for (i = 0; i < 2 && at < n; i++) {
@@ -907,7 +907,7 @@ void __cdecl game_save_dialog(int is_scenario)
       str_clear((file_name_buf + 1));
       leader_name = (i32)(civ_leader_name(human_civ[0]));
       crt_strcat(file_name_buf + 1,(const char *)((const void *)leader_name));
-      file_name_buf[1 + save_leader_prefix_bytes(file_name_buf + 1)] = 0;
+      file_name_buf[1 + game_save_leader_prefix_bytes(file_name_buf + 1)] = 0;
       str_append((file_name_buf + 1),(const char *)&str_empty_96);
       str_ptr = file_name_buf;
       while (str_ptr = str_ptr + 1, *str_ptr != '\0') {

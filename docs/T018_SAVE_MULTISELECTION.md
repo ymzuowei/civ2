@@ -64,3 +64,7 @@ changed merely by deploying these controls.
 
 **No new freeze, retirement of the old B011/T016 kits, PR merge or
 deployment until T017+T018 Owner gameplay acceptance.**
+
+## 2026-11-22 Owner Windows build language-validator finding
+
+Owner reported `CIV2_LEGACY_LANGUAGE_CODEPAGES=PASS`, `CIV2_ZH_HANS_TRANSLATION_TEST=PASS`, full CJK font coverage, then eight `FAIL data/native/lang/{de,el,eo,la}.txt: missing file.delete_batch_confirm/file.select_one` findings in the later `tests/lang_test.py` full-template check. Those two T018 strings are already in native `src/host/texts.h` and translated EN/zh-Hans/zh-Hant; the historical four non-UTF-8 language packs intentionally rely on `extras_text()`'s English fallback and are protected by exact Git blob SHA tests. The fix is to extend **only** the strict validator's legacy fallback allowlist by those two keys, plus cross-check that the validator and save-folder source policy allow the same 13 exact keys and only de/el/eo/la. No historical locale bytes or font files changed. Earlier screenshot/CI source PASS is not a new Owner WASM/browser PASS; rebuild from a new exact Web upstream pin.

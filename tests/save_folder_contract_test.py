@@ -286,6 +286,24 @@ class SaveFolderContractTests(unittest.TestCase):
                 self.assertTrue(text.startswith("; OpenCiv2:"))
 
 
+    def test_language_validator_allows_exact_same_legacy_fallback_keys(self):
+        # The full pre-WASM language validator must not reject English
+        # fallback keys allowed by this source test. No legacy locale
+        # file is edited or re-encoded to satisfy this assertion.
+        checker = (ROOT / "tests/lang_test.py").read_text(encoding="utf-8")
+        match = re.search(r"folder_keys\\s*=\\s*\\{([^}]*)\\}", checker, re.S)
+        self.assertIsNotNone(match, "language checker must define its fallback set")
+        allowed = set(re.findall(r"'(file\\.[a-z_]+)'", match.group(1)))
+        expected = {
+            "file.new_folder", "file.create_folder", "file.folder_name",
+            "file.folder_invalid", "file.folder_exists", "file.folder_failed",
+            "file.delete_title", "file.delete_save_confirm",
+            "file.delete_folder_confirm", "file.delete_failed", "file.delete_refused",
+            "file.delete_batch_confirm", "file.select_one",
+        }
+        self.assertEqual(allowed, expected)
+        self.assertIn("fallback_languages = {'de', 'el', 'eo', 'la'}", checker)
+
     def test_all_locale_keys_match_template_with_exact_legacy_fallbacks(self):
         # Source-only CI must catch a newly added English key BEFORE the
         # owner spends time on a full D:-isolated WASM build. Historic binary

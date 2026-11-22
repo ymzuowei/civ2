@@ -112,15 +112,17 @@ def main():
         other = {k for k in texts if not k.startswith('openciv2.') and k != 'codepage'}
         # T011's native extras_text() already falls back to the English
         # texts.h label when a translated entry is absent. Keep legacy
-        # codepage translations BYTE-EXACT: the six folder labels and five
-        # T017 confirmed-Delete labels use the English native fallback in
-        # four historical language packs. All prior keys remain strict.
+        # codepage translations BYTE-EXACT: six T011 folder labels, five
+        # T017 confirmed-Delete labels and two T018 batch-selection labels
+        # use English native fallback in four historical language packs.
+        # All prior keys remain strict.
         folder_keys = {
             'file.new_folder', 'file.create_folder', 'file.folder_name',
             'file.folder_invalid', 'file.folder_exists', 'file.folder_failed',
             'file.delete_title', 'file.delete_save_confirm',
             'file.delete_folder_confirm', 'file.delete_failed',
-            'file.delete_refused',
+            'file.delete_refused', 'file.delete_batch_confirm',
+            'file.select_one',
         }
         fallback_languages = {'de', 'el', 'eo', 'la'}
         permitted = folder_keys if code in fallback_languages else set()

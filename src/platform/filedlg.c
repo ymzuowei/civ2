@@ -408,9 +408,9 @@ static int plan_save_tree(SaveDeletePlan *plan, const char *win, int depth)
     char host[1024], spec[MAX_PATH], child[MAX_PATH], *base;
     WIN32_FIND_DATAA f;
     HANDLE h;
-    int marked_this = 0;
-    /* Distinguish pre-T017 user Save folders from an empty or unfamiliar
-       unmarked game/resource folder. Count actual SAV files, not markers. */
+    int marked_this = 0, entries_here = 0;
+    /* Old T011 user folders may have no provenance marker; count both
+     * real SAV contents and actual directory entries after . and ... */
     int saves_before = plan->files - plan->marked;
     if (depth > MAX_DELETE_DEPTH || !safe_save_target(win, host, sizeof host))
         return 0;
@@ -430,6 +430,7 @@ static int plan_save_tree(SaveDeletePlan *plan, const char *win, int depth)
     if (h != INVALID_HANDLE_VALUE) {
         do {
             if (!strcmp(f.cFileName, ".") || !strcmp(f.cFileName, "..")) continue;
+            entries_here++;
             if (strlen(win) + strlen(f.cFileName) + 2 >= sizeof child) {
                 FindClose(h); return 0;
             }
@@ -463,16 +464,20 @@ static int plan_save_tree(SaveDeletePlan *plan, const char *win, int depth)
     base = strrchr(win, '\\');
     if (!base || !strcmp(base + 1, "..") || !strcmp(base + 1, ".")) return 0;
     if (!strcasecmp(base + 1, "MUSIC") || !strcasecmp(base + 1, "VIDEO") ||
-        !strcasecmp(base + 1, "KINGS") || !strcasecmp(base + 1, "SOUNDS") ||
-        !strcasecmp(base + 1, "SCENARIO") || !strcasecmp(base + 1, "DATA"))
+        !strcasecmp(base + 1, "KINGS") || !strcasecmp(base + 1, "SOUND") ||
+        !strcasecmp(base + 1, "SOUNDS") || !strcasecmp(base + 1, "EREG") ||
+        !strcasecmp(base + 1, "SCENARIO") || !strcasecmp(base + 1, "DATA") ||
+        !strcasecmp(base + 1, "TUTORIAL"))
         return 0;
-    /* Marker-bearing T017 folders may be empty. Older T011 user folders
-     * were created BEFORE the marker existed, so accept legacy folders
-     * only when their inspected subtree contains at least one SAV.
-     * An empty unmarked folder has no evidence of save ownership and
-     * must remain protected. Any foreign file/link still fails above.
-     * The selected folder still requires an explicit Yes confirmation. */
-    if (!marked_this && plan->files - plan->marked == saves_before)
+    /* T017 marked folders may be empty; pre-marker T011 save-only trees
+     * are also eligible. For a directly selected LEGACY unmarked folder
+     * with zero content (e.g. dated 2026-11-22), safely allow an empty
+     * rmdir after the same explicit Yes confirmation. Never recursively
+     * remove an unmarked empty child inside an imported/mixed folder;
+     * any actual file or subfolder still requires marker or SAV evidence.
+     * A racing new file will make rmdir fail, not delete its contents. */
+    if (!marked_this && plan->files - plan->marked == saves_before &&
+        !(depth == 0 && entries_here == 0))
         return 0;
     return plan_add(plan, win, 1);
 }

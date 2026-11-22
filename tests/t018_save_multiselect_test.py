@@ -83,6 +83,25 @@ class NativeSaveMultiSelectionContract(unittest.TestCase):
         self.assertLess(d.index('refused:\n    MessageBoxA'),
                         d.index('done:\n    free(plan.items);'))
 
+    def test_legacy_empty_user_folder_is_only_single_selected_and_empty(self):
+        # Reproduces Owner's 2026-11-22 empty legacy directory screenshot:
+        # no marker or SAV yet, but an explicitly selected EMPTY directory
+        # may be removed with Yes. A nested unknown empty directory must
+        # still fail, and any actual content must not be silently deleted.
+        d = self.dialog
+        self.assertIn("int marked_this = 0, entries_here = 0;", d)
+        self.assertIn("entries_here++;", d)
+        self.assertIn("!(depth == 0 && entries_here == 0)", d)
+        self.assertIn("plan->files - plan->marked == saves_before", d)
+        for game_dir in ("MUSIC", "VIDEO", "KINGS", "SOUND", "SOUNDS",
+                         "EREG", "SCENARIO", "DATA", "TUTORIAL"):
+            with self.subTest(game_dir=game_dir):
+                self.assertIn('"'+game_dir+'"', d)
+        self.assertIn('!strcmp(selected, "[..]")', d)
+        self.assertIn("MB_YESNO | MB_ICONWARNING", d)
+        self.assertIn("rmdir(host)", d)
+        self.assertIn("if (i != plan.count)", d)
+
     def test_batch_texts_translated_and_old_locales_unchanged(self):
         for key in ("file.delete_batch_confirm", "file.select_one"):
             self.assertIn('"' + key + '"', self.texts)

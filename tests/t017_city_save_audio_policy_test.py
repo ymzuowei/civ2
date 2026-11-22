@@ -66,7 +66,7 @@ class CityAndSaveManagement(unittest.TestCase):
                       'strcasecmp(base + 1, "MUSIC")',
                       'strcasecmp(base + 1, "VIDEO")',
                       'strcasecmp(base + 1, "KINGS")',
-                      "if (!marked_this && plan->files - plan->marked == saves_before)",
+                      "if (!marked_this && plan->files - plan->marked == saves_before &&",
                       "int saves_before = plan->files - plan->marked;",
                       "marked_this = 1;",
                       "if (!plan_save_tree(&plan, target, 0))"):
@@ -80,7 +80,10 @@ class CityAndSaveManagement(unittest.TestCase):
         # T011 folders predated the T017 marker; reject unsafe unmarked
         # empty/mixed/game-resource trees, accept save-only legacy trees.
         self.assertIn("int saves_before = plan->files - plan->marked;", self.file)
-        self.assertIn("if (!marked_this && plan->files - plan->marked == saves_before)",
+        self.assertIn("entries_here = 0;", self.file)
+        self.assertIn("entries_here++;", self.file)
+        self.assertIn("!(depth == 0 && entries_here == 0)", self.file)
+        self.assertIn("if (!marked_this && plan->files - plan->marked == saves_before &&",
                       self.file)
         self.assertIn("else if (is_save_file(f.cFileName))", self.file)
         self.assertIn("Non-save content: never destroy native game assets.", self.file)

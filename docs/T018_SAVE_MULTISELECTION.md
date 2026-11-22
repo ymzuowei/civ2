@@ -31,11 +31,16 @@ Delete is only intercepted when the native file LIST has focus, not when
 typing a filename. Selected `.SAV` files and user-created directories
 are resolved and bounded-preflighted **as a whole** before one translated
 confirmation with item/file/folder counts. An unsafe selected row blocks the
-entire operation; it is not silently omitted. Never recursively delete an
-unmarked empty directory, unknown contents, links, game media or anything
+entire operation; it is not silently omitted. Never recursively delete unknown contents, links, game media or anything
 outside the game-root SAVE subtree. Folder validation preserves T017
 marker-supported empty user folders and legacy unmarked folders holding
-only SAV content. Limits: 2048 visible rows, 4096 deletion-plan elements,
+only SAV content. For an explicitly selected empty legacy T011 folder,
+permit an empty `rmdir` under the same Yes/No confirmation ONLY when
+it has zero directory entries and is directly selected, not discovered
+as an unmarked nested child. Protect native `MUSIC`, `VIDEO`, `KINGS`,
+`SOUND`, `SOUNDS`, `EREG`, `SCENARIO`, `DATA`, `TUTORIAL` folders.
+The filesystem must reject nonempty `rmdir` in a race; no recursive
+wildcard or inferred `[..]` parent selection is added. Limits: 2048 visible rows, 4096 deletion-plan elements,
 12 nested directory levels. Recheck every path before its unlink/rmdir.
 
 Deletion is irreversible. The individual file APIs are not transactional;
@@ -72,3 +77,9 @@ Owner reported `CIV2_LEGACY_LANGUAGE_CODEPAGES=PASS`, `CIV2_ZH_HANS_TRANSLATION_
 ## 2026-11-22 follow-up: escaped source-regex test correction
 
 The subsequent Owner build reached `CIV2_T018_MULTISELECT_PARENT_BATCH=PASS` but its 17-test Save Folder Contract suite failed at `test_language_validator_allows_exact_same_legacy_fallback_keys`. The test mistakenly used doubled backslashes in two *raw Python regexes* (matching literal `\\s` and `\\.`, rather than whitespace and a literal dot), so `match` was None even though `tests/lang_test.py` correctly defined the 13-key `folder_keys` set. Correct both raw regex literals only. Checked the corrected expressions against the exact 13-entry set. No native UI functionality, original language bytes, saves or font files changed. A fresh exact-head source/WASM/Owner run is needed for PASS.
+
+## 2026-11-22 Owner gameplay screenshot and targeted final gap
+
+Owner confirmed **all other scenarios PASS, including truly independent Music vs Effects audio volume**. Save dialog screenshot at `Z:\\civ2` shows selected user date folder `[2026-11-22]` with the native **delete refused** warning; entering the folder shows ONLY `[..]` and an empty file list. This reproduces an old unmarked empty folder which neither has `.civ2-save-folder` nor contains any SAV. Native T018 now allows deleting a **directly selected, strictly empty** unmarked legacy folder after one Yes/No confirmation; no recursive mixed-content or empty unmarked descendants, parent `[..]` remains unselectable and untraversable, and an expanded native-media reserved-directory denylist protects known game folders. This is an exception for empty legacy directories, not proof of ownership of an arbitrary directory, so the owner must explicitly choose and confirm it. Real Owner browser test of Delete→No/Yes + reload still **PENDING**; do NOT mark directory-delete PASS from source code alone.
+
+[Web CI pinned source #45031759101](https://github.com/ymzuowei/civ2-web/actions/runs/45031759101) also failed because its sparse checkout included `tests/save_folder_contract_test.py` but omitted its newly required `tests/lang_test.py`; Web T018 will add that exact source file to the dedicated D:-only CI sparse list before re-running. This CI false negative is distinct from the Owner gameplay screenshot.

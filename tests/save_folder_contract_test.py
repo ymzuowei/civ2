@@ -170,14 +170,14 @@ class SaveFolderContractTests(unittest.TestCase):
                            self.save.index("/* 00477d8c auto */")]
         self.assertIn("if (result != 0) {", manual)
         self.assertIn("result = save_write_game((file_name_buf + 1),is_scenario);", manual)
-        self.assertIn("if (result == 0) {\\n          if (is_scenario == 0) {", manual)
+        self.assertIn("if (result == 0) {\n          if (is_scenario == 0) {", manual)
         self.assertIn("game_save_autosave_follow(file_name_buf + 1);", manual)
         self.assertLess(manual.index("save_write_game((file_name_buf + 1),is_scenario)"),
                         manual.index("game_save_autosave_follow(file_name_buf + 1)"))
         self.assertIn("if (result == 0) {", manual)
-        self.assertIn("else {\\n          text_set_string_arg_b(", manual)
-        self.assertIn("if (fd.creating_folder)\\n                folder_mode(0);", self.dialog)
-        self.assertIn("else\\n                fd.done = 1;", self.dialog)
+        self.assertIn("else {\n          text_set_string_arg_b(", manual)
+        self.assertIn("if (fd.creating_folder)\n                folder_mode(0);", self.dialog)
+        self.assertIn("else\n                fd.done = 1;", self.dialog)
         self.assertIn("if (!folder_name_ok(name)", self.dialog)
         # Browsing FileFolder is not allowed to redirect autosaves.
         helper = self.save[self.save.index("static void game_save_autosave_follow("):
@@ -188,7 +188,7 @@ class SaveFolderContractTests(unittest.TestCase):
     def test_t014_f05_load_success_restores_route_after_refresh(self):
         load = self.save[self.save.index("int __cdecl game_load_dialog("):]
         self.assertIn("load_error = save_read_game(file_path);", load)
-        self.assertIn("if (load_error == 0) {\\n      if (is_scenario == 0)\\n        game_save_autosave_follow(file_path);", load)
+        self.assertIn("if (load_error == 0) {\n      if (is_scenario == 0)\n        game_save_autosave_follow(file_path);", load)
         self.assertLess(load.index("save_read_game(file_path)"),
                         load.index("game_save_autosave_follow(file_path)"))
         self.assertIn("selected_autosave_folder", self.save)

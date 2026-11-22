@@ -10,10 +10,14 @@ export function createAudioVolume(storage) {
     try { saved = JSON.parse(backend?.getItem(KEY) || '{}') || {}; } catch (_) { /* blocked or corrupted preference */ }
     let level = typeof saved.level === 'number' ? clamp(saved.level) : 100;
     let muted = saved.muted === true;
+    // T017: keep the v1 master preference; new per-channel levels default
+    // to 100%, preserving playback behavior for existing users.
+    let musicLevel = typeof saved.musicLevel === 'number' ? clamp(saved.musicLevel) : 100;
+    let effectsLevel = typeof saved.effectsLevel === 'number' ? clamp(saved.effectsLevel) : 100;
     const listeners = new Set();
     const gain = () => muted ? 0 : level / 100;
     function notify() {
-        try { backend?.setItem(KEY, JSON.stringify({level, muted})); } catch (_) { /* optional */ }
+        try { backend?.setItem(KEY, JSON.stringify({level, muted, musicLevel, effectsLevel})); } catch (_) { /* optional */ }
         for (const listener of listeners)
             listener(gain());
     }
@@ -21,9 +25,21 @@ export function createAudioVolume(storage) {
         get level() { return level; },
         get muted() { return muted; },
         get gain() { return gain(); },
+        get musicLevel() { return musicLevel; },
+        get effectsLevel() { return effectsLevel; },
+        get musicGain() { return musicLevel / 100; },
+        get effectsGain() { return effectsLevel / 100; },
         setLevel(next) {
             const value = clamp(Number(next));
             if (value !== level) { level = value; notify(); }
+        },
+        setMusicLevel(next) {
+            const value = clamp(Number(next));
+            if (value !== musicLevel) { musicLevel = value; notify(); }
+        },
+        setEffectsLevel(next) {
+            const value = clamp(Number(next));
+            if (value !== effectsLevel) { effectsLevel = value; notify(); }
         },
         setMuted(next) {
             const value = !!next;
@@ -41,8 +57,8 @@ export function createAudioVolume(storage) {
 export function audioLabels(code) {
     const locale = String(code || '').toLowerCase();
     if (/^zh[-_](hans|cn|sg)/.test(locale))
-        return {volume: '音量', mute: '静音', unmute: '取消静音'};
+        return {volume: '总音量', music: '音乐', effects: '音效', mixer: '音量设置', mute: '静音', unmute: '取消静音'};
     if (/^zh[-_](hant|tw|hk|mo)/.test(locale))
-        return {volume: '音量', mute: '靜音', unmute: '取消靜音'};
-    return {volume: 'Volume', mute: 'Mute', unmute: 'Unmute'};
+        return {volume: '總音量', music: '音樂', effects: '音效', mixer: '音量設定', mute: '靜音', unmute: '取消靜音'};
+    return {volume: 'Master', music: 'Music', effects: 'Effects', mixer: 'Audio levels', mute: 'Mute', unmute: 'Unmute'};
 }

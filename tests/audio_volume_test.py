@@ -1,4 +1,4 @@
-"""CIV2-T008 browser master-audio + city grid tint source contracts.
+"""CIV2-T008/T017 browser master+separate music/effects audio contracts.
 
 No original game files, HD pack, AudioContext or network required.
 """
@@ -18,8 +18,16 @@ class MasterAudioSourceContracts(unittest.TestCase):
         cls.grid = (ROOT / "src/platform/hd.c").read_text(encoding="utf-8")
         cls.build = (ROOT / "tools/build_web.py").read_text(encoding="utf-8")
 
-    def test_every_native_web_audio_stream_uses_one_gain_bus(self):
-        self.assertEqual(self.host.count("src.connect(audioDestination());"), 2)
+    def test_native_audio_streams_are_routed_to_independent_channels(self):
+        self.assertEqual(self.host.count("src.connect(audioDestination('music'));"), 1)
+        self.assertEqual(self.host.count("src.connect(audioDestination('effects'));"), 1)
+        self.assertNotIn("src.connect(audioDestination());", self.host)
+        self.assertIn("musicGain = audio.createGain();", self.host)
+        self.assertIn("effectsGain = audio.createGain();", self.host)
+        self.assertIn("musicGain.connect(masterGain);", self.host)
+        self.assertIn("effectsGain.connect(masterGain);", self.host)
+        self.assertIn("musicGain?.disconnect();", self.host)
+        self.assertIn("effectsGain?.disconnect();", self.host)
         self.assertNotIn("src.connect(audio.destination);", self.host)
         self.assertIn("masterGain = audio.createGain();", self.host)
         self.assertIn("masterGain.connect(audio.destination);", self.host)
@@ -31,9 +39,17 @@ class MasterAudioSourceContracts(unittest.TestCase):
 
     def test_toolbar_controls_and_no_input_forwarding(self):
         for needle in ("id=\"audio-volume\"", 'type="range"', 'id="audio-mute"',
-                       'aria-pressed="false"', 'id="audio-level"'):
+                       'aria-pressed="false"', 'id="audio-level"',
+                       'id="audio-music"', 'id="audio-effects"', 'id="audio-mixer-panel"',
+                       'id="audio-mixer-toggle"', 'aria-expanded="false"'):
             self.assertIn(needle, self.html)
         self.assertIn("browserAudio.setLevel(", self.page)
+        self.assertIn("browserAudio.setMusicLevel(", self.page)
+        self.assertIn("browserAudio.setEffectsLevel(", self.page)
+        self.assertIn("setMixerOpen(", self.page)
+        self.assertIn("musicGain.gain.value = opts.audioVolume.musicGain;", self.host)
+        self.assertIn("effectsGain.gain.value = opts.audioVolume.effectsGain;", self.host)
+        self.assertIn(".audio-mixer-panel", self.html)
         self.assertIn("browserAudio.setMuted(", self.page)
         self.assertIn("controls.addEventListener('keydown', (e) => e.stopPropagation())", self.page)
         self.assertIn("controls.addEventListener('keyup', (e) => e.stopPropagation())", self.page)

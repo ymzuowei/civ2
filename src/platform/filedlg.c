@@ -311,7 +311,9 @@ static void create_folder(void)
                         extras_text("file.new_folder"), MB_OK | MB_ICONWARNING);
             return;
         }
-        if (fputs("OpenCiv2 user save folder\n", f) == EOF || fclose(f) != 0) {
+        int written = fputs("OpenCiv2 user save folder\n", f);
+        int closed = fclose(f);
+        if (written == EOF || closed != 0) {
             remove(host);
             plat_host_path(path, host, sizeof host, 0);
             rmdir(host);
@@ -485,7 +487,11 @@ static void delete_selected_save(void)
     plan.items = calloc(MAX_DELETE_PLAN, sizeof *plan.items);
     if (!plan.items) return;
     if (kind) {
-        if (!plan_save_tree(&plan, target, 0)) goto done;
+        if (!plan_save_tree(&plan, target, 0)) {
+            MessageBoxA(fd.dlg, extras_text("file.delete_refused"),
+                        extras_text("file.delete_title"), MB_OK | MB_ICONWARNING);
+            goto done;
+        }
         snprintf(prompt, sizeof prompt, extras_text("file.delete_folder_confirm"),
                  selected, plan.files - plan.marked);
     } else {

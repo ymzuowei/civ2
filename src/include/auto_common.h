@@ -86,6 +86,9 @@ static inline void editor_copy_pool_name(char *dest, const char *src, size_t wid
 /* CIV2-T011: route original relative autosave names into the directory of
  * the last successful manual Save/Load, without changing their rotation. */
 void game_save_autosave_reset(void);
+/* Shared with Save As and Autosave: two complete leader characters in
+ * UTF-8; exactly the original first two bytes in legacy single-byte mode. */
+size_t game_save_leader_prefix_bytes(const char *name);
 int game_save_autosave_enter(char *previous, int n);
 void game_save_autosave_leave(const char *previous);
 

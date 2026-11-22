@@ -753,7 +753,33 @@ assert.equal(createAudioVolume({getItem: () => '{bad-json', setItem: () => {}}).
 assert.equal(createAudioVolume({getItem: () => '{"level":50,"muted":true}', setItem: () => {}}).gain, 0);
 assert.equal(audioLabels('zh-Hans').mute, '静音');
 assert.equal(audioLabels('zh-Hant').unmute, '取消靜音');
-assert.equal(audioLabels('en').volume, 'Volume');
+assert.equal(audioLabels('en').volume, 'Master');
+assert.equal(audioLabels('zh-Hans').music, '音乐');
+assert.equal(audioLabels('en').effects, 'Effects');
+// T017: music and effects use separate gains under retained master mute.
+assert.equal(master.musicLevel, 100);
+assert.equal(master.effectsLevel, 100);
+master.setMusicLevel(30);
+assert.equal(master.musicLevel, 30);
+assert.equal(master.musicGain, 0.3);
+assert.equal(master.effectsGain, 1);
+master.setEffectsLevel(65);
+assert.equal(master.effectsLevel, 65);
+assert.equal(master.effectsGain, 0.65);
+assert.equal(master.musicGain, 0.3);
+assert.equal(master.gain, 1);
+master.setMuted(true);
+assert.equal(master.gain, 0);
+assert.equal(master.musicGain, 0.3);
+assert.equal(master.effectsGain, 0.65);
+master.setMuted(false);
+const afterMixerReload = createAudioVolume(storage);
+assert.equal(afterMixerReload.musicLevel, 30);
+assert.equal(afterMixerReload.effectsLevel, 65);
+assert.equal(afterMixerReload.level, 100);
+assert.equal(createAudioVolume({
+    getItem: () => '{"level":70,"muted":false}', setItem: () => {}
+}).musicLevel, 100); // existing master-only installs migrated safely
 }
 
 console.log('src/web unit tests passed');

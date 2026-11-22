@@ -941,14 +941,16 @@ void __cdecl city_assign_default_name(int city)
   do {
     attempt++;
     if (2 < attempt) break;
-    /* CIV2-T017: the original's per-tribe index is a signed byte. Some
-       AI games run past their tribe's finite CITY.TXT and EXTRA lists.
-       Bound the counter before increment, also for nonhuman civilizations;
-       never wrap it into a negative read count. The engine's separate
-       overall 255-city limit and save layout are not changed. */
-    if (leaders[civs[civ].tribe].city_name_index < 0 ||
-        leaders[civs[civ].tribe].city_name_index >= 120)
+    /* CIV2-T017: this per-tribe counter is a SIGNED byte and CITY.TXT
+       plus EXTRA are finite for every tribe (including all AI opponents).
+       Never wrap or RESTART names at the first one after exhaustion: that
+       would duplicate existing cities. The stable city-slot fallback below
+       safely covers all subsequent cities. Do not change the separate
+       world-wide 255-city limit or the serialized leader structure. */
+    if (leaders[civs[civ].tribe].city_name_index < 0)
       leaders[civs[civ].tribe].city_name_index = 0;
+    if (leaders[civs[civ].tribe].city_name_index >= 120)
+      break;
     leaders[civs[civ].tribe].city_name_index++;
     skip_count = (uint)(unsigned char)leaders[civs[civ].tribe].city_name_index;
     __chdir(((i8 *)&net_map_lock_slots_block.scenario_dir_path));
@@ -966,10 +968,8 @@ void __cdecl city_assign_default_name(int city)
     }
     if (0 < (int)skip_count) {
       result = text_open_section(0,(const char *)&str_extra);
-      if (result != 0) {
-        leaders[civs[civ].tribe].city_name_index = '\0';
-        continue;
-      }
+      if (result != 0)
+        break; /* No EXTRA section: generate the next unique slot name. */
       for (; 0 < (int)skip_count; skip_count--) {
         text_read_line(1);
         len = _strlen(textbuf.buf);
@@ -982,7 +982,9 @@ void __cdecl city_assign_default_name(int city)
       _strncpy(cities[city].name,textbuf.buf,0xf);
       break;
     }
-    leaders[civs[civ].tribe].city_name_index = '\0';
+    /* Both named lists ended without another usable entry. Do not reset
+       the index to 0 and reuse Shanghai/another tribe's first name. */
+    break;
   } while( true );
   text_close_file();
   /* A finite CITY.TXT/@EXTRA list may be exhausted for the player's tribe

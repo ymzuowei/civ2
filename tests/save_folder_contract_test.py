@@ -193,7 +193,7 @@ class SaveFolderContractTests(unittest.TestCase):
                         load.index("game_save_autosave_follow(file_path)"))
         self.assertIn("selected_autosave_folder", self.save)
         self.assertIn("return __chdir(selected_autosave_folder) == 0 ? 1 : -1;", self.save)
-        self.assertIn("return -1; /* Missing folder: do not overwrite a root autosave instead. */", self.game)
+        self.assertIn("return; /* Missing folder: do not overwrite a root autosave instead. */", self.game)
 
     def test_t014_f06_new_game_clears_previous_autosave_route(self):
         fn = self.game[self.game.index("void __cdecl game_init_new(void)"):]

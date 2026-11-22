@@ -296,6 +296,10 @@ class SaveFolderContractTests(unittest.TestCase):
         folder = {k.encode("ascii") for k in (
             "file.new_folder", "file.create_folder", "file.folder_name",
             "file.folder_invalid", "file.folder_exists", "file.folder_failed",
+            # Historical de/el/eo/la binaries are immutable: these new five
+            # keys use the English native fallback until localized separately.
+            "file.delete_title", "file.delete_save_confirm",
+            "file.delete_folder_confirm", "file.delete_failed", "file.delete_refused",
         )}
         legacy = {
             "de": "40d7f6a5eac8b7739df98f9cd19db5b5160fa4b7",

@@ -356,6 +356,10 @@ function displayControls() {
     const syncToolbar = () => {
         const collapsed = browserToolbar.collapsed;
         content.hidden = collapsed;
+        if (collapsed) {
+            $('audio-mixer-panel').hidden = true;
+            $('audio-mixer-toggle').setAttribute('aria-expanded', 'false');
+        }
         controls.dataset.collapsed = String(collapsed);
         toggle.setAttribute('aria-expanded', String(!collapsed));
         const action = collapsed ? toolbarText.expand : toolbarText.collapse;
@@ -391,18 +395,46 @@ function displayControls() {
     // not to the running Civilization II engine's keyboard event handler.
     controls.addEventListener('keydown', (e) => e.stopPropagation());
     controls.addEventListener('keyup', (e) => e.stopPropagation());
-    // These page controls never emit native game input or create an AudioContext.
-    // The engine picks up this preference when its next AudioContext starts.
+    // T017 compact audio popover: music and effects levels are independent.
+    // UI writes only the browser's existing localStorage key, not CITY.TXT,
+    // SAVs, or the game's CIV.INI. No AudioContext is started by a slider.
     const audioSlider = $('audio-volume'), audioMute = $('audio-mute');
+    const musicSlider = $('audio-music'), effectsSlider = $('audio-effects');
     const audioLevel = $('audio-level'), labels = audioLabels(pageLang);
+    const mixerToggle = $('audio-mixer-toggle'), audioPanel = $('audio-mixer-panel');
     $('audio-label').textContent = labels.volume;
+    $('audio-music-label').textContent = labels.music;
+    $('audio-effects-label').textContent = labels.effects;
     audioSlider.setAttribute('aria-label', labels.volume);
+    musicSlider.setAttribute('aria-label', labels.music);
+    effectsSlider.setAttribute('aria-label', labels.effects);
+    mixerToggle.setAttribute('aria-label', labels.mixer);
+    mixerToggle.title = labels.mixer;
+    audioPanel.setAttribute('aria-label', labels.mixer);
+    function setMixerOpen(open) {
+        const shown = !!open && !browserToolbar.collapsed;
+        audioPanel.hidden = !shown;
+        mixerToggle.setAttribute('aria-expanded', String(shown));
+    }
+    mixerToggle.addEventListener('click', () => setMixerOpen(audioPanel.hidden));
+    document.addEventListener('click', (e) => {
+        if (!mixerToggle.parentElement.contains(e.target))
+            setMixerOpen(false);
+    });
+    controls.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !audioPanel.hidden) {
+            setMixerOpen(false);
+            mixerToggle.focus();
+        }
+    });
     function syncAudioControls() {
         audioSlider.value = String(browserAudio.level);
         audioLevel.textContent = browserAudio.level + '%';
+        musicSlider.value = String(browserAudio.musicLevel);
+        $('audio-music-level').textContent = browserAudio.musicLevel + '%';
+        effectsSlider.value = String(browserAudio.effectsLevel);
+        $('audio-effects-level').textContent = browserAudio.effectsLevel + '%';
         const muted = browserAudio.muted;
-        // SVG paths are not HTMLElements: .hidden need not reflect to the
-        // SVG attribute. Toggle their actual display style in all browsers.
         $('audio-waves').style.display = muted ? 'none' : '';
         $('audio-slash').style.display = muted ? '' : 'none';
         const action = muted ? labels.unmute : labels.mute;
@@ -412,6 +444,14 @@ function displayControls() {
     }
     audioSlider.addEventListener('input', () => {
         browserAudio.setLevel(Number(audioSlider.value));
+        syncAudioControls();
+    });
+    musicSlider.addEventListener('input', () => {
+        browserAudio.setMusicLevel(Number(musicSlider.value));
+        syncAudioControls();
+    });
+    effectsSlider.addEventListener('input', () => {
+        browserAudio.setEffectsLevel(Number(effectsSlider.value));
         syncAudioControls();
     });
     audioMute.addEventListener('click', () => {

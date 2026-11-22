@@ -305,3 +305,47 @@ dedicated background wipe. This newest candidate requires another
 owner-local D:-only WASM/browser visual test; source tests alone do not
 prove the rendered overlap has disappeared. The earlier F01/F02 and
 UTF-8 filename PASS evidence remains, with F03–F08 unverified.
+
+## CIV2-T014 — Native autosave Unicode prefix / remaining Save lifecycle contracts (2026-11-22)
+
+After owner acceptance of T011 F01/F02 and T013 F07a/F07b/F07c,
+we reviewed the remaining T011 F03, F04, F05, F06 and F08 gates.
+The native `game_save_dialog()` default filename had already been
+corrected to keep the leader's first two **complete UTF-8 characters**,
+which the owner confirmed fixed the visible Chinese white-square
+prefix. However `game_autosave()` in `src/auto/game.cpp` still
+truncated the leader with `textbuf.buf[2] = 0`: two raw bytes
+in UTF-8 can leave a truncated 3-byte Han character. Both the
+current automatic SAV filename and its backup/rotation filename
+were built from this malformed prefix. This is a **source finding**,
+not a claim of newly observed or corrupted existing player saves.
+
+**Narrow fix:** export the already-accepted
+`game_save_leader_prefix_bytes()` helper from `game_save.cpp`
+through `auto_common.h`, and use it when naming **both** newly
+written automatic saves and backup files in `game.cpp`. In
+UTF-8 mode the helper validates and preserves two complete
+characters; in the legacy single-byte locales it continues to
+use exactly the original first two bytes. The autosave cadence,
+`(game.turn & 4U) == 0` backup condition, remove→rename→write
+sequence, original suffixes, selected-folder routing and game
+engine state remain unchanged.
+
+**Compatibility:** Previously written legacy autosaves are
+not deleted, renamed, migrated or rewritten. The new valid
+Chinese prefix may create a *newly named* autosave alongside
+previous malformed/old-name files; therefore the next actual
+owner check must verify existing saves can still be loaded and
+new files rotate correctly. Do not use destructive cleanup to
+make file names appear consistent.
+
+`tests/save_folder_contract_test.py` adds F03/F04/F05/F06/F08
+structural regression for successful-save-only folder switching,
+cancel/failed-save isolation, successful-load-only restoration,
+new-game reset to root, missing destination fail-closed,
+and backup renames within the temporarily selected folder.
+These tests **do not** replace compiled Windows WASM or Owner
+browser checks; F03, F04, full F05, F06 and F08 remain **PENDING**.
+T013 F07 all owner PASS remains untouched. No Original/HD
+graphics, audio, toolbar, Display, CI runner, or existing
+browser-owned game content modifications.

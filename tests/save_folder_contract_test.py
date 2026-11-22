@@ -103,7 +103,7 @@ class SaveFolderContractTests(unittest.TestCase):
 
     def test_save_leader_prefix_preserves_complete_utf8_characters(self):
         source = self.save
-        helper = source[source.index("static size_t save_leader_prefix_bytes("):
+        helper = source[source.index("size_t game_save_leader_prefix_bytes("):
                         source.index("/* 0047758c auto */")]
         self.assertIn('#include "../include/utf8.h"', source)
         self.assertIn("for (i = 0; i < 2 && at < n; i++)", helper)
@@ -112,7 +112,7 @@ class SaveFolderContractTests(unittest.TestCase):
         self.assertIn("u8_decode(name + at, n - at, &decoded_size) == U8_BAD", helper)
         self.assertIn("at += size;", helper)
         self.assertIn("return (size_t)at;", helper)
-        self.assertIn("file_name_buf[1 + save_leader_prefix_bytes(file_name_buf + 1)] = 0;", source)
+        self.assertIn("file_name_buf[1 + game_save_leader_prefix_bytes(file_name_buf + 1)] = 0;", source)
         self.assertNotIn("file_name_buf[3] = 0;", source)
         # Two characters in UTF-8 can be six bytes or more. The extension,
         # era suffix and original autosave naming do not change.
@@ -140,6 +140,88 @@ class SaveFolderContractTests(unittest.TestCase):
         self.assertIn("crt_rename(textbuf.buf,backup_path)", code)
         self.assertIn("save_write_game((const char *)&textbuf.buf,0)", code)
         self.assertNotIn("20261121", code)  # no hardcoded dates/auto-created campaigns
+
+    def test_t014_autosave_preserves_two_whole_utf8_leader_chars(self):
+        # Manual Save As was already corrected. Autosave still cut at byte 2,
+        # which splits the first CJK character. Both entry points must use
+        # the identical helper for the current SAV and its rotated backup.
+        header = (ROOT / "src/include/auto_common.h").read_text(encoding="utf-8")
+        self.assertIn("size_t game_save_leader_prefix_bytes(const char *name);", header)
+        self.assertIn("size_t game_save_leader_prefix_bytes(const char *name)", self.save)
+        self.assertIn("file_name_buf[1 + game_save_leader_prefix_bytes(file_name_buf + 1)] = 0;", self.save)
+        start = self.game.index("void __cdecl game_autosave(int civ)")
+        stop = self.game.index("/* 00489be2 auto */", start)
+        auto = self.game[start:stop]
+        self.assertIn("textbuf.buf[game_save_leader_prefix_bytes(textbuf.buf)] = 0;", auto)
+        self.assertNotIn("textbuf.buf[2] = 0;", auto)
+        self.assertLess(auto.index("game_save_leader_prefix_bytes(textbuf.buf)"),
+                        auto.index("crt_strcpy(backup_path,textbuf.buf);"))
+        self.assertLess(auto.index("crt_strcpy(backup_path,textbuf.buf);"),
+                        auto.index("save_write_game((const char *)&textbuf.buf,0);"))
+        self.assertIn("if (plat_text_utf8)", self.save)
+        self.assertIn("u8_decode(name + at, n - at, &decoded_size) == U8_BAD", self.save)
+        # Non-UTF-8 mode still counts two bytes; UTF-8 mode counts whole
+        # characters. Old SAVs are untouched; only new names are affected.
+        self.assertIn("for (i = 0; i < 2 && at < n; i++)", self.save)
+        self.assertNotIn("crt_remove(selected_autosave_folder)", self.save)
+
+    def test_t014_f03_f04_switch_route_only_after_successful_manual_save(self):
+        manual = self.save[self.save.index("void __cdecl game_save_dialog("):
+                           self.save.index("/* 00477d8c auto */")]
+        self.assertIn("if (result != 0) {", manual)
+        self.assertIn("result = save_write_game((file_name_buf + 1),is_scenario);", manual)
+        self.assertIn("if (result == 0) {\n          if (is_scenario == 0) {", manual)
+        self.assertIn("game_save_autosave_follow(file_name_buf + 1);", manual)
+        self.assertLess(manual.index("save_write_game((file_name_buf + 1),is_scenario)"),
+                        manual.index("game_save_autosave_follow(file_name_buf + 1)"))
+        self.assertIn("if (result == 0) {", manual)
+        self.assertIn("else {\n          text_set_string_arg_b(", manual)
+        self.assertIn("if (fd.creating_folder)\n                folder_mode(0);", self.dialog)
+        self.assertIn("else\n                fd.done = 1;", self.dialog)
+        self.assertIn("if (!folder_name_ok(name)", self.dialog)
+        # Browsing FileFolder is not allowed to redirect autosaves.
+        helper = self.save[self.save.index("static void game_save_autosave_follow("):
+                           self.save.index("int game_save_autosave_enter(")]
+        self.assertNotIn("FileFolder", helper)
+        self.assertNotIn("setting_get(", helper)
+
+    def test_t014_f05_load_success_restores_route_after_refresh(self):
+        load = self.save[self.save.index("int __cdecl game_load_dialog("):]
+        self.assertIn("load_error = save_read_game(file_path);", load)
+        self.assertIn("if (load_error == 0) {\n      if (is_scenario == 0)\n        game_save_autosave_follow(file_path);", load)
+        self.assertLess(load.index("save_read_game(file_path)"),
+                        load.index("game_save_autosave_follow(file_path)"))
+        self.assertIn("selected_autosave_folder", self.save)
+        self.assertIn("return __chdir(selected_autosave_folder) == 0 ? 1 : -1;", self.save)
+        self.assertIn("return; /* Missing folder: do not overwrite a root autosave instead. */", self.game)
+
+    def test_t014_f06_new_game_clears_previous_autosave_route(self):
+        fn = self.game[self.game.index("void __cdecl game_init_new(void)"):]
+        self.assertIn("game_save_autosave_reset();", fn)
+        self.assertIn("selected_autosave_folder[0] = 0;", self.save)
+        self.assertIn("if (!selected_autosave_folder[0])", self.save)
+        self.assertIn("return 0; /* No manual save yet: preserve classic root autosaves. */", self.save)
+        self.assertNotIn("game_save_autosave_follow(", fn[:1700])
+
+    def test_t014_f08_autosave_rotation_stays_in_selected_dir(self):
+        start = self.game.index("void __cdecl game_autosave(int civ)")
+        stop = self.game.index("/* 00489be2 auto */", start)
+        code = self.game[start:stop]
+        self.assertLess(code.index("game_save_autosave_enter(previous_dir"),
+                        code.index("crt_remove(backup_path)"))
+        self.assertLess(code.index("if (routed < 0)"),
+                        code.index("crt_remove(backup_path)"))
+        self.assertIn("if ((game.turn & 4U) == 0)", code)
+        self.assertLess(code.index("crt_remove(backup_path)"),
+                        code.index("crt_rename(textbuf.buf,backup_path)"))
+        self.assertLess(code.index("crt_rename(textbuf.buf,backup_path)"),
+                        code.index("save_write_game((const char *)&textbuf.buf,0);"))
+        self.assertLess(code.index("save_write_game((const char *)&textbuf.buf,0);"),
+                        code.index("game_save_autosave_leave(previous_dir)"))
+        self.assertIn("if (routed > 0)", code)
+        self.assertIn("return __chdir(selected_autosave_folder) == 0 ? 1 : -1;", self.save)
+        self.assertNotIn("FileFolder", code)
+        self.assertNotIn("mkdir(", code)
 
     def test_zip_import_keeps_only_self_exported_safe_relative_paths(self):
         for token in ("SAVE_MANIFEST", "safeSavePath(", "preservedPaths?.has(safe)",

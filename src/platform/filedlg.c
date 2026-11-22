@@ -12,6 +12,8 @@
  */
 #include "plat.h"
 #include <time.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #define ID_LIST 10
 #define ID_NAME 11
@@ -25,6 +27,9 @@
 #define NAME_CAPTION_WIDTH 155
 #define NAME_EDIT_X 175
 #define MAX_ITEMS 2048
+#define MAX_DELETE_PLAN 4096
+#define MAX_DELETE_DEPTH 12
+#define SAVE_FOLDER_MARKER ".civ2-save-folder"
 
 static struct {
     OPENFILENAMEA *ofn;
@@ -290,8 +295,209 @@ static void create_folder(void)
                     extras_text("file.new_folder"), MB_OK | MB_ICONWARNING);
         return;
     }
+    /* Persist the provenance of a user-created empty folder (also in
+     * browser IndexedDB). Marker is hidden by the *.SAV file filter.
+     * Fail closed if this cannot be stored. */
+    {
+        char marker[MAX_PATH], host[1024];
+        FILE *f;
+        join(marker, sizeof marker, path, SAVE_FOLDER_MARKER);
+        plat_host_path(marker, host, sizeof host, 1);
+        f = fopen(host, "wb");
+        if (!f) {
+            plat_host_path(path, host, sizeof host, 0);
+            rmdir(host);
+            MessageBoxA(fd.dlg, extras_text("file.folder_failed"),
+                        extras_text("file.new_folder"), MB_OK | MB_ICONWARNING);
+            return;
+        }
+        fputs("OpenCiv2 user save folder\\n", f);
+        fclose(f);
+    }
     folder_mode(0);
     enter_dir(name);
+}
+
+/* CIV2-T017: Delete is deliberately a file-LIST shortcut, never a
+ * destructive action while typing in the filename box. This is a two-phase
+ * deletion: inspect a bounded list of ONLY *.SAV and user save-folders,
+ * reject links/foreign files/root, then ask the user before removing. */
+typedef struct {
+    char path[MAX_PATH];
+    int directory;
+} SaveDeleteItem;
+typedef struct {
+    SaveDeleteItem *items;
+    int count, files, folders, marked;
+} SaveDeletePlan;
+
+static int is_save_file(const char *name)
+{
+    size_t len = strlen(name);
+    return len > 4 && !strcasecmp(name + len - 4, ".SAV") &&
+           !strchr(name, '/') && !strchr(name, '\\');
+}
+
+static int safe_save_target(const char *win, char *host, size_t size)
+{
+    size_t root;
+    struct stat st;
+    plat_host_path(win, host, size, 0);
+    root = strlen(plat_game_dir);
+    /* Never delete the game directory, its parents, unrelated drives or
+     * a path below an untrusted symlink/junction. Browser MemFS has none. */
+    if (!root || strncmp(host, plat_game_dir, root) ||
+        host[root] != '/' || !host[root + 1])
+        return 0;
+#ifndef _WIN32
+    if (lstat(host, &st) || S_ISLNK(st.st_mode))
+        return 0;
+#else
+    if (stat(host, &st))
+        return 0;
+#endif
+    if (!(S_ISREG(st.st_mode) || S_ISDIR(st.st_mode)))
+        return 0;
+    return 1;
+}
+
+static int plan_add(SaveDeletePlan *plan, const char *win, int dir)
+{
+    SaveDeleteItem *entry;
+    if (plan->count >= MAX_DELETE_PLAN || strlen(win) >= MAX_PATH)
+        return 0;
+    entry = &plan->items[plan->count++];
+    snprintf(entry->path, sizeof entry->path, "%s", win);
+    entry->directory = dir;
+    if (dir) plan->folders++;
+    else plan->files++;
+    return 1;
+}
+
+static int plan_save_tree(SaveDeletePlan *plan, const char *win, int depth)
+{
+    char host[1024], spec[MAX_PATH], child[MAX_PATH], *base;
+    WIN32_FIND_DATAA f;
+    HANDLE h;
+    int initial_files = plan->files, initial_markers = plan->marked;
+    if (depth > MAX_DELETE_DEPTH || !safe_save_target(win, host, sizeof host))
+        return 0;
+    /* Explicitly validate this is a folder, not a file. */
+    {
+        struct stat st;
+#ifndef _WIN32
+        if (lstat(host, &st) || !S_ISDIR(st.st_mode)) return 0;
+#else
+        if (stat(host, &st) || !S_ISDIR(st.st_mode)) return 0;
+#endif
+    }
+    snprintf(spec, sizeof spec, "%s", win);
+    if (strlen(spec) + 4 >= sizeof spec) return 0;
+    join(spec, sizeof spec, win, "*.*");
+    h = FindFirstFileA(spec, &f);
+    if (h != INVALID_HANDLE_VALUE) {
+        do {
+            if (!strcmp(f.cFileName, ".") || !strcmp(f.cFileName, "..")) continue;
+            if (strlen(win) + strlen(f.cFileName) + 2 >= sizeof child) {
+                FindClose(h); return 0;
+            }
+            join(child, sizeof child, win, f.cFileName);
+            if (!safe_save_target(child, host, sizeof host)) {
+                FindClose(h); return 0;
+            }
+            if (f.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                if (f.cFileName[0] == '.' ||
+                    !plan_save_tree(plan, child, depth + 1)) {
+                    FindClose(h); return 0;
+                }
+            } else if (is_save_file(f.cFileName)) {
+                if (!plan_add(plan, child, 0)) {
+                    FindClose(h); return 0;
+                }
+            } else if (!strcmp(f.cFileName, SAVE_FOLDER_MARKER)) {
+                plan->marked++;
+                if (!plan_add(plan, child, 0)) {
+                    FindClose(h); return 0;
+                }
+            } else {
+                /* Non-save content: never destroy native game assets. */
+                FindClose(h);
+                return 0;
+            }
+        } while (FindNextFileA(h, &f));
+        FindClose(h);
+    }
+    base = strrchr(win, '\\');
+    if (!base || !strcmp(base + 1, "..") || !strcmp(base + 1, ".")) return 0;
+    if (!strcasecmp(base + 1, "MUSIC") || !strcasecmp(base + 1, "VIDEO") ||
+        !strcasecmp(base + 1, "KINGS") || !strcasecmp(base + 1, "SOUNDS") ||
+        !strcasecmp(base + 1, "SCENARIO") || !strcasecmp(base + 1, "DATA"))
+        return 0;
+    /* A legacy user save folder may lack our marker, but must hold at
+     * least one SAV. Newly created empty folders have the marker. */
+    if (plan->files == initial_files && plan->marked == initial_markers)
+        return 0;
+    return plan_add(plan, win, 1);
+}
+
+static void delete_selected_save(void)
+{
+    char selected[MAX_PATH + 2], target[MAX_PATH], host[1024], prompt[512];
+    SaveDeletePlan plan = {0};
+    int i, kind, sel = (int)SendMessageA(fd.list, LB_GETCURSEL, 0, 0);
+    if (fd.creating_folder || sel < 0 ||
+        SendMessageA(fd.list, LB_GETTEXT, (WPARAM)sel, (LPARAM)selected) <= 0)
+        return;
+    if (!strcmp(selected, "[..]")) return;
+    kind = selected[0] == '[';
+    if (kind) {
+        size_t len = strlen(selected);
+        if (len < 3 || selected[len - 1] != ']') return;
+        selected[len - 1] = 0;
+        memmove(selected, selected + 1, len - 1);
+    } else if (!is_save_file(selected)) {
+        return;
+    }
+    if (strlen(fd.dir) + strlen(selected) + 2 >= sizeof target) return;
+    join(target, sizeof target, fd.dir, selected);
+    if (!safe_save_target(target, host, sizeof host)) return;
+    plan.items = calloc(MAX_DELETE_PLAN, sizeof *plan.items);
+    if (!plan.items) return;
+    if (kind) {
+        if (!plan_save_tree(&plan, target, 0)) goto done;
+        snprintf(prompt, sizeof prompt, extras_text("file.delete_folder_confirm"),
+                 selected, plan.files - plan.marked);
+    } else {
+        if (!plan_add(&plan, target, 0)) goto done;
+        snprintf(prompt, sizeof prompt, extras_text("file.delete_save_confirm"), selected);
+    }
+    if (MessageBoxA(fd.dlg, prompt, extras_text("file.delete_title"),
+                    MB_YESNO | MB_ICONWARNING) != IDYES)
+        goto done;
+    /* All entries were checked before confirmation. Recheck each path
+     * immediately before deletion; errors stop without deleting others. */
+    for (i = 0; i < plan.count; i++) {
+        SaveDeleteItem *entry = &plan.items[i];
+        struct stat st;
+        if (!safe_save_target(entry->path, host, sizeof host)) break;
+#ifndef _WIN32
+        if (lstat(host, &st)) break;
+#else
+        if (stat(host, &st)) break;
+#endif
+        if (entry->directory ? !S_ISDIR(st.st_mode) : !S_ISREG(st.st_mode))
+            break;
+        if ((entry->directory ? rmdir(host) : remove(host)) != 0)
+            break;
+    }
+    if (i != plan.count)
+        MessageBoxA(fd.dlg, extras_text("file.delete_failed"),
+                    extras_text("file.delete_title"), MB_OK | MB_ICONWARNING);
+    SetWindowTextA(fd.name, "");
+    refill();
+    SetFocus(fd.list);
+done:
+    free(plan.items);
 }
 
 /* The name typed (or chosen): a folder to open, a filter, or the answer. */
@@ -504,7 +710,12 @@ WINBOOL plat_file_dialog(OPENFILENAMEA *ofn, int save)
             continue;
         }
         if (msg.message == WM_KEYDOWN && (msg.hwnd == fd.dlg || IsChild(fd.dlg, msg.hwnd)) &&
-            (msg.wParam == VK_RETURN || msg.wParam == VK_ESCAPE)) {
+            (msg.wParam == VK_RETURN || msg.wParam == VK_ESCAPE ||
+             (msg.wParam == VK_DELETE && msg.hwnd == fd.list))) {
+            if (msg.wParam == VK_DELETE) {
+                delete_selected_save();
+                continue;
+            }
             if (msg.wParam == VK_ESCAPE) {
                 if (fd.creating_folder)
                     folder_mode(0);

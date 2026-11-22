@@ -265,6 +265,18 @@ HD 圖形
 已有同名檔案或資料夾。
 @@openciv2.file.folder_failed
 無法建立資料夾。
+@@openciv2.file.delete_title
+刪除存檔
+@@openciv2.file.delete_save_confirm
+確定刪除存檔 %s 嗎？
+刪除後無法復原。
+@@openciv2.file.delete_folder_confirm
+確定刪除存檔資料夾 %s 及其中 %d 個存檔嗎？
+刪除後無法復原。
+@@openciv2.file.delete_failed
+部分檔案無法刪除，請檢查剩餘內容。
+@@openciv2.file.delete_refused
+僅能刪除自建存檔資料夾和存檔檔案。含其他內容的資料夾會受到保護。
 @@openciv2.file.not_found
 %s
 找不到檔案。

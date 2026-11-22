@@ -155,6 +155,7 @@ export async function runGame(opts) {
     const councilTrace = !!opts.councilTrace;
     const memoryTrace = !!opts.memoryTrace;
     let lastMemoryLog = 0;
+    let musicPlayCount = 0;
     const ctx = canvas.getContext('2d', {alpha: false});
     // (the game's text: Windows-1252, or its translation's code page)
     let latin = new TextDecoder('windows-1252');
@@ -329,7 +330,9 @@ export async function runGame(opts) {
             console.info('civ2-memory-linear', {
                 atMs: Math.round(lastMemoryLog),
                 MiB: Math.round(memory.buffer.byteLength / 1048576),
-                peakMiB: Math.round((opts.stats?.memoryPeakBytes || memory.buffer.byteLength) / 1048576)
+                peakMiB: Math.round((opts.stats?.memoryPeakBytes || memory.buffer.byteLength) / 1048576),
+                musicPlays: musicPlayCount,
+                hdFrames: opts.stats?.hdFrames || 0
             });
         }
         if (opts.onFrame) {
@@ -620,6 +623,12 @@ export async function runGame(opts) {
                 return 0;
             const token = ++music.token;
             const bytes = wasm32Bytes(memory, file, len).slice();
+            musicPlayCount++;
+            if (memoryTrace)
+                console.info('civ2-memory-music', {
+                    play: musicPlayCount, inputBytes: len >>> 0,
+                    wasmMiB: Math.round(memory.buffer.byteLength / 1048576)
+                });
             music.playing = true;
             audio.decodeAudioData(bytes.buffer).then((buf) => {
                 if (token !== music.token)

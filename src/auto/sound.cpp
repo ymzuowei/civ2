@@ -2709,7 +2709,11 @@ void __cdecl avi_seek_frame(AviPlayer *player,uint frame_index,int redraw)
 {
   i32 key_frame;
   uint target_frame;
-  
+  int council_frames_prerolled = 0;
+  DWORD council_seek_started = 0;
+  if (getenv("CIV2_LOG_COUNCIL"))
+    council_seek_started = timeGetTime();
+
   if ((player != 0) && (avi_play.file_loaded != 0)) {
     if (avi_play.playing != 0) {
       avi_play_pause(player);
@@ -2725,8 +2729,13 @@ void __cdecl avi_seek_frame(AviPlayer *player,uint frame_index,int redraw)
       }
       if (target_frame <= (uint)player->cur_frame) break;
       avi_decode_frame(player,0x80000000);
+      if (council_seek_started) council_frames_prerolled++;
     }
     avi_decode_frame(player,0);
+    if (council_seek_started)
+      plat_log("council-trace stage=avi-seek target=%lu key=%ld preroll=%d decode_ms=%lu\n",
+               (unsigned long)frame_index, (long)key_frame, council_frames_prerolled,
+               (unsigned long)(timeGetTime() - council_seek_started));
     if (redraw != 0) {
       avi_update_frame(player);
     }
@@ -2897,6 +2906,10 @@ void __cdecl avi_update_frame(AviPlayer *player)
       sample = player->audio.is_playing();
       if (sample == 0) {
         if (player->loop == 0) {
+          if (getenv("CIV2_LOG_COUNCIL"))
+            plat_log("council-trace stage=audio-ended frame=%lu start=%lu end=%lu ms=%lu\n",
+                     (unsigned long)player->cur_frame, (unsigned long)player->start_frame,
+                     (unsigned long)player->end_frame, (unsigned long)timeGetTime());
           avi_play_pause(player);
           player->call_end_callback();
           return;

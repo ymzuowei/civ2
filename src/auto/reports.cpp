@@ -5,6 +5,16 @@
 #include "../platform/hd.h"
 void hd_throne_room(ThroneRoomWindow *v, int choices);
 
+/* CIV2-R019: opt-in Council trace, identical on native SDL and Web/WASM.
+ * Only event ids, frame numbers and timing; no media or speech content. */
+EXTERN_C void plat_log(const char *fmt, ...);
+static void council_trace(const char *stage, int advisor, int first, int last)
+{
+  if (getenv("CIV2_LOG_COUNCIL"))
+    plat_log("council-trace stage=%s advisor=%d first=%d last=%d ms=%lu\n",
+             stage, advisor, first, last, (unsigned long)timeGetTime());
+}
+
 /* 00419ed3 auto */
 void __cdecl leaders_fixup_names(void)
 
@@ -6993,6 +7003,7 @@ void __cdecl council_on_advisor_button(uptr button_id)
   int loaded;
   
   self = council_state.wnd;
+  council_trace("click", (int)button_id, -1, -1);
   council_state.video_busy = 1;
   snd_wave_stop_all();
   self->video.pause();
@@ -7015,12 +7026,21 @@ void __cdecl council_on_advisor_button(uptr button_id)
       self->move_video_to_slot(button_id);
       if ((int)button_id < 5) {
         self->draw_speech(0);
+        council_trace("click-seek-start", (int)button_id,
+                      (int)self->speech_line_values[self->speech_advisor_index],
+                      (int)self->speech_line_params[self->speech_advisor_index]);
         self->video.show_frame(
                      (i32)self->speech_line_values[self->speech_advisor_index]);
+        council_trace("click-seek-complete", (int)button_id,
+                      (int)self->speech_line_values[self->speech_advisor_index],
+                      (int)self->speech_line_params[self->speech_advisor_index]);
         self->video.SurfaceWindow::show();
         self->video.play_range(
                    (i32)self->speech_line_values[self->speech_advisor_index],
                    (i32)self->speech_line_params[self->speech_advisor_index]);
+        council_trace("click-play-issued", (int)button_id,
+                      (int)self->speech_line_values[self->speech_advisor_index],
+                      (int)self->speech_line_params[self->speech_advisor_index]);
         self->speech_advisor_index = self->speech_advisor_index + 1;
       }
       council_state.video_busy = 0;
@@ -7082,6 +7102,7 @@ void __cdecl council_on_video_end(void)
   CouncilWindow *self;
   
   self = council_state.wnd;
+  council_trace("video-end", self ? (int)self->speech_advisor_index : -1, -1, -1);
   council_state.video_busy = 1;
   if (council_state.wnd->council_active_2 == 0) {
     council_state.wnd->video.window.hide();
@@ -7089,12 +7110,21 @@ void __cdecl council_on_video_end(void)
        ) {
       self->move_video_to_slot((iptr)self->speech_line_advisors[self->speech_advisor_index]);
       self->draw_speech(1);
+      council_trace("auto-seek-start", (int)self->speech_line_advisors[self->speech_advisor_index],
+                    (int)self->speech_line_values[self->speech_advisor_index],
+                    (int)self->speech_line_params[self->speech_advisor_index]);
       self->video.show_frame(
                    (i32)self->speech_line_values[self->speech_advisor_index]);
+      council_trace("auto-seek-complete", (int)self->speech_line_advisors[self->speech_advisor_index],
+                    (int)self->speech_line_values[self->speech_advisor_index],
+                    (int)self->speech_line_params[self->speech_advisor_index]);
       self->video.SurfaceWindow::show();
       self->video.play_range(
                  (i32)self->speech_line_values[self->speech_advisor_index],
                  (i32)self->speech_line_params[self->speech_advisor_index]);
+      council_trace("auto-play-issued", (int)self->speech_line_advisors[self->speech_advisor_index],
+                    (int)self->speech_line_values[self->speech_advisor_index],
+                    (int)self->speech_line_params[self->speech_advisor_index]);
       self->speech_advisor_index = self->speech_advisor_index + 1;
     }
   }

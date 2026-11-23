@@ -134,6 +134,9 @@ HRESULT WINAPI AVIFileOpenA(PAVIFILE *pf, LPCSTR name, UINT mode, LPCLSID handle
     FILE *f;
     AviFile *a;
     long movi = 0;
+    DWORD council_open_at = 0;
+    if (getenv("CIV2_LOG_COUNCIL"))
+        council_open_at = GetTickCount();
     (void)mode; (void)handler;
     *pf = 0;
     plat_host_path(name, host, sizeof host, 0);
@@ -157,6 +160,10 @@ HRESULT WINAPI AVIFileOpenA(PAVIFILE *pf, LPCSTR name, UINT mode, LPCLSID handle
     }
     fclose(f);
     parse_list(a, 12, a->size, 0, &movi);
+    if (council_open_at)
+        plat_log("council-trace stage=avi-open bytes=%ld streams=%d duration_ms=%lu\n",
+                 a->size, a->nstreams,
+                 (unsigned long)(GetTickCount() - council_open_at));
     plat_log("AVIFileOpen(%s): %d streams\n", name, a->nstreams);
     *pf = (PAVIFILE)obj_new(OBJ_AVIFILE, a);
     return AVIERR_OK;

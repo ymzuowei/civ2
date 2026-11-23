@@ -214,6 +214,21 @@ assert.equal(queuedAudioBytes(suspendedAudio, pcmQueue), 154350,
 assert.equal(queuedAudioBytes({state: 'running', currentTime: 4}, pcmQueue), 66150);
 assert.equal(queuedAudioBytes({state: 'running', currentTime: 7}, pcmQueue), 0);
 assert.equal(queuedAudioBytes({state: 'closed', currentTime: 0}, pcmQueue), 0);
+// Real IEEE-754 reproduction from the AudioContext 128-frame clock:
+// 0.048 + 4096/22050 can round so that (end - currentTime) * 22050
+// becomes 4096.000000000001. Raw ceil reports 4097 bytes against only
+// 4096 actually queued. The resulting unsigned C subtraction used to
+// wrap into a huge played count and end a brand-new Council AVI clip.
+const firstClock = 0.048;
+const firstBufferFrames = 4096;
+const firstEnd = firstClock + firstBufferFrames / 22050;
+assert.ok(Math.ceil((firstEnd - firstClock) * 22050) > firstBufferFrames,
+          'floating-point one-sample overhang reproduction');
+assert.equal(queuedAudioBytes({state: 'running', currentTime: firstClock},
+    {end: firstEnd, freq: 22050, ch: 1, bits: 8}), firstBufferFrames);
+assert.equal(queuedAudioBytes({state: 'running', currentTime: firstClock},
+    {end: firstEnd, freq: 22050, ch: 2, bits: 16}), firstBufferFrames * 4);
+
 assert.equal(queuedAudioBytes(suspendedAudio,
     {end: 1, freq: 44100, ch: 2, bits: 16}), 176400);
 assert.match(hostSource, /if \(!d \|\| !audioContextCanSchedule\(audio\)\)/);

@@ -146,6 +146,7 @@ TARGETS = {
                     '-Wl,--export=plat_diag_present_budget_skips',
                     '-Wl,--export=plat_diag_present_unchanged_skips',
                     '-Wl,--export=plat_diag_present_compose_us',
+                    '-Wl,--export=plat_diag_present_frame_sync_us',
                     '-Wl,--export=plat_diag_present_host_us'],
         'libs': ['-lwasi-emulated-process-clocks'],
     },

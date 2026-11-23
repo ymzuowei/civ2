@@ -104,6 +104,7 @@ class B012WindowMemory(unittest.TestCase):
             "plat_diag_present_budget_skips",
             "plat_diag_present_unchanged_skips",
             "plat_diag_present_compose_us",
+            "plat_diag_present_frame_sync_us",
             "plat_diag_present_host_us",
         )
         for key in exports:
@@ -115,7 +116,9 @@ class B012WindowMemory(unittest.TestCase):
         self.assertIn("civ2-native-present", self.host)
         self.assertIn("presentedFps:", self.host)
         self.assertIn("nativeComposeMs:", self.host)
+        self.assertIn("nativeFrameSyncMs:", self.host)
         self.assertIn("browserHostMs:", self.host)
+        self.assertIn("present_frame_sync_total_us +=", self.main)
         self.assertIn("minimumSkips:", self.host)
         self.assertIn("budgetSkips:", self.host)
         self.assertIn("unchangedSkips:", self.host)

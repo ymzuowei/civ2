@@ -848,7 +848,25 @@ static void destroy_storage(Window *w)
     msg_window_destroyed(h);
     obj_free(h);
     rgn_free(&w->update);
-    /* The Window struct is not freed: DCs may still point at it. */
+    /*
+     * Closing an advisor/dialog can discard a large window surface (and
+     * its HD plane).  Retaining it after the handle is invalid leaks one
+     * backing bitmap per closed window, even though the Window shell itself
+     * is intentionally kept for DC pointers which may still reference it.
+     * WM_NCDESTROY has already run, so the game's callback can no longer
+     * require the window's text, extra storage or drawing surface.
+     */
+    if (w->own_dc) {
+        DeleteDC(w->own_dc);    /* CS_OWNDC survives ReleaseDC; not destruction */
+        w->own_dc = 0;
+    }
+    bmp_destroy(w->surf);
+    w->surf = NULL;
+    free(w->text);
+    w->text = NULL;
+    free(w->extra);
+    w->extra = NULL;
+    /* Keep the Window struct: outstanding DC pointers may still reference it. */
 }
 
 WINBOOL WINAPI DestroyWindow(HWND h)

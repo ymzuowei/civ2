@@ -74,3 +74,17 @@ overwrite, or redistribute AVI media before measured results.
 ### Source CI gate update
 
 First R019 pinned-source run [45040571175](https://github.com/ymzuowei/civ2-web/actions/runs/45040571175) failed before gameplay due a T017 browser unit test hardcoding the previous `!introDiagnose && !new URLSearchParams` logging condition. The new opt-in `councilTrace` parameter must be checked alongside `introDiagnose`. The browser unit now explicitly asserts both default-no-log and opt-in Council trace routing, without changing runtime playback. New exact-head source CI and Owner WASM build remain PENDING.
+
+
+## B012 integration correction — retain the R019 first-click audio fix
+
+The B012 native candidate originally advanced its upstream.lock to a native commit on a side branch that did not contain the R019 suspended-WebAudio correction. This meant a Web build could carry councilTrace=1 instrumentation while still compiling the old audioOk() === running behavior; the webaudio-queued-suspended trace would be absent. This is the missing integration that explains why the Owner could still reproduce a 5ms first-click audio completion on the B012 preview.
+
+The B012 native branch now ports the R019 fix onto its current >2 GiB/WASM32-safe code instead of replacing the newer host file with the older R019 snapshot:
+- audioContextCanSchedule() accepts running and suspended contexts.
+- host_audio_queue schedules PCM during asynchronous resume and emits metadata-only webaudio-queued-suspended when councilTrace=1.
+- host_audio_queued retains the pending queue while the suspended AudioContext clock is frozen.
+- The B012 wasm32Bytes(memory, data, ...) PCM read remains intact; no reversion to direct signed pointer construction.
+- Node tests cover suspended/running/closed states, frozen clock and queue depletion. Python source regression asserts both the suspended-queue policy and preservation of the WASM32-safe data path.
+
+This is now a combined B012 + R019 integration candidate, not evidence of Owner runtime acceptance. Rebuild the exact updated native pin and verify at least three fresh-load first-click Military clips, second click, and the scripted automatic Trade reply. Expect a roughly full-clip audio lifetime (not 5ms); with trace enabled, confirm whether webaudio-queued-suspended appears when the initial gesture resumes the context. If it does not appear, that only means the context was already running at PCM queue time; it is not itself a failure. Keep all PRs Draft and do not merge/freeze until runtime verification.

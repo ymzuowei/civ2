@@ -109,9 +109,28 @@ static void wave_done(HWAVEOUT h, WaveOut *w, LPWAVEHDR hdr)
     }
 }
 
+/* WebAudio reports the queue by converting a floating-point time span to
+ * PCM bytes. Rounding upwards can briefly report one extra sample, even
+ * just after the FIRST BufferSource.start(). Do not allow unsigned
+ * subtraction to wrap, or sound_poll() will complete every WOM_DONE header
+ * and the Council AVI will fire its video-end callback within milliseconds.
+ *
+ * This clamp is also correct when the host reports unexpected extra queued
+ * audio after a reset: no buffer can have played negative bytes. */
 static uint64_t played_bytes(WaveOut *w)
 {
-    return w->queued_total - host_audio_queued(w->dev);
+    uint64_t remaining = host_audio_queued(w->dev);
+    if (remaining >= w->queued_total) {
+        if (remaining > w->queued_total && getenv("CIV2_LOG_COUNCIL")) {
+            static unsigned int overhang_logged;
+            if (overhang_logged++ < 12)
+                plat_log("council-trace stage=wave-queue-overhang submitted=%llu remaining=%llu pending=%d\n",
+                    (unsigned long long)w->queued_total,
+                    (unsigned long long)remaining, w->npending);
+        }
+        return 0;
+    }
+    return w->queued_total - remaining;
 }
 
 /* Called from the message loop: finish buffers that have played. */

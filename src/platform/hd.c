@@ -185,6 +185,12 @@ static Scaled *scaled[1024];
 static uint64_t scaled_bytes;
 #define SCALED_BUDGET (128u << 20)
 
+/* Read-only counts of actual HD whole-picture paths (not pixel contents).
+ * Used to verify whether full throne backgrounds take the fast opaque path. */
+static uint32_t hd_picture_solid_copies, hd_picture_alpha_blends;
+uint32_t plat_diag_hd_picture_solid(void) { return hd_picture_solid_copies; }
+uint32_t plat_diag_hd_picture_alpha(void) { return hd_picture_alpha_blends; }
+
 /* Inside the diamond the w x h box holds (terrain): its pixels are drawn
    opaque, the others not at all, so neighbouring tiles meet without seams
    or overlap whatever the art's own edges. */
@@ -1597,10 +1603,13 @@ int hd_picture(void *bits, const char *key, double x, double y, double w, double
     ph = (int)floor((y + h) * d + .5) - t;
     if (pw <= 0 || ph <= 0 || !(px = picture(id, pw, ph, 0, &solid)))
         return 0;
-    if (solid)
+    if (solid) {
+        hd_picture_solid_copies++;
         paint_solid_picture(b, px, pw, ph, l, t);
-    else
+    } else {
+        hd_picture_alpha_blends++;
         paint(b, px, pw, ph, l, t, pw, ph, 0, 0, b->w * d, b->h * d, -1);
+    }
     return 1;
 }
 

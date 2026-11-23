@@ -154,6 +154,8 @@ export async function runGame(opts) {
     const {canvas, fs} = opts;
     const councilTrace = !!opts.councilTrace;
     const memoryTrace = !!opts.memoryTrace;
+    const perfTrace = !!opts.perfTrace;
+    let lastPerfSample = null;
     let lastMemoryLog = 0;
     let musicPlayCount = 0;
     const ctx = canvas.getContext('2d', {alpha: false});
@@ -349,6 +351,46 @@ export async function runGame(opts) {
                 musicPlays: musicPlayCount,
                 hdFrames: opts.stats?.hdFrames || 0
             });
+        }
+        if (perfTrace) {
+            // One diagnostic sample per five seconds, NEVER per rendered frame.
+            // Native counters distinguish real HD composition time, JS host
+            // presentation, and each exact frame-skip gate without changing
+            // the game's timing, animation speed or frame pacing.
+            const at = performance.now();
+            if (!lastPerfSample || at - lastPerfSample.at >= 5000) {
+                const curr = {
+                    at,
+                    calls: exports.plat_diag_present_calls(),
+                    drawn: exports.plat_diag_present_drawn(),
+                    minimum: exports.plat_diag_present_min_interval_skips(),
+                    budget: exports.plat_diag_present_budget_skips(),
+                    unchanged: exports.plat_diag_present_unchanged_skips(),
+                    compose: exports.plat_diag_present_compose_us(),
+                    host: exports.plat_diag_present_host_us()
+                };
+                if (lastPerfSample) {
+                    // Exported native counters are wrapping u32 values.
+                    const diff = (key) => (curr[key] - lastPerfSample[key]) >>> 0;
+                    const frames = diff('drawn');
+                    const secs = (at - lastPerfSample.at) / 1000;
+                    const sample = {
+                        seconds: +secs.toFixed(1),
+                        presentedFps: +(frames / secs).toFixed(1),
+                        nativeComposeMs: frames ? +(diff('compose') / frames / 1000).toFixed(2) : null,
+                        browserHostMs: frames ? +(diff('host') / frames / 1000).toFixed(2) : null,
+                        presentCalls: diff('calls'),
+                        frames,
+                        minimumSkips: diff('minimum'),
+                        budgetSkips: diff('budget'),
+                        unchangedSkips: diff('unchanged')
+                    };
+                    if (opts.stats)
+                        opts.stats.nativePerf = sample;
+                    console.info('civ2-native-present', sample);
+                }
+                lastPerfSample = curr;
+            }
         }
         if (opts.onFrame) {
             const f = opts.onFrame;

@@ -2,6 +2,10 @@
  * (tools/gen_c.py, now edited directly), in address order. */
 #include "auto_common.h"
 
+/* Port-only: same selected GameFont face/style, fitted to the original
+ * bitmap BUTTON's fixed 3D bevel. No change to legacy button logic. */
+extern "C" HFONT plat_game_button_fit_font(HDC dc, const char *label, int inner_w, int inner_h);
+
 /* 0040f380 auto */
 void Control::show_and_redraw()
 
@@ -1854,6 +1858,18 @@ button_create_hwnd(int *rect,Control *ctrl,const char *label,int visible,GameFon
         h_03 = SelectObject(mem_dc,(HGDIOBJ)*font_data);
         font_handle = font->get_handle();
         mem_handle_unlock(font_handle);
+        /* Most game dialog buttons are bitmap-based MSControl widgets,
+         * not the platform's builtin BUTTON. Their caption was drawn into
+         * three 24px-high face/pressed/disabled images using full-size
+         * GameFont even when translated Chinese ink hit the inset bevel.
+         * Apply one compatible compact font to ALL three states, only
+         * when its measured cell/width would collide with the 4px margin. */
+        {
+          HFONT fitted = plat_game_button_fit_font(mem_dc,label_text,
+                            rect_width(&bounds) - 8,rect_height(&bounds) - 8);
+          if (fitted)
+            SelectObject(mem_dc,fitted);
+        }
         h_04 = SelectObject(mem_dc,h);
         orig_left = bounds.left;
         orig_top = bounds.top;

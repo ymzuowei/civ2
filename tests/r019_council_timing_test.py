@@ -17,6 +17,7 @@ class CouncilTraceContract(unittest.TestCase):
         cls.video = (ROOT / "src/platform/video.c").read_text(encoding="utf-8")
         cls.main = (ROOT / "src/web/main.js").read_text(encoding="utf-8")
         cls.host = (ROOT / "src/web/host.js").read_text(encoding="utf-8")
+        cls.wave_port = (ROOT / "src/platform/sound.c").read_text(encoding="utf-8")
 
     def test_opt_in_metadata_trace_for_clicked_and_auto_advisors(self):
         self.assertIn('getenv("CIV2_LOG_COUNCIL")', self.reports)
@@ -70,6 +71,29 @@ class CouncilTraceContract(unittest.TestCase):
         self.assertIn("const at = Math.max(audio.currentTime, d.end);", self.host)
         self.assertIn("stats.busyMs += busy;", self.host)
         self.assertNotIn("src.stop(); // skipped audio", self.host)
+
+    def test_waveout_played_bytes_clamped_before_unsigned_subtraction(self):
+        # The old uint64_t difference wrapped when WebAudio's time-based
+        # rounding said 4097 queued bytes after just 4096 were written:
+        # sound_poll instantly completed every WOM_DONE buffer.
+        total, remaining = 4096, 4097
+        self.assertEqual((total - remaining) & ((1 << 64) - 1),
+                         (1 << 64) - 1)
+        self.assertEqual(max(0, total - remaining), 0)
+        self.assertEqual(max(0, total - total), 0)
+        self.assertEqual(max(0, total - 3072), 1024)
+        body = self.wave_port.split("static uint64_t played_bytes(WaveOut *w)", 1)[1].split(
+            "void sound_poll(void)", 1)[0]
+        self.assertIn("uint64_t remaining = host_audio_queued(w->dev);", body)
+        self.assertIn("if (remaining >= w->queued_total)", body)
+        self.assertIn("return 0;", body)
+        self.assertIn("return w->queued_total - remaining;", body)
+        self.assertLess(body.index("if (remaining >= w->queued_total)"),
+                        body.index("return w->queued_total - remaining;"))
+        self.assertIn("stage=wave-queue-overhang", body)
+        self.assertIn("played_bytes(w) >= w->end_bytes[0]", self.wave_port)
+        self.assertIn("host_audio_queue(w->dev, hdr->lpData, hdr->dwBufferLength);",
+                      self.wave_port)
 
     def test_log_excludes_user_media_content(self):
         self.assertNotIn("console.info('council-trace wav-data'", self.host)

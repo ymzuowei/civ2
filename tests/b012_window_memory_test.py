@@ -97,6 +97,35 @@ class B012WindowMemory(unittest.TestCase):
             self.assertIn(category, main)
         self.assertIn("composed = host_time_us();", main)
 
+    def test_opaque_hd_picture_fast_path_keeps_transparency_and_cache_budget(self):
+        # This is a source gate only; actual pixel-level owner HD verification
+        # and animations remain a separate required runtime acceptance.
+        for marker in (
+            "static int scaled_solid(Scaled *p)",
+            "p->solid_known = 1;",
+            "if ((p->px[k] >> 24) != 255)",
+            "if (solid)",
+            "paint_solid_picture(b, px, pw, ph, l, t);",
+            "hd_picture_solid_copies++;",
+            "hd_picture_alpha_blends++;",
+            "paint(b, px, pw, ph, l, t, pw, ph, 0, 0",
+            "memcpy(b->hd + (size_t)row * pitch + l,",
+            "DECODED_BUDGET (160u << 20)",
+            "SCALED_BUDGET (128u << 20)",
+        ):
+            self.assertIn(marker, self.hd)
+        self.assertIn("picture(id, pw, ph, 0, &solid)", self.hd)
+        self.assertIn("plat_diag_hd_picture_solid", self.hd)
+        self.assertIn("plat_diag_hd_picture_alpha", self.hd)
+        self.assertIn("enqueueInput(queue, event, coalesceHover && type === EV.MOTION)", self.host)
+        self.assertIn("e.buttons === 0", self.host)
+        self.assertIn("inputQueueAvgMs:", self.host)
+        self.assertIn("inputQueueMaxMs:", self.host)
+        self.assertIn("hoverCoalesced:", self.host)
+        for symbol in ("plat_diag_hd_picture_solid", "plat_diag_hd_picture_alpha"):
+            self.assertIn("--export=" + symbol, self.build)
+            self.assertIn("exports." + symbol + "()", self.host)
+
     def test_opt_in_hd_animation_probe_exports_and_logs_only_statistics(self):
         exports = (
             "plat_diag_present_calls", "plat_diag_present_drawn",

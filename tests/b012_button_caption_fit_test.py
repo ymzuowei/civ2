@@ -35,7 +35,7 @@ class CjkButtonCaptionFit(unittest.TestCase):
     def test_actual_civ2_bitmap_buttons_share_one_fitted_caption_font(self):
         # Advisor/High Council/most dialogs use MSControl with three bitmap
         # faces, NOT the platform's minimal Win32 BUTTON fallback.
-        game = GAME_BUTTONS.split("button_create_hwnd(", 1)[1].split(
+        game = GAME_BUTTONS.split("\nbutton_create_hwnd(int *rect", 1)[1].split(
             "button_press_animated(", 1
         )[0]
         self.assertIn("str_mscontrolclass_2", game)

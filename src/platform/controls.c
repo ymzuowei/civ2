@@ -2436,7 +2436,6 @@ static HFONT button_compact_font(int px)
 static void button_caption(HDC hdc, const char *text, const RECT *outer)
 {
     RECT caption = *outer;
-    int compact = 0;
     HFONT original = 0;
     const unsigned char *p = (const unsigned char *)text;
     if (!text)
@@ -2480,14 +2479,11 @@ static void button_caption(HDC hdc, const char *text, const RECT *outer)
                         GetTextExtentPointA(hdc, text, (int)strlen(text), &measured) &&
                         smaller.tmHeight + 2 <= avail_h &&
                         measured.cx + 2 <= avail_w) {
-                        compact = 1;
                         break;
                     }
                 }
-                /* Even if a very small button cannot fit 6px glyphs, the
-                 * caption remains clipped inside its bevel. */
-                if (!compact && !original)
-                    original = (HFONT)SelectObject(hdc, button_compact_font(6));
+                /* If even 6px cannot fit, the caption remains clipped to
+                 * the inset rectangle rather than overpainting its bevel. */
             }
         }
     }

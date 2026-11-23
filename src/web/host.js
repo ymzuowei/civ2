@@ -155,6 +155,20 @@ export function enqueueInput(queue, event, coalesceHover = false) {
     return false;
 }
 
+// R019: AudioContext.resume() is asynchronous after the first user gesture.
+// A suspended context can still accept BufferSource scheduling. Its clock
+// remains frozen until resume, so queued AVI PCM must not be reported consumed.
+export function audioContextCanSchedule(context) {
+    return !!context && (context.state === 'running' || context.state === 'suspended');
+}
+
+export function queuedAudioBytes(context, d) {
+    if (!d || !audioContextCanSchedule(context))
+        return 0;
+    const left = d.end - context.currentTime;
+    return left > 0 ? Math.ceil(left * d.freq) * d.ch * (d.bits === 8 ? 1 : 2) : 0;
+}
+
 // ---- the run ----
 
 // opts: {wasm: ArrayBuffer|Response|WebAssembly.Module (or a promise of one), onFrame: called at the first frame, fs: MemFS, canvas, args, env, messageBox(icon, title, text, labels, ids,
@@ -496,7 +510,6 @@ export async function runGame(opts) {
         if (audio && audio.state === 'suspended')
             audio.resume();
     }
-    const audioOk = () => audio && audio.state === 'running';
     const music = {source: null, playing: false, token: 0};
     // T017: three-stage mixer. Existing master mute/level remains a common
     // bus; music (CD tracks) and effects (PCM waveOut and AVI soundtrack)
@@ -670,9 +683,14 @@ export async function runGame(opts) {
         },
         host_audio_queue: (dev, data, len) => {
             const d = devices[dev];
-            // (without a running context nothing would play, nor ever be done)
-            if (!d || !audioOk())
+            // Preserve AVI PCM during the asynchronous first-gesture resume.
+            // BufferSource nodes remain scheduled while the AudioContext clock is
+            // suspended; dropping them makes waveOut falsely report completion.
+            if (!d || !audioContextCanSchedule(audio))
                 return;
+            if (councilTrace && audio.state === 'suspended')
+                console.info('council-trace webaudio-queued-suspended',
+                    {dev, atMs: Math.round(performance.now())});
             const bps = d.bits === 8 ? 1 : 2, frames = Math.floor(len / (bps * d.ch));
             if (!frames)
                 return;
@@ -703,10 +721,7 @@ export async function runGame(opts) {
         },
         host_audio_queued: (dev) => {
             const d = devices[dev];
-            if (!d || !audioOk())
-                return 0;
-            const left = d.end - audio.currentTime;
-            return left > 0 ? Math.ceil(left * d.freq) * d.ch * (d.bits === 8 ? 1 : 2) : 0;
+            return queuedAudioBytes(audio, d);
         },
         host_audio_clear: (dev) => {
             const d = devices[dev];

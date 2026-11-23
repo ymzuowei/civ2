@@ -2,7 +2,7 @@
 // desktop's scale, pixels, the WASI file system, .zip reading and writing, the player's saves.
 //   tools/toolchain/node/bin/node src/web/test/unit.mjs
 import assert from 'node:assert/strict';
-import {vkOf, Wheel, desktopScale, desktopUiScale, initialDesktopGeometry, argbToRgba, liveDesktopResize, canvasFitSize, displayModeFromSearch} from '../host.js';
+import {vkOf, Wheel, desktopScale, desktopUiScale, initialDesktopGeometry, argbToRgba, liveDesktopResize, canvasFitSize, displayModeFromSearch, enqueueInput} from '../host.js';
 import {MemFS, makeWasi, normalize} from '../wasi.js';
 import {createAudioVolume, audioLabels} from '../audio_volume.js';
 import {TOOLBAR_KEY, createToolbarCollapse, toolbarLabels} from '../toolbar.js';
@@ -17,6 +17,24 @@ import {match} from '../locale.js';
 import {makeNet} from '../net.js';
 import {GRAPHICS_PREFERENCE_KEY, graphicsFromQuery, resolveGraphicsPreference, hdArg} from '../graphics_choice.js';
 import {wasm32Offset, wasm32Bytes, wasm32Words, makeWasm32DataView} from '../wasm32.js';
+
+// CIV2-B012: menu response. Only adjacent no-button hover may be merged,
+// never drag paths or input boundaries; order and final pointer location stay.
+const events = [];
+assert.equal(enqueueInput(events, [4, 0, 10, 12, 0], true), false);
+assert.equal(enqueueInput(events, [4, 0, 20, 25, 0], true), true);
+assert.deepEqual(events, [[4, 0, 20, 25, 0]]);
+assert.equal(enqueueInput(events, [5, 0, 20, 25, 1], false), false);
+assert.equal(enqueueInput(events, [4, 0, 22, 27, 0], false), false);
+assert.equal(enqueueInput(events, [4, 0, 25, 29, 0], false), false);
+assert.equal(enqueueInput(events, [6, 0, 25, 29, 1], false), false);
+assert.equal(enqueueInput(events, [4, 0, 30, 35, 0], true), false);
+assert.equal(enqueueInput(events, [4, 0, 35, 36, 0], true), true);
+assert.deepEqual(events.map(x => x[0]), [4, 5, 4, 4, 6, 4]);
+assert.deepEqual(events.at(-1), [4, 0, 35, 36, 0]);
+assert.equal(enqueueInput(events, [2, 65, 0, 0, 0], false), false);
+assert.equal(enqueueInput(events, [4, 0, 36, 40, 0], true), false);
+assert.deepEqual(events.slice(-2).map(x => x[0]), [2, 4]);
 
 // CIV2-B012: imported WASM i32 pointers above 2 GiB arrive negative in JS.
 // Arithmetic checks use a synthetic byteLength: never allocate 2 GiB in CI.

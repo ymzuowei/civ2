@@ -14,6 +14,9 @@ Window *desktop = &desktop_wnd;
 static WndClass *classes;
 HWND focus_wnd, capture_wnd, active_wnd;
 unsigned wnd_generation = 1;            /* bumped on any geometry/Z-order/visibility change */
+/* B012: number of fully destroyed window shells (metadata only). */
+static uint32_t closed_windows;
+uint32_t plat_diag_closed_windows(void) { return closed_windows; }
 
 static int is_managed(Window *w, int activating);
 static void nc_dirty_tree(Window *w);
@@ -866,6 +869,7 @@ static void destroy_storage(Window *w)
     w->text = NULL;
     free(w->extra);
     w->extra = NULL;
+    closed_windows++;
     /* Keep the Window struct: outstanding DC pointers may still reference it. */
 }
 

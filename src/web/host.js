@@ -367,6 +367,7 @@ export async function runGame(opts) {
                     budget: exports.plat_diag_present_budget_skips(),
                     unchanged: exports.plat_diag_present_unchanged_skips(),
                     compose: exports.plat_diag_present_compose_us(),
+                    frameSync: exports.plat_diag_present_frame_sync_us(),
                     host: exports.plat_diag_present_host_us()
                 };
                 if (lastPerfSample) {
@@ -378,6 +379,7 @@ export async function runGame(opts) {
                         seconds: +secs.toFixed(1),
                         presentedFps: +(frames / secs).toFixed(1),
                         nativeComposeMs: frames ? +(diff('compose') / frames / 1000).toFixed(2) : null,
+                        nativeFrameSyncMs: frames ? +(diff('frameSync') / frames / 1000).toFixed(2) : null,
                         browserHostMs: frames ? +(diff('host') / frames / 1000).toFixed(2) : null,
                         presentCalls: diff('calls'),
                         frames,

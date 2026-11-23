@@ -135,7 +135,21 @@ TARGETS = {
         'ldflags': ['--target=wasm32-wasip1', '-Wl,--error-limit=0', '-Wl,-z,stack-size=16777216',
                     # nothing below 64K, as on Windows: smaller pointers are taken for atoms and resource ids
                     '-Wl,--global-base=65536', '-Wl,--initial-memory=67108864',
-                    '-Wl,--export=malloc', '-Wl,--export=plat_modal_tick'],
+                    '-Wl,--export=malloc', '-Wl,--export=plat_modal_tick',
+                    # B012 read-only counters: separate live GDI/HD bytes from linear-memory growth.
+                    '-Wl,--export=plat_diag_bitmap_bytes', '-Wl,--export=plat_diag_bitmap_count',
+                    '-Wl,--export=plat_diag_hd_bytes', '-Wl,--export=plat_diag_hd_planes',
+                    '-Wl,--export=plat_diag_hd_picture_solid',
+                    '-Wl,--export=plat_diag_hd_picture_alpha',
+                    '-Wl,--export=plat_diag_closed_windows',
+                    # B012 HD combat: read-only frame pacing and native timing splits.
+                    '-Wl,--export=plat_diag_present_calls', '-Wl,--export=plat_diag_present_drawn',
+                    '-Wl,--export=plat_diag_present_min_interval_skips',
+                    '-Wl,--export=plat_diag_present_budget_skips',
+                    '-Wl,--export=plat_diag_present_unchanged_skips',
+                    '-Wl,--export=plat_diag_present_compose_us',
+                    '-Wl,--export=plat_diag_present_frame_sync_us',
+                    '-Wl,--export=plat_diag_present_host_us'],
         'libs': ['-lwasi-emulated-process-clocks'],
     },
     'win64': {

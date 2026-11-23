@@ -938,6 +938,8 @@ async function play(store) {
         env.CIV2_BROWSER_HD_OPENING = '1';
     const introDiagnose = new URLSearchParams(location.search).get('intro') === 'diagnose';
     const councilTrace = new URLSearchParams(location.search).get('councilTrace') === '1';
+    const memoryTrace = new URLSearchParams(location.search).get('memoryTrace') === '1';
+    const perfTrace = new URLSearchParams(location.search).get('perfTrace') === '1';
     if (introDiagnose)
         env.CIV2_LOG_VIDEO = '1';
     if (councilTrace)
@@ -952,7 +954,7 @@ async function play(store) {
     try {
         window.civ2Stats = {};
         code = await runGame({wasm: site.wasm, fs, audioContext: introAudio,
-                              audioVolume: browserAudio, councilTrace,
+                              audioVolume: browserAudio, councilTrace, memoryTrace, perfTrace,
                               onFrame: () => {
                                   timing.frame = Math.round(performance.now());
                                   $('loading').hidden = true;

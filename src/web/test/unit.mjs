@@ -2,7 +2,7 @@
 // desktop's scale, pixels, the WASI file system, .zip reading and writing, the player's saves.
 //   tools/toolchain/node/bin/node src/web/test/unit.mjs
 import assert from 'node:assert/strict';
-import {vkOf, Wheel, desktopScale, desktopUiScale, initialDesktopGeometry, argbToRgba, liveDesktopResize, canvasFitSize, displayModeFromSearch} from '../host.js';
+import {vkOf, Wheel, desktopScale, desktopUiScale, initialDesktopGeometry, argbToRgba, liveDesktopResize, canvasFitSize, displayModeFromSearch, enqueueInput} from '../host.js';
 import {MemFS, makeWasi, normalize} from '../wasi.js';
 import {createAudioVolume, audioLabels} from '../audio_volume.js';
 import {TOOLBAR_KEY, createToolbarCollapse, toolbarLabels} from '../toolbar.js';
@@ -16,6 +16,57 @@ import {iniGet, iniSet, hdWanted, skipBrowserOpening, openingVideoPresent, openi
 import {match} from '../locale.js';
 import {makeNet} from '../net.js';
 import {GRAPHICS_PREFERENCE_KEY, graphicsFromQuery, resolveGraphicsPreference, hdArg} from '../graphics_choice.js';
+import {wasm32Offset, wasm32Bytes, wasm32Words, makeWasm32DataView} from '../wasm32.js';
+
+// CIV2-B012: menu response. Only adjacent no-button hover may be merged,
+// never drag paths or input boundaries; order and final pointer location stay.
+const events = [];
+assert.equal(enqueueInput(events, [4, 0, 10, 12, 0], true), false);
+assert.equal(enqueueInput(events, [4, 0, 20, 25, 0], true), true);
+assert.deepEqual(events, [[4, 0, 20, 25, 0]]);
+assert.equal(enqueueInput(events, [5, 0, 20, 25, 1], false), false);
+assert.equal(enqueueInput(events, [4, 0, 22, 27, 0], false), false);
+assert.equal(enqueueInput(events, [4, 0, 25, 29, 0], false), false);
+assert.equal(enqueueInput(events, [6, 0, 25, 29, 1], false), false);
+assert.equal(enqueueInput(events, [4, 0, 30, 35, 0], true), false);
+assert.equal(enqueueInput(events, [4, 0, 35, 36, 0], true), true);
+assert.deepEqual(events.map(x => x[0]), [4, 5, 4, 4, 6, 4]);
+assert.deepEqual(events.at(-1), [4, 0, 35, 36, 0]);
+assert.equal(enqueueInput(events, [2, 65, 0, 0, 0], false), false);
+assert.equal(enqueueInput(events, [4, 0, 36, 40, 0], true), false);
+assert.deepEqual(events.slice(-2).map(x => x[0]), [2, 4]);
+
+// CIV2-B012: imported WASM i32 pointers above 2 GiB arrive negative in JS.
+// Arithmetic checks use a synthetic byteLength: never allocate 2 GiB in CI.
+const crashSignedPointer = -2121969888; // Owner crash on 2026-11-23
+const crashUnsignedPointer = 0x81854f20;
+assert.equal(wasm32Offset(crashSignedPointer, 128, crashUnsignedPointer + 1024), crashUnsignedPointer);
+assert.equal(wasm32Offset(crashUnsignedPointer, 128, crashUnsignedPointer + 1024), crashUnsignedPointer);
+assert.throws(() => wasm32Offset(crashSignedPointer, 128, crashUnsignedPointer + 127), RangeError);
+assert.throws(() => wasm32Offset(crashSignedPointer, 128, 512 * 1048576), RangeError);
+assert.throws(() => wasm32Offset(-1, 2, 0xffffffff), RangeError);
+assert.throws(() => wasm32Offset(40, -3, 64), RangeError);
+assert.throws(() => wasm32Offset(Number.NaN, 1, 64), RangeError);
+assert.equal(wasm32Offset(64, 0, 64), 64);
+const bridgeMemory = new WebAssembly.Memory({initial: 1, maximum: 2});
+const bridgeView = makeWasm32DataView(() => bridgeMemory);
+bridgeView.setUint32(32, 0x12345678, true);
+assert.equal(bridgeView.getUint32(32, true), 0x12345678);
+assert.equal(wasm32Words(bridgeMemory, 32, 1)[0], 0x12345678);
+wasm32Bytes(bridgeMemory, 64, 4).set([1, 2, 3, 4]);
+assert.deepEqual([...wasm32Bytes(bridgeMemory, 64, 4)], [1, 2, 3, 4]);
+assert.throws(() => wasm32Words(bridgeMemory, 33, 1), RangeError);
+assert.throws(() => wasm32Bytes(bridgeMemory, -1, 10), RangeError);
+bridgeMemory.grow(1); // cached DataView must not access a detached old buffer
+bridgeView.setBigUint64(70000, 0x1234n, true);
+assert.equal(new DataView(bridgeMemory.buffer).getBigUint64(70000, true), 0x1234n);
+// A normal directory read still returns the WASI header and entry bytes.
+const bridgeFS = new MemFS();
+bridgeFS.mkdirs('/civ2');
+const bridgeWasi = makeWasi(bridgeFS, [], {}, () => bridgeMemory);
+assert.equal(bridgeWasi.fd_readdir(3, 1024, 512, 0n, 256), 0);
+assert.ok(bridgeView.getUint32(256, true) >= 48);
+assert.throws(() => bridgeWasi.fd_readdir(3, -1, 512, 0n, 256), RangeError);
 
 // Native and web language aliases distinguish Taiwan's traditional from
 // Mainland/Singapore's simplified Chinese without changing existing saves.

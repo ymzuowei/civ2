@@ -3,6 +3,8 @@
 // under /civ2, the program's own (the fonts) under /data.  Files the game
 // writes are reported (onchange) so that the page keeps them (IndexedDB).
 
+import {wasm32Offset, wasm32Bytes, makeWasm32DataView} from './wasm32.js';
+
 const W = {SUCCESS: 0, BADF: 8, EXIST: 20, INVAL: 28, IO: 29, ISDIR: 31, MFILE: 33, NOENT: 44, NOTDIR: 54,
            NOTEMPTY: 55, NOSYS: 52};
 const FILETYPE = {DIR: 3, FILE: 4, CHAR: 2};
@@ -90,9 +92,10 @@ export function makeWasi(fs, args, env, memory, log = (fd, s) => (fd === 2 ? con
     // descriptors: 0-2 the console, 3 the root ("/"), then files and directories
     const fds = [{con: 0}, {con: 1}, {con: 2}, {dir: '/'}];
     const lines = ['', '', ''];
-    const dv = () => new DataView(memory().buffer);
+    const access = makeWasm32DataView(memory);
+    const dv = () => access;
     const u8 = () => new Uint8Array(memory().buffer);
-    const str = (p, n) => dec.decode(u8().subarray(p, p + n));
+    const str = (p, n) => dec.decode(wasm32Bytes(memory(), p, n));
     const fdNew = (o) => {
         for (let i = 4; i < 1024; i++)
             if (!fds[i]) {
@@ -142,7 +145,7 @@ export function makeWasi(fs, args, env, memory, log = (fd, s) => (fd === 2 ? con
             args.forEach((a, i) => {
                 const b = enc.encode(a + '\0');
                 dv().setUint32(argv + 4 * i, buf, true);
-                u8().set(b, buf);
+                wasm32Bytes(memory(), buf, b.length).set(b);
                 buf += b.length;
             });
             return 0;
@@ -156,7 +159,7 @@ export function makeWasi(fs, args, env, memory, log = (fd, s) => (fd === 2 ? con
             envs.forEach((a, i) => {
                 const b = enc.encode(a + '\0');
                 dv().setUint32(envp + 4 * i, buf, true);
-                u8().set(b, buf);
+                wasm32Bytes(memory(), buf, b.length).set(b);
                 buf += b.length;
             });
             return 0;
@@ -181,7 +184,7 @@ export function makeWasi(fs, args, env, memory, log = (fd, s) => (fd === 2 ? con
             if (fd !== 3)
                 return W.BADF;
             if (len)
-                u8()[path] = 47;    // "/"
+                wasm32Bytes(memory(), path, 1)[0] = 47;    // "/"
             return 0;
         },
         fd_fdstat_get(fd, buf) {
@@ -297,13 +300,13 @@ export function makeWasi(fs, args, env, memory, log = (fd, s) => (fd === 2 ? con
                     if (f.file.read) {
                         try {
                             if (k)
-                                u8().set(f.file.read(f.pos, k), p);
+                                wasm32Bytes(memory(), p, k).set(f.file.read(f.pos, k));
                         } catch (e) {
                             log(2, f.path + ': ' + e.message);
                             return W.IO;
                         }
                     } else {
-                        mem.set(f.file.data.subarray(f.pos, f.pos + k), p);
+                        wasm32Bytes(memory(), p, k).set(f.file.data.subarray(f.pos, f.pos + k));
                     }
                     f.pos += k;
                     total += k;
@@ -326,7 +329,7 @@ export function makeWasi(fs, args, env, memory, log = (fd, s) => (fd === 2 ? con
                         total += l;
                         continue;
                     }
-                    lines[f.con] += dec.decode(mem.subarray(p, p + l));
+                    lines[f.con] += dec.decode(wasm32Bytes(memory(), p, l));
                     let i;
                     while ((i = lines[f.con].indexOf('\n')) >= 0) {
                         log(f.con, lines[f.con].slice(0, i));
@@ -341,7 +344,7 @@ export function makeWasi(fs, args, env, memory, log = (fd, s) => (fd === 2 ? con
                     ensure(file, f.pos + l);
                     if (f.pos > file.size)
                         file.data.fill(0, file.size, f.pos);
-                    file.data.set(mem.subarray(p, p + l), f.pos);
+                    file.data.set(wasm32Bytes(memory(), p, l), f.pos);
                     f.pos += l;
                     if (f.pos > file.size)
                         file.size = f.pos;
@@ -374,6 +377,7 @@ export function makeWasi(fs, args, env, memory, log = (fd, s) => (fd === 2 ? con
                 return W.BADF;
             const entries = [['.', true], ['..', true], ...fs.list(f.dir)];
             const mem = u8();
+            const start = wasm32Offset(buf, len, mem.byteLength);
             let pos = 0;
             for (let k = Number(cookie); k < entries.length && pos < len; k++) {
                 const name = enc.encode(entries[k][0]);
@@ -383,10 +387,10 @@ export function makeWasi(fs, args, env, memory, log = (fd, s) => (fd === 2 ? con
                 hdr.setUint32(16, name.length, true);
                 hdr.setUint8(20, entries[k][1] ? FILETYPE.DIR : FILETYPE.FILE);
                 let m = Math.min(24, len - pos);
-                mem.set(new Uint8Array(hdr.buffer, 0, m), buf + pos);
+                mem.set(new Uint8Array(hdr.buffer, 0, m), start + pos);
                 pos += m;
                 m = Math.min(name.length, len - pos);
-                mem.set(name.subarray(0, m), buf + pos);
+                mem.set(name.subarray(0, m), start + pos);
                 pos += m;
             }
             dv().setUint32(used, pos, true);

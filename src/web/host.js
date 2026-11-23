@@ -8,6 +8,7 @@
 // (drawing, input, sound), and the stack is wound back to go on.
 
 import {makeWasi, ExitStatus} from './wasi.js';
+import {wasm32Offset, wasm32Bytes, wasm32Words, makeWasm32DataView} from './wasm32.js';
 import {makeNet} from './net.js';
 
 const EV = {NONE: 0, QUIT: 1, KEYDOWN: 2, KEYUP: 3, MOTION: 4, BUTTONDOWN: 5, BUTTONUP: 6, EXPOSED: 7, COMMAND: 8,
@@ -142,6 +143,18 @@ export function argbToRgba(src, dst, n) {
     }
 }
 
+// Only last-position hover updates are redundant.  Never merge across
+// key/click/wheel events, nor during a button-held drag.  Exported for the
+// media-free Node regression that protects menu and game input ordering.
+export function enqueueInput(queue, event, coalesceHover = false) {
+    if (coalesceHover && event[0] === EV.MOTION && queue.length && queue[queue.length - 1][0] === EV.MOTION) {
+        queue[queue.length - 1] = event;
+        return true;
+    }
+    queue.push(event);
+    return false;
+}
+
 // ---- the run ----
 
 // opts: {wasm: ArrayBuffer|Response|WebAssembly.Module (or a promise of one), onFrame: called at the first frame, fs: MemFS, canvas, args, env, messageBox(icon, title, text, labels, ids,
@@ -152,6 +165,11 @@ export function argbToRgba(src, dst, n) {
 export async function runGame(opts) {
     const {canvas, fs} = opts;
     const councilTrace = !!opts.councilTrace;
+    const memoryTrace = !!opts.memoryTrace;
+    const perfTrace = !!opts.perfTrace;
+    let lastPerfSample = null;
+    let lastMemoryLog = 0;
+    let musicPlayCount = 0;
     const ctx = canvas.getContext('2d', {alpha: false});
     // (the game's text: Windows-1252, or its translation's code page)
     let latin = new TextDecoder('windows-1252');
@@ -159,25 +177,51 @@ export async function runGame(opts) {
         latin = new TextDecoder(opts.codepage || 'windows-1252');
     } catch (e) { /* (a code page the browser has not) */ }
     let exports, memory, asyncData = 0;
-    const dv = () => new DataView(memory.buffer);
+    const access = makeWasm32DataView(() => memory);
+    const dv = () => access;
     const cstr = (p) => {
         const m = new Uint8Array(memory.buffer);
-        let e = p;
-        while (m[e])
+        const start = wasm32Offset(p, 1, m.byteLength);
+        let e = start;
+        while (e < m.byteLength && m[e])
             e++;
-        return latin.decode(m.subarray(p, e));
+        if (e === m.byteLength)
+            throw new RangeError('Unterminated WASM32 text string');
+        return latin.decode(m.subarray(start, e));
     };
 
     // -- input: events queued for the game; a wait resolved by the next one
     const queue = [];
+    const inputTiming = {count: 0, total: 0, max: 0, coalesced: 0, queueHigh: 0};
     let waiter = null;
-    const push = (type, vk = 0, x = 0, y = 0, button = 0) => {
-        queue.push([type, vk, x, y, button]);
+    const push = (type, vk = 0, x = 0, y = 0, button = 0, coalesceHover = false) => {
+        const event = [type, vk, x, y, button];
+        // Preserve all down/up/drag/keyboard boundaries and their order.
+        // When no buttons are held, intermediate hover coordinates are
+        // obsolete if the previous queued event is another hover motion.
+        // This prevents high-rate mouse movement from delaying later menu
+        // clicks while the single-threaded WASM game is busy drawing.
+        const merged = enqueueInput(queue, event, coalesceHover && type === EV.MOTION);
+        if (perfTrace && merged)
+            inputTiming.coalesced++;
+        if (perfTrace) {
+            if (queue.length > inputTiming.queueHigh)
+                inputTiming.queueHigh = queue.length;
+            if (type === EV.BUTTONDOWN || type === EV.BUTTONUP || type === EV.KEYDOWN || type === EV.KEYUP)
+                event.queuedAt = performance.now();
+        }
         if (waiter)
             waiter();
     };
     const take = (out) => {
         const e = queue.shift();
+        if (perfTrace && e.queuedAt !== undefined) {
+            const lag = performance.now() - e.queuedAt;
+            inputTiming.count++;
+            inputTiming.total += lag;
+            if (lag > inputTiming.max)
+                inputTiming.max = lag;
+        }
         const v = dv();
         e.forEach((x, i) => v.setInt32(out + 4 * i, x, true));
         return 1;
@@ -244,7 +288,7 @@ export async function runGame(opts) {
     const button = (b) => (b === 0 ? 1 : b === 2 ? 2 : 3);
     canvas.addEventListener('pointermove', (e) => {
         const [x, y] = desktopXY(e);
-        push(EV.MOTION, 0, x, y);
+        push(EV.MOTION, 0, x, y, 0, e.buttons === 0);
     });
     canvas.addEventListener('pointerdown', (e) => {
         canvas.focus();
@@ -308,13 +352,93 @@ export async function runGame(opts) {
             return;
         const dst = new Uint32Array(image.data.buffer);
         if (stride === w * 4)
-            argbToRgba(new Uint32Array(memory.buffer, pixels, w * h), dst, w * h);
+            argbToRgba(wasm32Words(memory, pixels, w * h), dst, w * h);
         else
             for (let y = 0; y < h; y++)
-                argbToRgba(new Uint32Array(memory.buffer, pixels + y * stride, w), dst.subarray(y * w), w);
+                argbToRgba(wasm32Words(memory, pixels + y * stride, w), dst.subarray(y * w), w);
         ctx.putImageData(image, 0, 0);
-        if (opts.stats)
+        if (opts.stats) {
             opts.stats.memoryBytes = memory.buffer.byteLength;
+            opts.stats.memoryPeakBytes = Math.max(opts.stats.memoryPeakBytes || 0, opts.stats.memoryBytes);
+        }
+        if (memoryTrace && performance.now() - lastMemoryLog >= 60000) {
+            lastMemoryLog = performance.now();
+            // These live native allocations are intentionally separate from
+            // the WASM linear-memory high-water (which cannot shrink on free).
+            const gdiBytes = exports.plat_diag_bitmap_bytes?.();
+            const hdBytes = exports.plat_diag_hd_bytes?.();
+            const bitmapObjects = exports.plat_diag_bitmap_count?.();
+            const hdPlanes = exports.plat_diag_hd_planes?.();
+            const closedWindows = exports.plat_diag_closed_windows?.();
+            if (opts.stats)
+                Object.assign(opts.stats, {
+                    gdiBytesLive: gdiBytes, hdBytesLive: hdBytes,
+                    bitmapObjectsLive: bitmapObjects, hdPlanesLive: hdPlanes, closedWindows
+                });
+            console.info('civ2-memory-linear', {
+                atMs: Math.round(lastMemoryLog),
+                MiB: Math.round(memory.buffer.byteLength / 1048576),
+                peakMiB: Math.round((opts.stats?.memoryPeakBytes || memory.buffer.byteLength) / 1048576),
+                gdiMiB: gdiBytes === undefined ? null : Math.round(gdiBytes / 1048576),
+                hdPlaneMiB: hdBytes === undefined ? null : Math.round(hdBytes / 1048576),
+                bitmapObjects, hdPlanes, closedWindows,
+                musicPlays: musicPlayCount,
+                hdFrames: opts.stats?.hdFrames || 0
+            });
+        }
+        if (perfTrace) {
+            // One diagnostic sample per five seconds, NEVER per rendered frame.
+            // Native counters distinguish real HD composition time, JS host
+            // presentation, and each exact frame-skip gate without changing
+            // the game's timing, animation speed or frame pacing.
+            const at = performance.now();
+            if (!lastPerfSample || at - lastPerfSample.at >= 5000) {
+                const curr = {
+                    at,
+                    calls: exports.plat_diag_present_calls(),
+                    drawn: exports.plat_diag_present_drawn(),
+                    minimum: exports.plat_diag_present_min_interval_skips(),
+                    budget: exports.plat_diag_present_budget_skips(),
+                    unchanged: exports.plat_diag_present_unchanged_skips(),
+                    compose: exports.plat_diag_present_compose_us(),
+                    frameSync: exports.plat_diag_present_frame_sync_us(),
+                    host: exports.plat_diag_present_host_us(),
+                    opaque: exports.plat_diag_hd_picture_solid(),
+                    alpha: exports.plat_diag_hd_picture_alpha()
+                };
+                if (lastPerfSample) {
+                    // Exported native counters are wrapping u32 values.
+                    const diff = (key) => (curr[key] - lastPerfSample[key]) >>> 0;
+                    const frames = diff('drawn');
+                    const secs = (at - lastPerfSample.at) / 1000;
+                    const sample = {
+                        seconds: +secs.toFixed(1),
+                        presentedFps: +(frames / secs).toFixed(1),
+                        nativeComposeMs: frames ? +(diff('compose') / frames / 1000).toFixed(2) : null,
+                        nativeFrameSyncMs: frames ? +(diff('frameSync') / frames / 1000).toFixed(2) : null,
+                        browserHostMs: frames ? +(diff('host') / frames / 1000).toFixed(2) : null,
+                        presentCalls: diff('calls'),
+                        frames,
+                        minimumSkips: diff('minimum'),
+                        budgetSkips: diff('budget'),
+                        unchangedSkips: diff('unchanged'),
+                        inputEvents: inputTiming.count,
+                        inputQueueAvgMs: inputTiming.count ? +(inputTiming.total / inputTiming.count).toFixed(1) : null,
+                        inputQueueMaxMs: inputTiming.count ? +inputTiming.max.toFixed(1) : null,
+                        inputQueueHighWater: inputTiming.queueHigh,
+                        hoverCoalesced: inputTiming.coalesced,
+                        opaquePictureCopies: diff('opaque'),
+                        alphaPicturePaints: diff('alpha')
+                    };
+                    inputTiming.count = inputTiming.total = inputTiming.max = 0;
+                    inputTiming.queueHigh = inputTiming.coalesced = 0;
+                    if (opts.stats)
+                        opts.stats.nativePerf = sample;
+                    console.info('civ2-native-present', sample);
+                }
+                lastPerfSample = curr;
+            }
+        }
         if (opts.onFrame) {
             const f = opts.onFrame;
             opts.onFrame = null;
@@ -421,7 +545,7 @@ export async function runGame(opts) {
         host_quit: () => {},
         host_base_path: (buf, size) => {
             if (size)
-                new Uint8Array(memory.buffer)[buf] = 0;
+                wasm32Bytes(memory, buf, 1)[0] = 0;
             return 0;
         },
         host_open_window: (w, h) => {
@@ -497,8 +621,9 @@ export async function runGame(opts) {
             if (msg && size > 0) {
                 const text = new TextEncoder().encode(state < 0 ? '@hd.err.no_site_art' : '');
                 const n = Math.min(text.length, size - 1);
-                new Uint8Array(memory.buffer).set(text.subarray(0, n), msg);
-                new Uint8Array(memory.buffer)[msg + n] = 0;
+                const out = wasm32Bytes(memory, msg, size);
+                out.set(text.subarray(0, n));
+                out[n] = 0;
             }
             return state;
         },
@@ -506,7 +631,7 @@ export async function runGame(opts) {
         host_cursor_system: (kind) => cursorSlot({css: SYSTEM_CURSORS[kind] || 'default'}),
         host_cursor_image: (argb, w, h, x, y) => {
             const rgba = new Uint8ClampedArray(w * h * 4);
-            const src = new Uint32Array(memory.buffer, argb, w * h), dst = new Uint32Array(rgba.buffer);
+            const src = wasm32Words(memory, argb, w * h), dst = new Uint32Array(rgba.buffer);
             for (let i = 0; i < w * h; i++) {
                 const p = src[i];
                 dst[i] = (p & 0xff00ff00) | ((p & 0xff) << 16) | ((p >>> 16) & 0xff);
@@ -552,7 +677,7 @@ export async function runGame(opts) {
             if (!frames)
                 return;
             const buf = audio.createBuffer(d.ch, frames, d.freq);
-            const bytes = new Uint8Array(memory.buffer, data, frames * bps * d.ch);
+            const bytes = wasm32Bytes(memory, data, frames * bps * d.ch);
             const words = bps === 2 ? new Int16Array(bytes.slice().buffer) : null;
             for (let c = 0; c < d.ch; c++) {
                 const out = buf.getChannelData(c);
@@ -601,7 +726,13 @@ export async function runGame(opts) {
             if (!audio)
                 return 0;
             const token = ++music.token;
-            const bytes = new Uint8Array(memory.buffer, file, len).slice();
+            const bytes = wasm32Bytes(memory, file, len).slice();
+            musicPlayCount++;
+            if (memoryTrace)
+                console.info('civ2-memory-music', {
+                    play: musicPlayCount, inputBytes: len >>> 0,
+                    wasmMiB: Math.round(memory.buffer.byteLength / 1048576)
+                });
             music.playing = true;
             audio.decodeAudioData(bytes.buffer).then((buf) => {
                 if (token !== music.token)
@@ -634,9 +765,9 @@ export async function runGame(opts) {
             if (size <= 0)
                 return 0;
             const b = new TextEncoder().encode(net.localAddr()).subarray(0, size - 1);
-            const m = new Uint8Array(memory.buffer);
-            m.set(b, buf);
-            m[buf + b.length] = 0;
+            const out = wasm32Bytes(memory, buf, size);
+            out.set(b);
+            out[b.length] = 0;
             return b.length;
         },
         host_net_udp_open: (port) => net.udpOpen(port),
@@ -654,12 +785,12 @@ export async function runGame(opts) {
         },
         host_net_tcp_connect: (h, ip, port) => net.tcpConnect(h, ip >>> 0, port),
         host_net_tcp_state: (h) => net.tcpState(h),
-        host_net_tcp_send: (h, p, n) => net.tcpSend(h, new Uint8Array(memory.buffer, p, n)),
+        host_net_tcp_send: (h, p, n) => net.tcpSend(h, wasm32Bytes(memory, p, n)),
         host_net_tcp_recv: (h, p, n) => {
             const r = net.tcpRecv(h, n);
             if (typeof r === 'number')
                 return r;
-            new Uint8Array(memory.buffer).set(r, p);
+            wasm32Bytes(memory, p, r.length).set(r);
             return r.length;
         },
         host_net_close: (h) => net.close(h),
@@ -775,6 +906,13 @@ export async function runGame(opts) {
                 code = e.code;
                 break;
             }
+            if (opts.stats)
+                opts.stats.memoryCrashBytes = memory.buffer.byteLength;
+            if (memoryTrace)
+                console.warn('civ2-memory-crash', {
+                    MiB: Math.round(memory.buffer.byteLength / 1048576),
+                    kind: e.name
+                });
             throw e;
         } finally {
             const busy = performance.now() - t;

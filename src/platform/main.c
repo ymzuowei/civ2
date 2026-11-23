@@ -28,6 +28,22 @@ static int window_open;
 static uint64_t last_present, present_cost;
 static uint32_t shown_sig;
 
+/* CIV2-B012: read-only timing counters for diagnosing slow HD attack animations.
+ * Integer-only increments on skip paths; clocks only around actual presents.
+ * The values are sampled by opt-in browser telemetry, never printed per frame. */
+static uint32_t present_calls, present_drawn;
+static uint32_t present_min_interval_skips, present_budget_skips, present_unchanged_skips;
+static uint32_t present_compose_total_us, present_frame_sync_total_us, present_host_total_us;
+
+uint32_t plat_diag_present_calls(void) { return present_calls; }
+uint32_t plat_diag_present_drawn(void) { return present_drawn; }
+uint32_t plat_diag_present_min_interval_skips(void) { return present_min_interval_skips; }
+uint32_t plat_diag_present_budget_skips(void) { return present_budget_skips; }
+uint32_t plat_diag_present_unchanged_skips(void) { return present_unchanged_skips; }
+uint32_t plat_diag_present_compose_us(void) { return present_compose_total_us; }
+uint32_t plat_diag_present_frame_sync_us(void) { return present_frame_sync_total_us; }
+uint32_t plat_diag_present_host_us(void) { return present_host_total_us; }
+
 /* What the composed screen is made of: what was drawn (plat_draw_gen), and
    where each top-level window shows.  The same as at the last frame shown:
    nothing to show anew. */
@@ -52,38 +68,51 @@ static uint32_t frame_sig(void)
 
 void plat_present(void)
 {
-    uint64_t now;
+    uint64_t now, composed, framed;
     uint32_t sig = 0;
     if (!window_open)
         return;
+    present_calls++;
     now = host_time_us();
-    /* at most ~66 a second, and no more than a third of the time: where
-       presenting is slow (a software renderer) the game, which retrieves
-       messages between the tiles it draws, would spend its time here */
-    if (now - last_present < 15000 || now - last_present < 2 * present_cost)
+    /* Keep the existing pacing behavior unchanged; attribute each skip. */
+    if (now - last_present < 15000) {
+        present_min_interval_skips++;
         return;
+    }
+    if (now - last_present < 2 * present_cost) {
+        present_budget_skips++;
+        return;
+    }
     /* Normal play: a screen unchanged is not shown again (an idle game
        would spend most of its time here), except twice a second (the host
        window uncovered).  Replays as before. */
     if (!plat_replay && !plat_overlay && last_present) {
         sig = frame_sig();
-        if (sig == shown_sig && now - last_present < 500000)
+        if (sig == shown_sig && now - last_present < 500000) {
+            present_unchanged_skips++;
             return;
+        }
     }
     last_present = now;
     if (!plat_overlay)
         plat_compose();
     if (!plat_replay && !plat_overlay)
         shown_sig = frame_sig();
+    composed = host_time_us();
     {
         /* HD graphics (hd.c): its frame, density times larger */
         const unsigned int *frame = hd_on ? hd_frame() : NULL;
+        framed = host_time_us();
         if (frame)
             host_present_hd(frame, screen_w * hd_density * 4, hd_density);
         else
             host_present(screen->bits, screen->stride);
     }
     present_cost = host_time_us() - now;
+    present_compose_total_us += (uint32_t)(composed - now);
+    present_frame_sync_total_us += (uint32_t)(framed - composed);
+    present_host_total_us += (uint32_t)(present_cost - (framed - now));
+    present_drawn++;
 }
 
 /* Closing the window during a game: asked first (Cancel the default:

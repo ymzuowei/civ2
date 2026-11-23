@@ -40,7 +40,7 @@ class CjkButtonCaptionFit(unittest.TestCase):
         )[0]
         self.assertIn("str_mscontrolclass_2", game)
         self.assertIn("plat_game_button_fit_font(mem_dc,label_text,", game)
-        self.assertIn("rect_width(&bounds) - 8,rect_height(&bounds) - 8", game)
+        self.assertIn("rect_width(&bounds) - 8,rect_height(&bounds) - 6", game)
         self.assertIn("if (fitted)", game)
         self.assertLess(game.index("plat_game_button_fit_font(mem_dc,label_text,"),
                         game.index("SelectObject(mem_dc,h);"))

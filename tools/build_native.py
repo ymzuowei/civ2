@@ -139,7 +139,14 @@ TARGETS = {
                     # B012 read-only counters: separate live GDI/HD bytes from linear-memory growth.
                     '-Wl,--export=plat_diag_bitmap_bytes', '-Wl,--export=plat_diag_bitmap_count',
                     '-Wl,--export=plat_diag_hd_bytes', '-Wl,--export=plat_diag_hd_planes',
-                    '-Wl,--export=plat_diag_closed_windows'],
+                    '-Wl,--export=plat_diag_closed_windows',
+                    # B012 HD combat: read-only frame pacing and native timing splits.
+                    '-Wl,--export=plat_diag_present_calls', '-Wl,--export=plat_diag_present_drawn',
+                    '-Wl,--export=plat_diag_present_min_interval_skips',
+                    '-Wl,--export=plat_diag_present_budget_skips',
+                    '-Wl,--export=plat_diag_present_unchanged_skips',
+                    '-Wl,--export=plat_diag_present_compose_us',
+                    '-Wl,--export=plat_diag_present_host_us'],
         'libs': ['-lwasi-emulated-process-clocks'],
     },
     'win64': {

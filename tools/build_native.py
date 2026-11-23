@@ -139,6 +139,8 @@ TARGETS = {
                     # B012 read-only counters: separate live GDI/HD bytes from linear-memory growth.
                     '-Wl,--export=plat_diag_bitmap_bytes', '-Wl,--export=plat_diag_bitmap_count',
                     '-Wl,--export=plat_diag_hd_bytes', '-Wl,--export=plat_diag_hd_planes',
+                    '-Wl,--export=plat_diag_hd_picture_solid',
+                    '-Wl,--export=plat_diag_hd_picture_alpha',
                     '-Wl,--export=plat_diag_closed_windows',
                     # B012 HD combat: read-only frame pacing and native timing splits.
                     '-Wl,--export=plat_diag_present_calls', '-Wl,--export=plat_diag_present_drawn',

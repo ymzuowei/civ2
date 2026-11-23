@@ -1866,7 +1866,7 @@ button_create_hwnd(int *rect,Control *ctrl,const char *label,int visible,GameFon
          * when its measured cell/width would collide with the 4px margin. */
         {
           HFONT fitted = plat_game_button_fit_font(mem_dc,label_text,
-                            rect_width(&bounds) - 8,rect_height(&bounds) - 8);
+                            rect_width(&bounds) - 8,rect_height(&bounds) - 6);
           if (fitted)
             SelectObject(mem_dc,fitted);
         }

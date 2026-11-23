@@ -91,6 +91,12 @@ class CouncilTraceContract(unittest.TestCase):
         self.assertLess(body.index("if (remaining >= w->queued_total)"),
                         body.index("return w->queued_total - remaining;"))
         self.assertIn("stage=wave-queue-overhang", body)
+        # Browser side also removes only IEEE-754 near-integer noise, so a
+        # 4096-frame first buffer must not appear to have 4097 frames left.
+        self.assertIn("Math.ceil(left * d.freq - 1e-7)", self.host)
+        browser_unit = (ROOT / "src/web/test/unit.mjs").read_text(encoding="utf-8")
+        self.assertIn("firstBufferFrames = 4096", browser_unit)
+        self.assertIn("one-sample overhang reproduction", browser_unit)
         self.assertIn("played_bytes(w) >= w->end_bytes[0]", self.wave_port)
         self.assertIn("host_audio_queue(w->dev, hdr->lpData, hdr->dwBufferLength);",
                       self.wave_port)

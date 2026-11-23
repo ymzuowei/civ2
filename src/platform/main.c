@@ -33,7 +33,7 @@ static uint32_t shown_sig;
  * The values are sampled by opt-in browser telemetry, never printed per frame. */
 static uint32_t present_calls, present_drawn;
 static uint32_t present_min_interval_skips, present_budget_skips, present_unchanged_skips;
-static uint32_t present_compose_total_us, present_host_total_us;
+static uint32_t present_compose_total_us, present_frame_sync_total_us, present_host_total_us;
 
 uint32_t plat_diag_present_calls(void) { return present_calls; }
 uint32_t plat_diag_present_drawn(void) { return present_drawn; }
@@ -41,6 +41,7 @@ uint32_t plat_diag_present_min_interval_skips(void) { return present_min_interva
 uint32_t plat_diag_present_budget_skips(void) { return present_budget_skips; }
 uint32_t plat_diag_present_unchanged_skips(void) { return present_unchanged_skips; }
 uint32_t plat_diag_present_compose_us(void) { return present_compose_total_us; }
+uint32_t plat_diag_present_frame_sync_us(void) { return present_frame_sync_total_us; }
 uint32_t plat_diag_present_host_us(void) { return present_host_total_us; }
 
 /* What the composed screen is made of: what was drawn (plat_draw_gen), and
@@ -67,7 +68,7 @@ static uint32_t frame_sig(void)
 
 void plat_present(void)
 {
-    uint64_t now, composed;
+    uint64_t now, composed, framed;
     uint32_t sig = 0;
     if (!window_open)
         return;
@@ -101,6 +102,7 @@ void plat_present(void)
     {
         /* HD graphics (hd.c): its frame, density times larger */
         const unsigned int *frame = hd_on ? hd_frame() : NULL;
+        framed = host_time_us();
         if (frame)
             host_present_hd(frame, screen_w * hd_density * 4, hd_density);
         else
@@ -108,7 +110,8 @@ void plat_present(void)
     }
     present_cost = host_time_us() - now;
     present_compose_total_us += (uint32_t)(composed - now);
-    present_host_total_us += (uint32_t)(present_cost - (composed - now));
+    present_frame_sync_total_us += (uint32_t)(framed - composed);
+    present_host_total_us += (uint32_t)(present_cost - (framed - now));
     present_drawn++;
 }
 

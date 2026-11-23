@@ -177,6 +177,7 @@ static Entry *decode(int id)
 typedef struct Scaled {
     int id, w, h, opaque;
     uint32_t *px;
+    unsigned char solid_known, solid; /* lazy: only HD whole-picture callers ask */
     uint64_t used;
     struct Scaled *next;
 } Scaled;
@@ -287,13 +288,33 @@ static uint32_t *make_scaled(Entry *a, int w, int h, int opaque)
     return out;
 }
 
-static const uint32_t *picture(int id, int w, int h, int opaque)
+/* Only whole-picture rendering needs opaque fast-path metadata.  Evaluate
+ * a scaled image once on demand, not on every atlas decode or sprite. */
+static int scaled_solid(Scaled *p)
+{
+    size_t k, count;
+    if (!p->solid_known) {
+        p->solid_known = 1;
+        p->solid = 1;
+        count = (size_t)p->w * p->h;
+        for (k = 0; k < count; k++)
+            if ((p->px[k] >> 24) != 255) {
+                p->solid = 0;
+                break;
+            }
+    }
+    return p->solid;
+}
+
+static const uint32_t *picture(int id, int w, int h, int opaque, int *solid)
 {
     Scaled **bucket = &scaled[((unsigned)id * 31u + (unsigned)w * 7u + (unsigned)h) & 1023], *p;
     Entry *a;
     for (p = *bucket; p; p = p->next)
         if (p->id == id && p->w == w && p->h == h && p->opaque == opaque) {
             p->used = ++tick;
+            if (solid)
+                *solid = scaled_solid(p);
             return p->px;
         }
     if (w <= 0 || h <= 0 || (int64_t)w * h > 4096 * 4096 || !(a = decode(id)))
@@ -322,6 +343,8 @@ static const uint32_t *picture(int id, int w, int h, int opaque)
     p->next = *bucket;
     *bucket = p;
     scaled_bytes += (uint64_t)w * h * 4;
+    if (solid)
+        *solid = scaled_solid(p);
     return p->px;
 }
 
@@ -1243,7 +1266,7 @@ void hd_resource_loaded(void *bits, int id)
     if (whole)
         px = decode(pid) ? own = scaled_inside(a, whole, (int)a->w * d, b->h * d) : NULL;
     else
-        px = picture(pid, (int)a->w * d, b->h * d, 0);
+        px = picture(pid, (int)a->w * d, b->h * d, 0, NULL);
     if (!px)
         return;
     n = (size_t)a->w * d;
@@ -1510,7 +1533,7 @@ void hd_sprite_end(const void *s, unsigned handle, void *bits, int x, int y, int
             pw = fw;
             ph = fh;
         }
-        if (pw > 0 && ph > 0 && (px = picture(id, pw, ph, p->opaque))) {
+        if (pw > 0 && ph > 0 && (px = picture(id, pw, ph, p->opaque, NULL))) {
             if (sprite_mode == HD_SPRITES_GREY && tint < 0 && (grey = greyed(px, pw * ph)))
                 px = grey;
             paint(b, px, pw, ph, px0, py0, pw, ph, clip[0] * d, clip[1] * d, clip[2] * d, clip[3] * d, tint);
@@ -1518,6 +1541,28 @@ void hd_sprite_end(const void *s, unsigned handle, void *bits, int x, int y, int
         }
     }
     commit_rect(b, drawn[0], drawn[1], drawn[2], drawn[3]);
+}
+
+/* B012 HD throne and preview: a scaled cached picture that has been
+ * PROVEN fully opaque can replace whole scanlines in one memcpy.  The source
+ * and destination have identical physical dimensions here (hd_picture),
+ * so no nearest-neighbor resampling or alpha blending is necessary.
+ * Transparency, including throne overlays and fade pieces, always uses
+ * the original paint() blending path.  Clipping matches paint(). */
+static void paint_solid_picture(Bitmap *b, const uint32_t *px, int w, int h, int x, int y)
+{
+    int l = x, t = y, r = x + w, bot = y + h;
+    int pitch = b->w * hd_density, row;
+    if (l < 0) l = 0;
+    if (t < 0) t = 0;
+    if (r > pitch) r = pitch;
+    if (bot > b->h * hd_density) bot = b->h * hd_density;
+    if (l >= r || t >= bot)
+        return;
+    for (row = t; row < bot; row++)
+        memcpy(b->hd + (size_t)row * pitch + l,
+               px + (size_t)(row - y) * w + (l - x),
+               (size_t)(r - l) * sizeof(uint32_t));
 }
 
 /* ---- pictures the game's side composes (hd.h: hd_picture) ---- */
@@ -1536,7 +1581,7 @@ int hd_picture(void *bits, const char *key, double x, double y, double w, double
 {
     Bitmap *b;
     const uint32_t *px;
-    int id, d = hd_density, l, t, pw, ph;
+    int id, d = hd_density, l, t, pw, ph, solid = 0;
     if (!hd_art || !(id = find(key)) || !(b = bmp_of_bits(bits)) || b->bpp != 8 || !plane(b) || w <= 0 || h <= 0)
         return 0;
     if (contain) {
@@ -1550,9 +1595,12 @@ int hd_picture(void *bits, const char *key, double x, double y, double w, double
     t = (int)floor(y * d + .5);
     pw = (int)floor((x + w) * d + .5) - l;
     ph = (int)floor((y + h) * d + .5) - t;
-    if (pw <= 0 || ph <= 0 || !(px = picture(id, pw, ph, 0)))
+    if (pw <= 0 || ph <= 0 || !(px = picture(id, pw, ph, 0, &solid)))
         return 0;
-    paint(b, px, pw, ph, l, t, pw, ph, 0, 0, b->w * d, b->h * d, -1);
+    if (solid)
+        paint_solid_picture(b, px, pw, ph, l, t);
+    else
+        paint(b, px, pw, ph, l, t, pw, ph, 0, 0, b->w * d, b->h * d, -1);
     return 1;
 }
 

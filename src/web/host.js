@@ -143,6 +143,18 @@ export function argbToRgba(src, dst, n) {
     }
 }
 
+// Only last-position hover updates are redundant.  Never merge across
+// key/click/wheel events, nor during a button-held drag.  Exported for the
+// media-free Node regression that protects menu and game input ordering.
+export function enqueueInput(queue, event, coalesceHover = false) {
+    if (coalesceHover && event[0] === 3 && queue.length && queue[queue.length - 1][0] === 3) {
+        queue[queue.length - 1] = event;
+        return true;
+    }
+    queue.push(event);
+    return false;
+}
+
 // ---- the run ----
 
 // opts: {wasm: ArrayBuffer|Response|WebAssembly.Module (or a promise of one), onFrame: called at the first frame, fs: MemFS, canvas, args, env, messageBox(icon, title, text, labels, ids,
@@ -189,12 +201,9 @@ export async function runGame(opts) {
         // obsolete if the previous queued event is another hover motion.
         // This prevents high-rate mouse movement from delaying later menu
         // clicks while the single-threaded WASM game is busy drawing.
-        if (coalesceHover && type === EV.MOTION && queue.length && queue[queue.length - 1][0] === EV.MOTION) {
-            queue[queue.length - 1] = event;
-            if (perfTrace)
-                inputTiming.coalesced++;
-        } else
-            queue.push(event);
+        const merged = enqueueInput(queue, event, coalesceHover && type === EV.MOTION);
+        if (perfTrace && merged)
+            inputTiming.coalesced++;
         if (perfTrace) {
             if (queue.length > inputTiming.queueHigh)
                 inputTiming.queueHigh = queue.length;

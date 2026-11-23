@@ -180,14 +180,39 @@ export async function runGame(opts) {
 
     // -- input: events queued for the game; a wait resolved by the next one
     const queue = [];
+    const inputTiming = {count: 0, total: 0, max: 0, coalesced: 0, queueHigh: 0};
     let waiter = null;
-    const push = (type, vk = 0, x = 0, y = 0, button = 0) => {
-        queue.push([type, vk, x, y, button]);
+    const push = (type, vk = 0, x = 0, y = 0, button = 0, coalesceHover = false) => {
+        const event = [type, vk, x, y, button];
+        // Preserve all down/up/drag/keyboard boundaries and their order.
+        // When no buttons are held, intermediate hover coordinates are
+        // obsolete if the previous queued event is another hover motion.
+        // This prevents high-rate mouse movement from delaying later menu
+        // clicks while the single-threaded WASM game is busy drawing.
+        if (coalesceHover && type === EV.MOTION && queue.length && queue[queue.length - 1][0] === EV.MOTION) {
+            queue[queue.length - 1] = event;
+            if (perfTrace)
+                inputTiming.coalesced++;
+        } else
+            queue.push(event);
+        if (perfTrace) {
+            if (queue.length > inputTiming.queueHigh)
+                inputTiming.queueHigh = queue.length;
+            if (type === EV.BUTTONDOWN || type === EV.BUTTONUP || type === EV.KEYDOWN || type === EV.KEYUP)
+                event.queuedAt = performance.now();
+        }
         if (waiter)
             waiter();
     };
     const take = (out) => {
         const e = queue.shift();
+        if (perfTrace && e.queuedAt !== undefined) {
+            const lag = performance.now() - e.queuedAt;
+            inputTiming.count++;
+            inputTiming.total += lag;
+            if (lag > inputTiming.max)
+                inputTiming.max = lag;
+        }
         const v = dv();
         e.forEach((x, i) => v.setInt32(out + 4 * i, x, true));
         return 1;
@@ -254,7 +279,7 @@ export async function runGame(opts) {
     const button = (b) => (b === 0 ? 1 : b === 2 ? 2 : 3);
     canvas.addEventListener('pointermove', (e) => {
         const [x, y] = desktopXY(e);
-        push(EV.MOTION, 0, x, y);
+        push(EV.MOTION, 0, x, y, 0, e.buttons === 0);
     });
     canvas.addEventListener('pointerdown', (e) => {
         canvas.focus();
@@ -385,8 +410,15 @@ export async function runGame(opts) {
                         frames,
                         minimumSkips: diff('minimum'),
                         budgetSkips: diff('budget'),
-                        unchangedSkips: diff('unchanged')
+                        unchangedSkips: diff('unchanged'),
+                        inputEvents: inputTiming.count,
+                        inputQueueAvgMs: inputTiming.count ? +(inputTiming.total / inputTiming.count).toFixed(1) : null,
+                        inputQueueMaxMs: inputTiming.count ? +inputTiming.max.toFixed(1) : null,
+                        inputQueueHighWater: inputTiming.queueHigh,
+                        hoverCoalesced: inputTiming.coalesced
                     };
+                    inputTiming.count = inputTiming.total = inputTiming.max = 0;
+                    inputTiming.queueHigh = inputTiming.coalesced = 0;
                     if (opts.stats)
                         opts.stats.nativePerf = sample;
                     console.info('civ2-native-present', sample);

@@ -135,7 +135,11 @@ TARGETS = {
         'ldflags': ['--target=wasm32-wasip1', '-Wl,--error-limit=0', '-Wl,-z,stack-size=16777216',
                     # nothing below 64K, as on Windows: smaller pointers are taken for atoms and resource ids
                     '-Wl,--global-base=65536', '-Wl,--initial-memory=67108864',
-                    '-Wl,--export=malloc', '-Wl,--export=plat_modal_tick'],
+                    '-Wl,--export=malloc', '-Wl,--export=plat_modal_tick',
+                    # B012 read-only counters: separate live GDI/HD bytes from linear-memory growth.
+                    '-Wl,--export=plat_diag_bitmap_bytes', '-Wl,--export=plat_diag_bitmap_count',
+                    '-Wl,--export=plat_diag_hd_bytes', '-Wl,--export=plat_diag_hd_planes',
+                    '-Wl,--export=plat_diag_closed_windows'],
         'libs': ['-lwasi-emulated-process-clocks'],
     },
     'win64': {

@@ -2492,6 +2492,91 @@ static void button_caption(HDC hdc, const char *text, const RECT *outer)
         SelectObject(hdc, original);
 }
 
+/* The original Civ2 creates most dialog buttons as three pre-rendered
+ * MSControl bitmaps, not as Win32 BUTTON controls. This function is called
+ * once at button_create_hwnd, before all three images are painted. Use the
+ * *selected* original GameFont face/style, reduce only translated UTF-8
+ * captions that genuinely collide with their fixed 3D bevel, and never
+ * touch the focus bitmap, caption text, or geometry.
+ *
+ * Source LOGFONT may have uninitialized padding, so normalize before
+ * comparing cached faces. The cache is fixed-size: no per-button repaint
+ * allocation and no unbounded font objects over long games. */
+typedef struct { LOGFONTA lf; HFONT font; } ButtonFitFont;
+static ButtonFitFont game_button_fit_fonts[64];
+static int n_game_button_fit_fonts;
+
+static HFONT game_button_fit_face(const Font *base, int px)
+{
+    LOGFONTA lf;
+    int i;
+    memset(&lf, 0, sizeof lf);
+    lf.lfHeight = -px;
+    lf.lfWeight = base->lf.lfWeight;
+    lf.lfItalic = base->lf.lfItalic;
+    lf.lfUnderline = base->lf.lfUnderline;
+    lf.lfStrikeOut = base->lf.lfStrikeOut;
+    lf.lfCharSet = base->lf.lfCharSet;
+    lf.lfOutPrecision = base->lf.lfOutPrecision;
+    lf.lfClipPrecision = base->lf.lfClipPrecision;
+    lf.lfQuality = base->lf.lfQuality;
+    lf.lfPitchAndFamily = base->lf.lfPitchAndFamily;
+    strncpy(lf.lfFaceName, base->lf.lfFaceName, sizeof lf.lfFaceName - 1);
+    for (i = 0; i < n_game_button_fit_fonts; i++)
+        if (!memcmp(&lf, &game_button_fit_fonts[i].lf, sizeof lf))
+            return game_button_fit_fonts[i].font;
+    if (n_game_button_fit_fonts == 64)
+        return 0;
+    {
+        HFONT f = CreateFontIndirectA(&lf);
+        if (!f)
+            return 0;
+        game_button_fit_fonts[n_game_button_fit_fonts].lf = lf;
+        game_button_fit_fonts[n_game_button_fit_fonts++].font = f;
+        return f;
+    }
+}
+
+HFONT plat_game_button_fit_font(HDC hdc, const char *label, int inner_w, int inner_h)
+{
+    DC *dc = dc_get(hdc);
+    Font *base = dc ? obj_get(dc->hfont, OBJ_FONT) : NULL;
+    TEXTMETRICA tm;
+    SIZE sz;
+    const unsigned char *p = (const unsigned char *)label;
+    int px;
+    HFONT smallest = 0;
+    if (!plat_text_utf8 || !base || !label || inner_w <= 0 || inner_h <= 0)
+        return 0;
+    for (; *p && *p < 128; p++)
+        ;
+    if (!*p)
+        return 0;  /* leave all original English UI buttons byte-for-byte */
+    if (!GetTextMetricsA(hdc, &tm) ||
+        !GetTextExtentPointA(hdc, label, (int)strlen(label), &sz))
+        return 0;
+    if (tm.tmHeight + 2 <= inner_h && sz.cx + 2 <= inner_w)
+        return 0;
+    for (px = 15; px >= 6; px--) {
+        HFONT f = game_button_fit_face(base, px);
+        HFONT old;
+        TEXTMETRICA fit;
+        SIZE bounds;
+        if (!f)
+            continue;
+        smallest = f;
+        old = (HFONT)SelectObject(hdc, f);
+        if (GetTextMetricsA(hdc, &fit) &&
+            GetTextExtentPointA(hdc, label, (int)strlen(label), &bounds) &&
+            fit.tmHeight + 2 <= inner_h && bounds.cx + 2 <= inner_w) {
+            SelectObject(hdc, old);
+            return f;
+        }
+        SelectObject(hdc, old);
+    }
+    return smallest;  /* still clipped by the original button bitmap */
+}
+
 /* ======================================================================
  * BUTTON and STATIC: text and push behaviour only.
  */

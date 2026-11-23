@@ -142,6 +142,24 @@ export function argbToRgba(src, dst, n) {
     }
 }
 
+// Browser AudioContext.resume() is asynchronous after the first gesture.
+ // Scheduling a BufferSource while suspended is legal and it will begin
+ // when the AudioContext resumes. Dropping audio while suspended instead
+ // makes waveOut report its whole buffer as consumed and can spuriously
+ // fire an AVI end callback within milliseconds on the FIRST Council click.
+export function audioContextCanSchedule(context) {
+    return !!context && (context.state === 'running' || context.state === 'suspended');
+}
+
+export function queuedAudioBytes(context, d) {
+    if (!d || !audioContextCanSchedule(context))
+        return 0;
+    // currentTime does not advance while suspended. The scheduled PCM
+    // therefore remains pending until the browser actually resumes sound.
+    const left = d.end - context.currentTime;
+    return left > 0 ? Math.ceil(left * d.freq) * d.ch * (d.bits === 8 ? 1 : 2) : 0;
+}
+
 // ---- the run ----
 
 // opts: {wasm: ArrayBuffer|Response|WebAssembly.Module (or a promise of one), onFrame: called at the first frame, fs: MemFS, canvas, args, env, messageBox(icon, title, text, labels, ids,
@@ -372,7 +390,8 @@ export async function runGame(opts) {
         if (audio && audio.state === 'suspended')
             audio.resume();
     }
-    const audioOk = () => audio && audio.state === 'running';
+    // A suspended context is schedulable: do not discard queued AVI PCM
+    // between the input gesture and the asynchronous AudioContext.resume().
     const music = {source: null, playing: false, token: 0};
     // T017: three-stage mixer. Existing master mute/level remains a common
     // bus; music (CD tracks) and effects (PCM waveOut and AVI soundtrack)
@@ -545,9 +564,14 @@ export async function runGame(opts) {
         },
         host_audio_queue: (dev, data, len) => {
             const d = devices[dev];
-            // (without a running context nothing would play, nor ever be done)
-            if (!d || !audioOk())
+            // Queue even when suspended. AudioBufferSourceNode.start(at)
+            // remains scheduled, the audio clock is paused, and playback
+            // begins on resume rather than incorrectly completing AVI audio.
+            if (!d || !audioContextCanSchedule(audio))
                 return;
+            if (councilTrace && audio.state === 'suspended')
+                console.info('council-trace webaudio-queued-suspended',
+                    {dev, atMs: Math.round(performance.now())});
             const bps = d.bits === 8 ? 1 : 2, frames = Math.floor(len / (bps * d.ch));
             if (!frames)
                 return;
@@ -578,10 +602,7 @@ export async function runGame(opts) {
         },
         host_audio_queued: (dev) => {
             const d = devices[dev];
-            if (!d || !audioOk())
-                return 0;
-            const left = d.end - audio.currentTime;
-            return left > 0 ? Math.ceil(left * d.freq) * d.ch * (d.bits === 8 ? 1 : 2) : 0;
+            return queuedAudioBytes(audio, d);
         },
         host_audio_clear: (dev) => {
             const d = devices[dev];

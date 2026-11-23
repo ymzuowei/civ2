@@ -74,3 +74,48 @@ overwrite, or redistribute AVI media before measured results.
 ### Source CI gate update
 
 First R019 pinned-source run [45040571175](https://github.com/ymzuowei/civ2-web/actions/runs/45040571175) failed before gameplay due a T017 browser unit test hardcoding the previous `!introDiagnose && !new URLSearchParams` logging condition. The new opt-in `councilTrace` parameter must be checked alongside `introDiagnose`. The browser unit now explicitly asserts both default-no-log and opt-in Council trace routing, without changing runtime playback. New exact-head source CI and Owner WASM build remain PENDING.
+
+## 2026-11-23 Owner first-click timing evidence and correction candidate
+
+Owner reproduced with the SAME Council save/movie and `councilTrace=1`:
+
+| | First Military click | Second Military click |
+|---|---:|---:|
+| `click-play-issued` | 1013867 ms | 1035397 ms |
+| `audio-ended` | 1013872 ms | 1042469 ms |
+| Elapsed | **5 ms** | **7072 ms** |
+| End video frame | 320 | 424 |
+| Expected range | 318–423 | 318–423 |
+| IV41 seek decode | ~5 ms | ~4 ms |
+
+AVI open took only ~10/27 ms and keyframe preroll on the relevant click
+only 4–5 ms. This is **NOT consistent with the 29 MiB AVI reloading or
+slow initial codec decode as the immediate failure**. Instead the first
+wave/audio playback was incorrectly signaled complete after 5 ms.
+
+A concrete, Web-only cause is present in `src/web/host.js`: `resumeAudio()`
+invokes asynchronous `AudioContext.resume()` after a user gesture, but
+`host_audio_queue()` previously returned without scheduling PCM unless
+`audio.state === 'running'`; `host_audio_queued()` also reported **0**
+while `audio.state === 'suspended'`. That made the waveOut implementation
+mistake unplayed buffers for consumed ones; it could clear the audio-playing
+status and trigger `CouncilWindow::council_on_video_end` immediately.
+
+**Fix candidate:** accept `running` or `suspended` contexts for PCM
+scheduling; WebAudio allows `AudioBufferSourceNode.start()` while suspended,
+and the frozen `currentTime` retains pending PCM until `resume()` completes.
+The queued-byte computation now reports unplayed audio for suspended contexts,
+and only excludes `closed`/missing contexts. Browser Node tests cover 7s
+mono + 44.1kHz stereo, frozen suspended clock, running depletion and closed
+state. In trace mode `webaudio-queued-suspended` identifies this condition
+without reading audio/video bytes. No AVI codec, asset files, native SDL
+playback, save data or independent Effects/Music gain changed.
+
+This is a **source-backed root-cause candidate**; the trace alone did not
+record the first `AudioContext.state`, so the diagnosis is not yet a
+confirmed exclusive causal explanation. Owner must build exact-head Web
+candidate on D: and verify FIRST click, second click, and auto-response
+animation with same save after a fresh reload, ideally across 3 repetitions.
+Compare Council's `audio-ended` delay against expected ~7s and look for
+`webaudio-queued-suspended`. A missing frame after this fix requires
+additional wave-buffer status tracing, not arbitrary audio-end delays.

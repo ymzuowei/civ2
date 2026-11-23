@@ -2,7 +2,7 @@
 // desktop's scale, pixels, the WASI file system, .zip reading and writing, the player's saves.
 //   tools/toolchain/node/bin/node src/web/test/unit.mjs
 import assert from 'node:assert/strict';
-import {vkOf, Wheel, desktopScale, desktopUiScale, initialDesktopGeometry, argbToRgba, liveDesktopResize, canvasFitSize, displayModeFromSearch} from '../host.js';
+import {vkOf, Wheel, desktopScale, desktopUiScale, initialDesktopGeometry, argbToRgba, liveDesktopResize, canvasFitSize, displayModeFromSearch, audioContextCanSchedule, queuedAudioBytes} from '../host.js';
 import {MemFS, makeWasi, normalize} from '../wasi.js';
 import {createAudioVolume, audioLabels} from '../audio_volume.js';
 import {TOOLBAR_KEY, createToolbarCollapse, toolbarLabels} from '../toolbar.js';
@@ -150,6 +150,25 @@ assert.match(hostSource, /council-trace webaudio-queue-gap/);
 assert.match(hostSource, /opts\.audioContext \|\| null/);
 const gamePage = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 assert.match(gamePage, /id="intro-start"/);
+
+// R019 first-click regression: a suspended AudioContext may still accept
+// scheduled BufferSource nodes. Its currentTime freezes, so the queued AVI
+// audio must NOT report "finished" before resume resolves.
+const pcmQueue = {end: 7, freq: 22050, ch: 1, bits: 8};
+const suspended = {state: 'suspended', currentTime: 0};
+assert.equal(audioContextCanSchedule(suspended), true);
+assert.equal(audioContextCanSchedule({state: 'running'}), true);
+assert.equal(audioContextCanSchedule({state: 'closed'}), false);
+assert.equal(audioContextCanSchedule(null), false);
+assert.equal(queuedAudioBytes(suspended, pcmQueue), 154350);
+assert.equal(queuedAudioBytes(suspended, pcmQueue), 154350, 'clock frozen while suspended');
+assert.equal(queuedAudioBytes({state: 'running', currentTime: 4}, pcmQueue), 66150);
+assert.equal(queuedAudioBytes({state: 'running', currentTime: 7}, pcmQueue), 0);
+assert.equal(queuedAudioBytes({state: 'closed', currentTime: 0}, pcmQueue), 0);
+assert.equal(queuedAudioBytes(suspended, {end: 1, freq: 44100, ch: 2, bits: 16}), 176400);
+const queueHostSource = readFileSync(new URL('../host.js', import.meta.url), 'utf8');
+assert.match(queueHostSource, /if \(!d \|\| !audioContextCanSchedule\(audio\)\)/);
+assert.match(queueHostSource, /return queuedAudioBytes\(audio, d\)/);
 
 // Browser graphics choice persists only as a preference; explicit URL wins.
 assert.equal(graphicsFromQuery('?hd=1'), 'hd');

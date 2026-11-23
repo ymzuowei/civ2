@@ -52,6 +52,16 @@ class CouncilTraceContract(unittest.TestCase):
 
     def test_web_audio_clock_gap_and_nonblocking_trace(self):
         self.assertIn("if (councilTrace && d.end > 0", self.host)
+        self.assertIn("export function audioContextCanSchedule(context)", self.host)
+        self.assertIn("context.state === 'suspended'", self.host)
+        self.assertIn("export function queuedAudioBytes(context, d)", self.host)
+        self.assertIn("if (!d || !audioContextCanSchedule(audio))", self.host)
+        self.assertIn("return queuedAudioBytes(audio, d);", self.host)
+        self.assertIn("council-trace webaudio-queued-suspended", self.host)
+        self.assertNotIn("if (!d || !audioOk())", self.host)
+        browser_unit = (ROOT / "src/web/test/unit.mjs").read_text(encoding="utf-8")
+        self.assertIn("clock frozen while suspended", browser_unit)
+        self.assertIn("154350", browser_unit)
         self.assertIn("council-trace webaudio-queue-gap", self.host)
         self.assertIn("council-trace wasm-block", self.host)
         self.assertIn("if (councilTrace && busy >= 50 && councilLongTasks++ < 40)",

@@ -166,7 +166,14 @@ export function queuedAudioBytes(context, d) {
     if (!d || !audioContextCanSchedule(context))
         return 0;
     const left = d.end - context.currentTime;
-    return left > 0 ? Math.ceil(left * d.freq) * d.ch * (d.bits === 8 ? 1 : 2) : 0;
+    // A sample-perfect queue can round to N + 1e-12 after adding an
+    // AudioContext.currentTime offset. Plain ceil() then reports one sample
+    // more than waveOut actually wrote; the C host once subtracted that
+    // from an unsigned total and falsely completed the whole AVI clip.
+    // Keep ceil's conservative not-yet-played meaning, but remove only
+    // sub-sample floating error (far smaller than a real sample period).
+    const frames = Math.max(0, Math.ceil(left * d.freq - 1e-7));
+    return frames * d.ch * (d.bits === 8 ? 1 : 2);
 }
 
 // ---- the run ----

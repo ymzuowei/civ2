@@ -48,6 +48,23 @@ int hd_on;
 int hd_art;
 int hd_density = 1;
 
+/* B012: live HD planes, distinct from WebAssembly.Memory high-water.
+ * Only fully allocated planes are counted; no bitmap contents are logged. */
+static uint64_t hd_live_bytes;
+static unsigned hd_live_planes;
+uint32_t plat_diag_hd_bytes(void)
+{
+    return (uint32_t)(hd_live_bytes > UINT32_MAX ? UINT32_MAX : hd_live_bytes);
+}
+uint32_t plat_diag_hd_planes(void) { return hd_live_planes; }
+static uint64_t plane_bytes(const Bitmap *b)
+{
+    uint64_t pixels = (uint64_t)(unsigned)b->w * (unsigned)b->h;
+    uint64_t d = (unsigned)b->hd_d;
+    unsigned n = b->bpp == 8 ? 1u : b->bpp == 32 ? 4u : 0u;
+    return pixels * (d * d * 4u + n + 1u);
+}
+
 /* ---- the pack ---- */
 
 typedef struct {
@@ -333,6 +350,10 @@ static void block(Bitmap *b, int x, int y, uint32_t c)
 
 void hd_bitmap_free(Bitmap *b)
 {
+    if (b->hd && b->hd_prev && b->hd_big && b->hd_d > 0) {
+        hd_live_bytes -= plane_bytes(b);
+        hd_live_planes--;
+    }
     free(b->hd);
     free(b->hd_prev);
     free(b->hd_big);
@@ -367,6 +388,8 @@ static int plane(Bitmap *b)
     b->hd_h = b->h;
     b->hd_d = hd_density;
     b->hd_bits = b->bits;
+    hd_live_bytes += plane_bytes(b);
+    hd_live_planes++;
     for (y = 0; y < b->h; y++) {
         const unsigned char *row = bmp_row(b, y);
         memcpy(b->hd_prev + (size_t)y * b->w * n, row, (size_t)b->w * n);

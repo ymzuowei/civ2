@@ -51,6 +51,17 @@ class CouncilTraceContract(unittest.TestCase):
         self.assertIn("const councilTrace = !!opts.councilTrace;", self.host)
 
     def test_web_audio_clock_gap_and_nonblocking_trace(self):
+        # A suspended AudioContext still accepts scheduled BufferSource PCM.
+        # Do not report the first Council clip consumed while resume() is pending.
+        self.assertIn("export function audioContextCanSchedule(context)", self.host)
+        self.assertIn("context.state === 'suspended'", self.host)
+        self.assertIn("export function queuedAudioBytes(context, d)", self.host)
+        self.assertIn("if (!d || !audioContextCanSchedule(audio))", self.host)
+        self.assertIn("return queuedAudioBytes(audio, d);", self.host)
+        self.assertIn("council-trace webaudio-queued-suspended", self.host)
+        self.assertNotIn("if (!d || !audioOk())", self.host)
+        # The B012 >2 GiB pointer bridge must remain in the PCM data path.
+        self.assertIn("wasm32Bytes(memory, data, frames * bps * d.ch)", self.host)
         self.assertIn("if (councilTrace && d.end > 0", self.host)
         self.assertIn("council-trace webaudio-queue-gap", self.host)
         self.assertIn("council-trace wasm-block", self.host)

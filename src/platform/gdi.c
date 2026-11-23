@@ -16,6 +16,17 @@ int screen_w = 1024, screen_h = 768;
 int plat_overlay;               /* a popup menu is drawn on the screen itself */
 extern unsigned wnd_generation;
 
+/* B012: count live GDI bitmap backing stores, not WASM high-water pages.
+ * Metadata only: game bytes and individual objects are never exported. */
+static uint64_t bitmap_live_bytes;
+static unsigned bitmap_live_count;
+
+uint32_t plat_diag_bitmap_bytes(void)
+{
+    return (uint32_t)(bitmap_live_bytes > UINT32_MAX ? UINT32_MAX : bitmap_live_bytes);
+}
+uint32_t plat_diag_bitmap_count(void) { return bitmap_live_count; }
+
 /* ---- bitmaps ---- */
 
 unsigned char *bmp_row(const Bitmap *b, int y)
@@ -35,6 +46,10 @@ Bitmap *bmp_create(int w, int h, int bpp, int bottom_up)
        relies on that and writes one byte past the last row. */
     b->bits = calloc((size_t)b->stride * (size_t)b->h + 4, 1);
     b->owns_bits = 1;
+    if (b->bits) {
+        bitmap_live_bytes += (uint64_t)b->stride * (unsigned)b->h + 4;
+        bitmap_live_count++;
+    }
     if (bpp == 1) {
         b->ncolors = 2;
         b->colors[1].rgbRed = b->colors[1].rgbGreen = b->colors[1].rgbBlue = 255;
@@ -47,8 +62,11 @@ void bmp_destroy(Bitmap *b)
     if (!b)
         return;
     hd_bitmap_free(b);
-    if (b->owns_bits)
+    if (b->owns_bits && b->bits) {
+        bitmap_live_bytes -= (uint64_t)b->stride * (unsigned)b->h + 4;
+        bitmap_live_count--;
         free(b->bits);
+    }
     free(b);
 }
 

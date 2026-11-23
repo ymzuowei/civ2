@@ -402,7 +402,9 @@ export async function runGame(opts) {
                     unchanged: exports.plat_diag_present_unchanged_skips(),
                     compose: exports.plat_diag_present_compose_us(),
                     frameSync: exports.plat_diag_present_frame_sync_us(),
-                    host: exports.plat_diag_present_host_us()
+                    host: exports.plat_diag_present_host_us(),
+                    opaque: exports.plat_diag_hd_picture_solid(),
+                    alpha: exports.plat_diag_hd_picture_alpha()
                 };
                 if (lastPerfSample) {
                     // Exported native counters are wrapping u32 values.
@@ -424,7 +426,9 @@ export async function runGame(opts) {
                         inputQueueAvgMs: inputTiming.count ? +(inputTiming.total / inputTiming.count).toFixed(1) : null,
                         inputQueueMaxMs: inputTiming.count ? +inputTiming.max.toFixed(1) : null,
                         inputQueueHighWater: inputTiming.queueHigh,
-                        hoverCoalesced: inputTiming.coalesced
+                        hoverCoalesced: inputTiming.coalesced,
+                        opaquePictureCopies: diff('opaque'),
+                        alphaPicturePaints: diff('alpha')
                     };
                     inputTiming.count = inputTiming.total = inputTiming.max = 0;
                     inputTiming.queueHigh = inputTiming.coalesced = 0;

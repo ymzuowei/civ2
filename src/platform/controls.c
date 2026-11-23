@@ -2409,6 +2409,93 @@ LRESULT ctl_scrollbar_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
     return DefWindowProcA(h, m, wp, lp);
 }
 
+/* B012: the original's small Windows BUTTON rectangles are fixed size.
+ * Chinese fallback glyphs use their em-sized outlines, so a 16px System
+ * cell can visually touch a two-pixel bevel in a 20-24px-high button.
+ * Fit only UTF-8 non-ASCII BUTTON captions, never the game's text labels
+ * or custom owner-drawn widgets; preserve original Latin layout exactly.
+ *
+ * Retain a tiny bounded set of compact System faces, not a new font on
+ * every WM_PAINT (which would reintroduce a GDI memory leak). */
+static HFONT button_compact_fonts[17];
+
+static HFONT button_compact_font(int px)
+{
+    LOGFONTA lf;
+    if (px < 6 || px > 16)
+        return NULL;
+    if (button_compact_fonts[px])
+        return button_compact_fonts[px];
+    memset(&lf, 0, sizeof lf);
+    lf.lfHeight = -px;
+    lf.lfWeight = 700;
+    strcpy(lf.lfFaceName, "System");
+    return button_compact_fonts[px] = CreateFontIndirectA(&lf);
+}
+
+static void button_caption(HDC hdc, const char *text, const RECT *outer)
+{
+    RECT caption = *outer;
+    int compact = 0;
+    HFONT original = 0;
+    const unsigned char *p = (const unsigned char *)text;
+    if (!text)
+        return;
+    /* The 2px bevel must have clearance around the Chinese glyph ink;
+     * the focus/owner-draw semantics are intentionally not modified. */
+    if (plat_text_utf8) {
+        for (; *p && *p < 128; p++)
+            ;
+        if (*p) {
+            TEXTMETRICA tm;
+            SIZE extent;
+            DC *dc = dc_get(hdc);
+            Font *base = dc ? obj_get(dc->hfont, OBJ_FONT) : NULL;
+            int avail_w, avail_h, px;
+            caption.left += 4;
+            caption.right -= 4;
+            caption.top += 3;
+            caption.bottom -= 3;
+            avail_w = caption.right - caption.left;
+            avail_h = caption.bottom - caption.top;
+            if (avail_w < 1 || avail_h < 1)
+                return;
+            /* Preserve any explicitly chosen non-System caption font.
+             * The common built-in BUTTON currently starts with System 16. */
+            if (base && !strcasecmp(base->lf.lfFaceName, "System") &&
+                GetTextMetricsA(hdc, &tm) &&
+                GetTextExtentPointA(hdc, text, (int)strlen(text), &extent) &&
+                (tm.tmHeight + 2 > avail_h || extent.cx + 2 > avail_w)) {
+                for (px = 15; px >= 6; px--) {
+                    HFONT small = button_compact_font(px);
+                    TEXTMETRICA smaller;
+                    SIZE measured;
+                    if (!small)
+                        continue;
+                    if (!original)
+                        original = (HFONT)SelectObject(hdc, small);
+                    else
+                        SelectObject(hdc, small);
+                    if (GetTextMetricsA(hdc, &smaller) &&
+                        GetTextExtentPointA(hdc, text, (int)strlen(text), &measured) &&
+                        smaller.tmHeight + 2 <= avail_h &&
+                        measured.cx + 2 <= avail_w) {
+                        compact = 1;
+                        break;
+                    }
+                }
+                /* Even if a very small button cannot fit 6px glyphs, the
+                 * caption remains clipped inside its bevel. */
+                if (!compact && !original)
+                    original = (HFONT)SelectObject(hdc, button_compact_font(6));
+            }
+        }
+    }
+    DrawTextA(hdc, text, -1, &caption, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
+    if (original)
+        SelectObject(hdc, original);
+}
+
 /* ======================================================================
  * BUTTON and STATIC: text and push behaviour only.
  */
@@ -2427,7 +2514,7 @@ LRESULT ctl_button_proc(HWND h, UINT m, WPARAM wp, LPARAM lp)
         FillRect(hdc, &r, GetSysColorBrush(COLOR_3DFACE));
         draw_edge(hdc, &r, 0);
         SetBkMode(hdc, TRANSPARENT);
-        DrawTextA(hdc, w->text, -1, &r, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
+        button_caption(hdc, w->text, &r);
         EndPaint(h, &ps);
         return 0;
     }

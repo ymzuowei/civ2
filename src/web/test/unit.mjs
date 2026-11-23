@@ -2,7 +2,7 @@
 // desktop's scale, pixels, the WASI file system, .zip reading and writing, the player's saves.
 //   tools/toolchain/node/bin/node src/web/test/unit.mjs
 import assert from 'node:assert/strict';
-import {vkOf, Wheel, desktopScale, desktopUiScale, initialDesktopGeometry, argbToRgba, liveDesktopResize, canvasFitSize, displayModeFromSearch, enqueueInput} from '../host.js';
+import {vkOf, Wheel, desktopScale, desktopUiScale, initialDesktopGeometry, argbToRgba, liveDesktopResize, canvasFitSize, displayModeFromSearch, enqueueInput, audioContextCanSchedule, queuedAudioBytes} from '../host.js';
 import {MemFS, makeWasi, normalize} from '../wasi.js';
 import {createAudioVolume, audioLabels} from '../audio_volume.js';
 import {TOOLBAR_KEY, createToolbarCollapse, toolbarLabels} from '../toolbar.js';
@@ -199,6 +199,27 @@ assert.match(startupSource, /if \(councilTrace\)\s+env\.CIV2_LOG_COUNCIL = '1'/)
 const hostSource = readFileSync(new URL('../host.js', import.meta.url), 'utf8');
 assert.match(hostSource, /council-trace webaudio-queue-gap/);
 assert.match(hostSource, /opts\.audioContext \|\| null/);
+
+// R019: first-click AVI PCM must survive asynchronous AudioContext resume.
+// A suspended clock is frozen, so the entire scheduled queue remains pending.
+const pcmQueue = {end: 7, freq: 22050, ch: 1, bits: 8};
+const suspendedAudio = {state: 'suspended', currentTime: 0};
+assert.equal(audioContextCanSchedule(suspendedAudio), true);
+assert.equal(audioContextCanSchedule({state: 'running'}), true);
+assert.equal(audioContextCanSchedule({state: 'closed'}), false);
+assert.equal(audioContextCanSchedule(null), false);
+assert.equal(queuedAudioBytes(suspendedAudio, pcmQueue), 154350);
+assert.equal(queuedAudioBytes(suspendedAudio, pcmQueue), 154350,
+             'suspended AudioContext clock remains frozen');
+assert.equal(queuedAudioBytes({state: 'running', currentTime: 4}, pcmQueue), 66150);
+assert.equal(queuedAudioBytes({state: 'running', currentTime: 7}, pcmQueue), 0);
+assert.equal(queuedAudioBytes({state: 'closed', currentTime: 0}, pcmQueue), 0);
+assert.equal(queuedAudioBytes(suspendedAudio,
+    {end: 1, freq: 44100, ch: 2, bits: 16}), 176400);
+assert.match(hostSource, /if \(!d \|\| !audioContextCanSchedule\(audio\)\)/);
+assert.match(hostSource, /return queuedAudioBytes\(audio, d\)/);
+assert.match(hostSource, /council-trace webaudio-queued-suspended/);
+assert.match(hostSource, /wasm32Bytes\(memory, data, frames \* bps \* d\.ch\)/);
 const gamePage = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 assert.match(gamePage, /id="intro-start"/);
 

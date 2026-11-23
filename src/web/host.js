@@ -147,7 +147,7 @@ export function argbToRgba(src, dst, n) {
 // key/click/wheel events, nor during a button-held drag.  Exported for the
 // media-free Node regression that protects menu and game input ordering.
 export function enqueueInput(queue, event, coalesceHover = false) {
-    if (coalesceHover && event[0] === 3 && queue.length && queue[queue.length - 1][0] === 3) {
+    if (coalesceHover && event[0] === EV.MOTION && queue.length && queue[queue.length - 1][0] === EV.MOTION) {
         queue[queue.length - 1] = event;
         return true;
     }

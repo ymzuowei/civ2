@@ -327,10 +327,25 @@ export async function runGame(opts) {
         }
         if (memoryTrace && performance.now() - lastMemoryLog >= 60000) {
             lastMemoryLog = performance.now();
+            // These live native allocations are intentionally separate from
+            // the WASM linear-memory high-water (which cannot shrink on free).
+            const gdiBytes = exports.plat_diag_bitmap_bytes?.();
+            const hdBytes = exports.plat_diag_hd_bytes?.();
+            const bitmapObjects = exports.plat_diag_bitmap_count?.();
+            const hdPlanes = exports.plat_diag_hd_planes?.();
+            const closedWindows = exports.plat_diag_closed_windows?.();
+            if (opts.stats)
+                Object.assign(opts.stats, {
+                    gdiBytesLive: gdiBytes, hdBytesLive: hdBytes,
+                    bitmapObjectsLive: bitmapObjects, hdPlanesLive: hdPlanes, closedWindows
+                });
             console.info('civ2-memory-linear', {
                 atMs: Math.round(lastMemoryLog),
                 MiB: Math.round(memory.buffer.byteLength / 1048576),
                 peakMiB: Math.round((opts.stats?.memoryPeakBytes || memory.buffer.byteLength) / 1048576),
+                gdiMiB: gdiBytes === undefined ? null : Math.round(gdiBytes / 1048576),
+                hdPlaneMiB: hdBytes === undefined ? null : Math.round(hdBytes / 1048576),
+                bitmapObjects, hdPlanes, closedWindows,
                 musicPlays: musicPlayCount,
                 hdFrames: opts.stats?.hdFrames || 0
             });

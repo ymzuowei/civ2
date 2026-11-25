@@ -6,6 +6,7 @@ import {vkOf, Wheel, desktopScale, desktopUiScale, initialDesktopGeometry, argbT
 import {MemFS, makeWasi, normalize} from '../wasi.js';
 import {createAudioVolume, audioLabels} from '../audio_volume.js';
 import {TOOLBAR_KEY, createToolbarCollapse, toolbarLabels} from '../toolbar.js';
+import {TERRAIN_ROWS, guideRows, guideLabels, specialTile, improvementTile, hdKey} from '../terrain_guide.js';
 import {unzip, zip as makeZip, crc32} from '../zip.js';
 import {savesKind, playerFiles, importPath, savesToImport, exportSaves, importSaves} from '../saves.js';
 import {deflateRawSync, inflateRawSync} from 'node:zlib';
@@ -315,6 +316,22 @@ assert.match(pageSource, /addEventListener\('change',/);
 assert.match(pageSource, /dispatchEvent\(new Event\('civ2-display-change'\)\)/);
 assert.match(pageSource, /requestFullscreen\(\)/);
 assert.match(pageSource, /controls\.addEventListener\('keydown'/);
+
+// CIV2-H021 real resource-guide source policy.
+assert.match(readFileSync(new URL('../index.html', import.meta.url), 'utf8'), /id="terrain-guide-dialog"/);
+assert.match(readFileSync(new URL('../index.html', import.meta.url), 'utf8'), /id="terrain-guide-open"/);
+assert.match(readFileSync(new URL('../main.js', import.meta.url), 'utf8'), /installTerrainGuide\(store, pageLang\)/);
+assert.equal(TERRAIN_ROWS.length, 11);
+assert.equal(guideRows('terrain').length, 12);
+assert.equal(guideRows('resources').length, 22);
+assert.equal(guideRows('improvements').length, 6);
+assert.equal(hdKey(specialTile(8, 'A')), 'crop/file/terrain1/131,265,64,32');
+assert.equal(hdKey(specialTile(10, 'B')), 'crop/file/terrain1/196,331,64,32');
+assert.equal(hdKey(improvementTile('irrigation')), 'crop/file/terrain1/456,100,64,32');
+assert.equal(hdKey(improvementTile('farmland')), 'crop/file/terrain1/456,133,64,32');
+assert.equal(guideLabels('zh-Hans').resources, '特殊资源');
+assert.equal(guideLabels('en').terrain, 'Terrain');
+assert.match(readFileSync(new URL('../../../tools/build_web.py', import.meta.url), 'utf8'), /'toolbar\.js', 'terrain_guide\.js'/);
 
 // CIV2-T012: compact toolbar retains an explicit reopen handle, and the
 // high-contrast mute button has two deterministic vector states (not emoji).

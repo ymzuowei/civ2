@@ -6,6 +6,7 @@ import {GRAPHICS_PREFERENCE_KEY, resolveGraphicsPreference, graphicsFromQuery, h
 import {runGame} from './host.js';
 import {createAudioVolume, audioLabels} from './audio_volume.js';
 import {createToolbarCollapse, toolbarLabels} from './toolbar.js';
+import {installTerrainGuide} from './terrain_guide.js';
 import {openStore} from './store.js';
 import {unzip} from './zip.js';
 import {exportSaves, importSaves} from './saves.js';
@@ -1058,6 +1059,7 @@ async function main() {
     const store = await mark('store', openStore(() =>
         status(t('web.other_tab'))));
     savesControls(store);
+    installTerrainGuide(store, pageLang);
     await graphicsControls(store);
     // (the relay's dialog keeps the keys from the game)
     const rd = $('relay-dialog');

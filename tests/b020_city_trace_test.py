@@ -34,5 +34,23 @@ class CityTraceTests(unittest.TestCase):
         wasi = (ROOT / "src/web/wasi.js").read_text(encoding="utf-8")
         self.assertIn("fd === 2 ? console.warn : console.log", wasi)
 
+    def test_all_delete_paths_and_selected_tile_trace(self):
+        city = (ROOT / "src/auto/city.cpp").read_text(encoding="utf-8")
+        body = city.split("void __cdecl city_delete(", 1)[1].split("/* 00441a79 auto */", 1)[0]
+        self.assertLess(body.index("tile_set_improvements(x2,y2,2,0,1)"),
+                        body.index("CIV2_CITY_TRACE delete"))
+        self.assertIn("city_at(x2,y2) >= 0", body)
+        self.assertIn("fflush(stderr)", body)
+        status = (ROOT / "src/auto/game_status.cpp").read_text(encoding="utf-8")
+        info = status.split("static void status_draw_tile_info(", 1)[1].split("static void status_draw_active_unit", 1)[0]
+        self.assertLess(info.index("terrain = *tile_ptr"), info.index("CIV2_CITY_TRACE selected"))
+        self.assertIn('moving_units_mode == 0 && city_trace && strcmp(city_trace,"1") == 0', info)
+        self.assertIn("tile_improvements(x2,y2)", info)
+        self.assertIn("actual & 0x42U", info)
+        self.assertIn("(unsigned int)terrain & 0x42U", info)
+        self.assertIn("last_known != (int)terrain", info)
+        self.assertIn("fflush(stderr)", info)
+        self.assertNotIn("tile_set_improvements", info)
+
 if __name__ == "__main__":
     unittest.main()

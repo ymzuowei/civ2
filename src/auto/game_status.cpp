@@ -599,6 +599,26 @@ static void status_draw_tile_info(iptr x2,iptr y2,int text_x,int *text_y2,int li
     value = (int)tile_at(x2,y2);
     terrain = ((Tile *)value)->improvements;
   }
+  /* B020: report only the already-explored tile selected in View mode.
+     No saved state is edited. Deduplicate repeated status paints. */
+  const char *city_trace = getenv("CIV2_CITY_TRACE");
+  if (moving_units_mode == 0 && city_trace && strcmp(city_trace,"1") == 0) {
+    const unsigned int actual = (unsigned int)tile_improvements(x2,y2) & 0xffU;
+    const int present = city_at(x2,y2) >= 0;
+    static iptr last_x = -1, last_y = -1;
+    static int last_known = -1, last_actual = -1, last_city = -1;
+    if (last_x != x2 || last_y != y2 || last_known != (int)terrain ||
+        last_actual != (int)actual || last_city != present) {
+      fprintf(stderr,"CIV2_CITY_TRACE selected city-present=%d actual=0x%02x known=0x%02x actual-special=0x%02x known-special=0x%02x\n",
+              present, actual, (unsigned int)terrain, actual & 0x42U, (unsigned int)terrain & 0x42U);
+      fflush(stderr);
+      last_x = x2;
+      last_y = y2;
+      last_known = (int)terrain;
+      last_actual = (int)actual;
+      last_city = present;
+    }
+  }
   if ((terrain & 0x1c) != 0) {
     text_clear();
     text_append_lparen();

@@ -1424,6 +1424,15 @@ void __cdecl city_delete(uptr city,i32 from_network)
                   net_send_message(NM_CITYWIN_REDRAW,0xff,0,0,0,0,0,0,0,0);
                   XD_FlushSendBuffer(5000);
                 }
+                /* B020: all deletion paths, including capture and famine. */
+                const char *city_trace = getenv("CIV2_CITY_TRACE");
+                if (city_trace && strcmp(city_trace,"1") == 0) {
+                  const unsigned int impr = (unsigned int)tile_improvements(x2,y2);
+                  fprintf(stderr,"CIV2_CITY_TRACE delete city-present=%d city-owner-present=%d improvements=0x%02x special=0x%02x\n",
+                          city_at(x2,y2) >= 0, tile_city_owner(x2,y2) >= 0,
+                          impr & 0xffU, impr & 0x42U);
+                  fflush(stderr);
+                }
                 net.city_delete_busy = 0;
                 return;
               }

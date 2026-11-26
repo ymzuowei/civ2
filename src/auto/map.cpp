@@ -7355,6 +7355,17 @@ void __cdecl tile_set_improvements(int x,int y,int bits,int set,int sync)
   else {
     tile->improvements = tile->improvements | (byte)bits;
   }
+  /* B020: observe only changed special bits, never mutate beyond the
+     existing setter. Coordinates require explicit local detail opt-in. */
+  if (((tile->improvements ^ (byte)old_value) & 0x40) != 0) {
+    const char *city_detail = getenv("CIV2_CITY_TRACE_DETAIL");
+    if (city_detail && strcmp(city_detail,"1") == 0) {
+      fprintf(stderr,"CIV2_CITY_TRACE special-change tile=%d,%d turn=%d before=0x%02x after=0x%02x bits=0x%02x set=%d\n",
+              x,y,(int)game.turn,(unsigned int)(byte)old_value,(unsigned int)tile->improvements,
+              (unsigned int)bits & 0xffU,set);
+      fflush(stderr);
+    }
+  }
   if (((sync != 0) && ((char)tile->improvements != old_value)) && (2 < game.multiplayer)) {
     if ((net.host_flag == '\0') && (net.tile_batch_active != '\0')) {
       net_batch_add(0,x,y,bits,set,0);

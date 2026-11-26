@@ -1350,6 +1350,14 @@ void __cdecl city_delete(uptr city,i32 from_network)
       x2 = (int)cities[city].x;
       y2 = (int)cities[city].y;
       civ = (iptr)cities[city].owner;
+      const char *city_detail = getenv("CIV2_CITY_TRACE_DETAIL");
+      const bool trace_detail = city_detail && strcmp(city_detail,"1") == 0;
+      const unsigned int delete_before = trace_detail ? (unsigned int)tile_improvements(x2,y2) & 0xffU : 0;
+      if (trace_detail) {
+        fprintf(stderr,"CIV2_CITY_TRACE delete-before tile=%d,%d turn=%d improvements=0x%02x special=0x%02x\n",
+                x2,y2,(int)game.turn,delete_before,delete_before & 0x42U);
+        fflush(stderr);
+      }
       civs[civ].num_cities--;
       do {
         unit = (iptr)game.num_units;
@@ -1380,6 +1388,12 @@ void __cdecl city_delete(uptr city,i32 from_network)
                 nearby_civs = 0;
                 net_batch_begin();
                 tile_set_improvements(x2,y2,2,0,1);
+                if (trace_detail) {
+                  const unsigned int after = (unsigned int)tile_improvements(x2,y2) & 0xffU;
+                  fprintf(stderr,"CIV2_CITY_TRACE delete-after tile=%d,%d turn=%d before=0x%02x after=0x%02x city-present=%d special=0x%02x\n",
+                          x2,y2,(int)game.turn,delete_before,after,city_at(x2,y2) >= 0,after & 0x42U);
+                  fflush(stderr);
+                }
                 for (city2 = 0; city2 < 0x2d; city2++) {
                   x = map_wrap_x(dir_dy_table_block.city_tile_dx_table[city2] + x2);
                   y = dir_dy_table_block.city_tile_dy_table[city2] + y2;

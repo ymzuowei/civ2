@@ -52,5 +52,22 @@ class CityTraceTests(unittest.TestCase):
         self.assertIn("fflush(stderr)", info)
         self.assertNotIn("tile_set_improvements", info)
 
+    def test_detail_trace_correlates_deletion_and_special_transitions(self):
+        city = (ROOT / "src/auto/city.cpp").read_text(encoding="utf-8")
+        body = city.split("void __cdecl city_delete(", 1)[1].split("/* 00441a79 auto */", 1)[0]
+        self.assertLess(body.index("CIV2_CITY_TRACE delete-before"), body.index("cities[city].id = 0"))
+        self.assertLess(body.index("tile_set_improvements(x2,y2,2,0,1)"), body.index("CIV2_CITY_TRACE delete-after"))
+        self.assertIn('getenv("CIV2_CITY_TRACE_DETAIL")', body)
+        setter = (ROOT / "src/auto/map.cpp").read_text(encoding="utf-8").split("void __cdecl tile_set_improvements(", 1)[1].split("/* 005b9646 auto */", 1)[0]
+        self.assertIn("((tile->improvements ^ (byte)old_value) & 0x40) != 0", setter)
+        self.assertIn("CIV2_CITY_TRACE special-change tile=", setter)
+        worker = (ROOT / "src/auto/unit.cpp").read_text(encoding="utf-8").split("static void unit_terrain_work_finish(", 1)[1].split("/* 004c42a0 auto */", 1)[0]
+        self.assertIn("CIV2_CITY_TRACE worker-special tile=", worker)
+        self.assertIn("work_before != after", worker)
+        self.assertIn("game.human_players", worker)
+        main = (ROOT / "src/web/main.js").read_text(encoding="utf-8")
+        self.assertIn("query.get('cityTrace') === '1' && query.get('cityTraceDetail') === '1'", main)
+        self.assertIn("env.CIV2_CITY_TRACE_DETAIL = '1';", main)
+
 if __name__ == "__main__":
     unittest.main()

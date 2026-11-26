@@ -1589,6 +1589,9 @@ static void unit_terrain_work_finish(iptr order,int x,int y,uint terrain,char te
   uptr imp_bits;
   i32 imp_low;
   uptr imp_pollution;
+  const char *city_detail = (order == ORDER_BUILD_FORTRESS || order == 10) ? getenv("CIV2_CITY_TRACE_DETAIL") : NULL;
+  const bool trace_detail = city_detail && strcmp(city_detail,"1") == 0;
+  const unsigned int work_before = trace_detail ? (unsigned int)tile_improvements(x,y) & 0xffU : 0;
   switch(order) {
   case 4:
     result = tile_city_owner(x,y);
@@ -1666,6 +1669,15 @@ static void unit_terrain_work_finish(iptr order,int x,int y,uint terrain,char te
     result = tile_city_owner(x,y);
     if (result < 0) {
       tile_set_improvements(x,y,0x42,1,1);
+    }
+  }
+  if (trace_detail) {
+    const unsigned int after = (unsigned int)tile_improvements(x,y) & 0xffU;
+    if (work_before != after) {
+      const int ai = ((1U << ((byte)terrain2 & 0x1f)) & (uint)game.human_players) == 0;
+      fprintf(stderr,"CIV2_CITY_TRACE worker-special tile=%d,%d turn=%d order=%d ai=%d before=0x%02x after=0x%02x\n",
+              x,y,(int)game.turn,(int)order,ai,work_before,after);
+      fflush(stderr);
     }
   }
 }

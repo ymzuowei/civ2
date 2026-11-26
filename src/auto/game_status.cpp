@@ -612,6 +612,12 @@ static void status_draw_tile_info(iptr x2,iptr y2,int text_x,int *text_y2,int li
       fprintf(stderr,"CIV2_CITY_TRACE selected city-present=%d actual=0x%02x known=0x%02x actual-special=0x%02x known-special=0x%02x\n",
               present, actual, (unsigned int)terrain, actual & 0x42U, (unsigned int)terrain & 0x42U);
       fflush(stderr);
+      const char *city_detail = getenv("CIV2_CITY_TRACE_DETAIL");
+      if (city_detail && strcmp(city_detail,"1") == 0) {
+        fprintf(stderr,"CIV2_CITY_TRACE selected-location tile=%d,%d turn=%d\n",
+                (int)x2,(int)y2,(int)game.turn);
+        fflush(stderr);
+      }
       last_x = x2;
       last_y = y2;
       last_known = (int)terrain;

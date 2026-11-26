@@ -567,8 +567,8 @@ static void commit_rect(Bitmap *b, int l, int t, int r, int bot)
 /* Draws w x h premultiplied pixels at physical (x, y), clipped to the
    physical rectangle; tint: in that colour (0xRRGGBB), -1 as they are;
    pixels scaled (nearest) when pw x ph is not w x h. */
-static void paint(Bitmap *b, const uint32_t *px, int pw, int ph, int x, int y, int w, int h, int l, int t, int r,
-                  int bot, int64_t tint)
+static void paint_opacity(Bitmap *b, const uint32_t *px, int pw, int ph, int x, int y, int w, int h, int l, int t, int r,
+                          int bot, int64_t tint, unsigned int opacity)
 {
     int d = hd_density, pitch = b->w * d, i, j;
     if (l < x) l = x;
@@ -589,6 +589,13 @@ static void paint(Bitmap *b, const uint32_t *px, int pw, int ph, int x, int y, i
             if (tint >= 0)
                 s = a << 24 | (((uint32_t)(tint >> 16) & 255) * a / 255) << 16 |
                     (((uint32_t)(tint >> 8) & 255) * a / 255) << 8 | ((uint32_t)tint & 255) * a / 255;
+            /* H022: scale every premultiplied channel, not alpha alone.
+               Cached picture bytes remain unchanged. */
+            if (opacity != 255) {
+                a = a * opacity / 255;
+                s = a << 24 | (((s >> 16) & 255) * opacity / 255) << 16 |
+                    (((s >> 8) & 255) * opacity / 255) << 8 | ((s & 255) * opacity / 255);
+            }
             if (a == 255) {
                 out[i] = s | 0xff000000u;
                 continue;
@@ -599,6 +606,12 @@ static void paint(Bitmap *b, const uint32_t *px, int pw, int ph, int x, int y, i
                      (((s >> 8) & 255) + ((dst >> 8) & 255) * ia / 255) << 8 | ((s & 255) + (dst & 255) * ia / 255);
         }
     }
+}
+
+static void paint(Bitmap *b, const uint32_t *px, int pw, int ph, int x, int y, int w, int h, int l, int t, int r,
+                  int bot, int64_t tint)
+{
+    paint_opacity(b, px, pw, ph, x, y, w, h, l, t, r, bot, tint, 255);
 }
 
 /* Copies the plane's rectangle (sw x sh at sx, sy of src) to dst's at x, y
@@ -1307,6 +1320,14 @@ static Spr **bucket(const void *s)
 static const void *as_sprite;
 static Spr as_spr;
 static int sprite_mode;         /* hd_sprite_mode */
+/* H022: one explicitly scoped sprite, no image copies or cache entries. */
+static const void *field_sprite;
+static unsigned int field_opacity = 255;
+void hd_field_overlay(const void *sprite, unsigned int opacity)
+{
+    field_sprite = sprite;
+    field_opacity = opacity > 255 ? 255 : opacity;
+}
 
 static Spr *lookup(const void *s, unsigned handle)
 {
@@ -1542,7 +1563,11 @@ void hd_sprite_end(const void *s, unsigned handle, void *bits, int x, int y, int
         if (pw > 0 && ph > 0 && (px = picture(id, pw, ph, p->opaque, NULL))) {
             if (sprite_mode == HD_SPRITES_GREY && tint < 0 && (grey = greyed(px, pw * ph)))
                 px = grey;
-            paint(b, px, pw, ph, px0, py0, pw, ph, clip[0] * d, clip[1] * d, clip[2] * d, clip[3] * d, tint);
+            if (hd_art && s == field_sprite && field_opacity != 255)
+                paint_opacity(b, px, pw, ph, px0, py0, pw, ph, clip[0] * d, clip[1] * d,
+                              clip[2] * d, clip[3] * d, tint, field_opacity);
+            else
+                paint(b, px, pw, ph, px0, py0, pw, ph, clip[0] * d, clip[1] * d, clip[2] * d, clip[3] * d, tint);
             free(grey);
         }
     }

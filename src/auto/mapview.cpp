@@ -1543,6 +1543,17 @@ void MapView::draw_tile_ocean(DibSurface *surface,int screen_x,int screen_y,int 
   }
 }
 
+/* H022: show the base terrain through shared HD crop art. The original
+   sprite draw and all game flags stay intact; only this HD paint is scoped. */
+static void draw_field_overlay(Sprite *sprite, RECT *rect, DibSurface *surface,
+                               int x, int y, uint terrain, unsigned int opacity)
+{
+  const bool adjust = hd_art && (terrain == TERRAIN_GRASSLAND || terrain == TERRAIN_PLAINS);
+  if (adjust) hd_field_overlay(sprite,opacity);
+  sprite->draw(rect,surface,x,y);
+  if (adjust) hd_field_overlay(NULL,255);
+}
+
 /* Part of MapView::draw_tile_terrain (0047a8c9): a land tile: the base terrain dithered with
    its neighbours, forest/mountain/hill shapes joined to like neighbours, the
    river, irrigation and farmland, the grassland shield. */
@@ -1644,7 +1655,7 @@ void MapView::draw_tile_land(DibSurface *surface,int screen_x,int screen_y,int x
                screen_y);
   }
   if (((-4 < zoom) && (map_show_hidden_terrain == 0)) && (((byte)improvements2 & 0xc) == 0xc)) {
-    land_improvement_sprites_block.farmland_sprite.draw((RECT *)farmland_rect,surface,screen_x,screen_y);
+    draw_field_overlay(&land_improvement_sprites_block.farmland_sprite,(RECT *)farmland_rect,surface,screen_x,screen_y,terrain2,191);
   }
   if (((-7 < zoom) && (has_river != 0)) && (map_show_hidden_terrain == 0)) {
     icon_misc_sprites_block.river_sprites[river_mask].draw((RECT *)river_rect,surface,screen_x,
@@ -1668,10 +1679,10 @@ void MapView::draw_tile_land(DibSurface *surface,int screen_x,int screen_y,int x
     }
     if (map_show_hidden_terrain == 0) {
       if ((((byte)improvements2 & 0xc) == 4) || (irrig_flags == 1)) {
-        land_improvement_sprites_block.land_improvement_sprites[0].draw((RECT *)irrig_rect,surface,screen_x,screen_y);
+        draw_field_overlay(&land_improvement_sprites_block.land_improvement_sprites[0],(RECT *)irrig_rect,surface,screen_x,screen_y,terrain2,166);
       }
       else if ((irrig_flags & 2) != 0) {
-        land_improvement_sprites_block.farmland_sprite.draw((RECT *)farm_rect,surface,screen_x,screen_y);
+        draw_field_overlay(&land_improvement_sprites_block.farmland_sprite,(RECT *)farm_rect,surface,screen_x,screen_y,terrain2,191);
       }
     }
   }

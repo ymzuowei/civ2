@@ -358,3 +358,7 @@ Both `tools/lang_fonts.py` and the actual warning source
 `tools/build_web.py::lang_file()` now close translation file handles
 with context managers, avoiding the prior nonfatal
 `tools/build_web.py:113 ResourceWarning` during the owner's Windows run. Full Windows WASM and gameplay F01–F08 remain pending.
+
+### CIV2-L023 (2026-11-26): Civilian Engineers original Chinese term
+
+The source-owned zh-Hans/zh-Hant corpora now use `工程师`/`工程師` consistently for the Civ2 unit `Engineers` in rules.unit.1, game help, Civilopedia and related hints, replacing inconsistent `工兵` references. Historical Chinese Civ2 game guides support the name but no byte-authenticated official full Chinese language pack was obtained. Do not substitute modern Civilization VI Military Engineers terms or silently retranslate Settlers and other unsettled unit names. See [review log](ZH-HANS-LOCALIZATION.md). Retain all non-Chinese locale blobs byte-exact, preserve all placeholders and ID keys, and run `tests/zh_hans_test.py` and all other normal local D: build checks. This change is translation-only and must not affect `Engineers` rules ID, save format or gameplay.

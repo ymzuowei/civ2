@@ -61,6 +61,25 @@ class SimplifiedChineseTranslationTests(unittest.TestCase):
         self.assertEqual(self.simp["openciv2.web.export"], "导出存档")
         self.assertEqual(self.simp["openciv2.web.import"], "导入存档")
 
+    def test_original_civ2_engineers_unit_terminology(self):
+        """Civilian Engineers means 工程师/工程師, not combat sappers 工兵."""
+        self.assertEqual(self.simp["rules.unit.1"], "工程师")
+        self.assertEqual(self.trad["rules.unit.1"], "工程師")
+        self.assertIn("工程师", self.simp["game.ENGINEERS"])
+        self.assertIn("工程師", self.trad["game.ENGINEERS"])
+        self.assertIn("工程师", self.simp["describe.UNIT.Engineers"])
+        self.assertIn("工程師", self.trad["describe.UNIT.Engineers"])
+        self.assertIn("工程师", self.simp["game.ONLYSETTLERS"])
+        self.assertIn("工程師", self.trad["game.ONLYSETTLERS"])
+        for lang, sections_map in (("zh-Hans", self.simp), ("zh-Hant", self.trad)):
+            with self.subTest(lang=lang):
+                # This older term referred to the same non-combat worker
+                # unit in game rules, Civilopedia, advisors and instructions.
+                remaining = [key for key, text in sections_map.items() if "工兵" in text]
+                self.assertEqual(remaining, [])
+                self.assertEqual(sections_map["rules.advance.10"], "化学" if lang == "zh-Hans" else "化學")
+                self.assertEqual(sections_map["rules.advance.28"], "炸药" if lang == "zh-Hans" else "炸藥")
+
     def test_both_chinese_versions_are_separate(self):
         self.assertEqual(self.trad["openciv2.language.name"], "繁體中文")
         self.assertNotEqual(self.trad["openciv2.web.intro"], self.simp["openciv2.web.intro"])

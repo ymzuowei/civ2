@@ -174,11 +174,12 @@ function classicCrop(sheet, sprite) {
     return c;
 }
 
-async function paint(canvas, layers, mode, art) {
+async function paint(canvas, layers, mode, art, alive) {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.imageSmoothingEnabled = mode === 'hd';
     for (const sprite of layers) {
+        if (!alive()) return;
         try {
             if (mode === 'classic') {
                 const source = art.classic[sprite.sheet];
@@ -191,10 +192,12 @@ async function paint(canvas, layers, mode, art) {
                 let image = art.images.get(key);
                 if (image === undefined) {
                     const bytes = await art.hd(key);
+                    if (!alive()) return; // no new Blob URL after the dialog closes
                     image = bytes ? await loadImage(bytes, 'image/png', art.urls) : null;
+                    if (!alive()) return;
                     art.images.set(key, image);
                 }
-                if (image) ctx.drawImage(image, 0, 0, 256, 128);
+                if (image && alive()) ctx.drawImage(image, 0, 0, 256, 128);
             }
         } catch (e) {
             // A missing art entry should never break the game or other cards.
@@ -227,6 +230,9 @@ export function installTerrainGuide(store, lang) {
     let art = null, active = null, sequence = 0;
     const render = async (section) => {
         const ticket = ++sequence;
+        const snapshot = art; // close cannot turn a running renderer into null
+        if (!snapshot || !dialog.open) return;
+        const alive = () => ticket === sequence && dialog.open;
         active = section;
         for (const b of buttons) b.setAttribute('aria-selected',
             String(b.dataset.guideSection === section));
@@ -256,11 +262,12 @@ export function installTerrainGuide(store, lang) {
             }
             card.append(heading, pair); area.append(card);
             // Give the browser opportunities between expensive image decodes.
-            if (ticket !== sequence || !dialog.open) return;
-            if (art.classic.terrain1)
-                await paint(canvases.classic, row.layers, 'classic', art);
-            if (art.hd)
-                await paint(canvases.hd, row.layers, 'hd', art);
+            if (!alive()) return;
+            if (snapshot.classic.terrain1)
+                await paint(canvases.classic, row.layers, 'classic', snapshot, alive);
+            if (!alive()) return;
+            if (snapshot.hd)
+                await paint(canvases.hd, row.layers, 'hd', snapshot, alive);
         }
     };
     const dispose = () => {
@@ -280,6 +287,7 @@ export function installTerrainGuide(store, lang) {
     });
     open.addEventListener('click', async () => {
         if (dialog.open) return;
+        const openTicket = ++sequence;
         dialog.showModal();
         status.textContent = text.loading;
         const urls = [];
@@ -288,7 +296,7 @@ export function installTerrainGuide(store, lang) {
                 classicSheets(store, urls),
                 cachedHdReader(store).catch(() => null),
             ]);
-            if (!dialog.open) { for (const url of urls) URL.revokeObjectURL(url); return; }
+            if (!dialog.open || openTicket !== sequence) { for (const url of urls) URL.revokeObjectURL(url); return; }
             art = {classic, hd, urls, images: new Map()};
             const missing = [];
             if (!classic.terrain1) missing.push(text.classicUnavailable);
@@ -296,7 +304,9 @@ export function installTerrainGuide(store, lang) {
             status.textContent = missing.join(' ');
             await render('terrain');
         } catch (e) {
-            status.textContent = e.message;
+            for (const url of urls) URL.revokeObjectURL(url);
+            if (dialog.open && openTicket === sequence)
+                status.textContent = e.message;
         }
     });
 }

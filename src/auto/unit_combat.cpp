@@ -1105,6 +1105,15 @@ static void unit_resolve_attack_remove_loser(iptr unit,iptr unit2,uptr civ,uptr 
             tile_update_known(x,y,view_civ2);
           }
           map_redraw_neighbors_all_views(x,y);
+          /* B020: distinguish an actual city from a retained fortress/airbase
+             or stale HD pixels. Opt-in only, no names or save contents. */
+          const char *city_trace = getenv("CIV2_CITY_TRACE");
+          if (city_trace && strcmp(city_trace,"1") == 0) {
+            const unsigned int impr = (unsigned int)tile_improvements(x,y);
+            fprintf(stderr,"CIV2_CITY_TRACE combat-delete city-present=%d city-owner-present=%d improvements=0x%02x special=0x%02x redraw-active=%d\n",
+                    city_at(x,y) >= 0, tile_city_owner(x,y) >= 0,
+                    impr & 0xffU, impr & 0x42U, turn_loop.active != 0);
+          }
           city2 = civ_check_destroyed(civ2,civ);
           if (city2 != 0) {
             show_treaty_msg = 0;

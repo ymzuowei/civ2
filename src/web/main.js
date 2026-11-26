@@ -927,6 +927,8 @@ async function play(store) {
         env.CIV2_PREFER_SITE_LANG = '1';
     if (query.get('langTrace') === '1')
         env.CIV2_LANG_TRACE = '1';
+    if (query.get('cityTrace') === '1')
+        env.CIV2_CITY_TRACE = '1';
     // If the user's browser denied the Play gesture, do not give the AVI a
     // permanently suspended audio clock. The existing native no-sound
     // fallback keeps the *movie* running on wall time (no silent movie skip).

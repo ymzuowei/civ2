@@ -38,7 +38,7 @@ class CityTraceTests(unittest.TestCase):
         city = (ROOT / "src/auto/city.cpp").read_text(encoding="utf-8")
         body = city.split("void __cdecl city_delete(", 1)[1].split("/* 00441a79 auto */", 1)[0]
         self.assertLess(body.index("tile_set_improvements(x2,y2,2,0,1)"),
-                        body.index("CIV2_CITY_TRACE delete"))
+                        body.index("CIV2_CITY_TRACE delete city-present="))
         self.assertIn("city_at(x2,y2) >= 0", body)
         self.assertIn("fflush(stderr)", body)
         status = (ROOT / "src/auto/game_status.cpp").read_text(encoding="utf-8")

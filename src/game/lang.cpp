@@ -110,10 +110,21 @@ static int language_file(const char *code, char *path, size_t n)
     FILE *f;
     if (!*code || strchr(code, '/') || strchr(code, '\\') || strstr(code, ".."))
         return 0;
-    snprintf(path, n, "lang/%s.txt", code);
-    if ((f = fopen(path, "r")) == 0) {
+    /* Browser site translations are versioned with the engine. Desktop
+       and explicit custom-language sessions retain the original priority. */
+    const char *prefer = getenv("CIV2_PREFER_SITE_LANG");
+    if (prefer && strcmp(prefer, "1") == 0) {
         snprintf(path, n, "%s/lang/%s.txt", plat_data_dir, code);
-        f = fopen(path, "r");
+        if ((f = fopen(path, "r")) == 0) {
+            snprintf(path, n, "lang/%s.txt", code);
+            f = fopen(path, "r");
+        }
+    } else {
+        snprintf(path, n, "lang/%s.txt", code);
+        if ((f = fopen(path, "r")) == 0) {
+            snprintf(path, n, "%s/lang/%s.txt", plat_data_dir, code);
+            f = fopen(path, "r");
+        }
     }
     if (f)
         fclose(f);
@@ -303,6 +314,18 @@ static void load_translation(void)
     if (!key.empty())
         translated[key] = text;
     fclose(f);
+    const char *trace = getenv("CIV2_LANG_TRACE");
+    if (trace && strcmp(trace, "1") == 0) {
+        const char *name = "missing";
+        auto unit = translated.find("rules.unit.1");
+        if (unit != translated.end()) {
+            if (unit->second == "\xe5\xb7\xa5\xe5\x85\xb5") name = "legacy";
+            else if (unit->second == "\xe5\xb7\xa5\xe7\xa8\x8b\xe5\xb8\x88" || unit->second == "\xe5\xb7\xa5\xe7\xa8\x8b\xe5\xb8\xab") name = "engineers";
+            else name = "other";
+        }
+        fprintf(stderr, "CIV2_LANG_TRACE source=%s unit1=%s\n",
+                strncmp(path, "lang/", 5) == 0 ? "custom" : "site", name);
+    }
     /* its code page (Windows-1252 unless it says): its glyphs, its input */
     if (translated.count("codepage"))
         plat_text_codepage(translated["codepage"].c_str());

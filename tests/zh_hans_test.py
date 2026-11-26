@@ -80,6 +80,20 @@ class SimplifiedChineseTranslationTests(unittest.TestCase):
                 self.assertEqual(sections_map["rules.advance.10"], "化学" if lang == "zh-Hans" else "化學")
                 self.assertEqual(sections_map["rules.advance.28"], "炸药" if lang == "zh-Hans" else "炸藥")
 
+    def test_web_versioned_language_policy(self):
+        native = (ROOT / 'src/game/lang.cpp').read_text(encoding='utf-8')
+        web = (ROOT / 'src/web/main.js').read_text(encoding='utf-8')
+        i18n = (ROOT / 'src/web/i18n.js').read_text(encoding='utf-8')
+        policy = native.split('const char *prefer = getenv("CIV2_PREFER_SITE_LANG");', 1)[1].split('if (f)\n', 1)[0]
+        preferred, custom = policy.split('    } else {', 1)
+        self.assertLess(preferred.index('"%s/lang/%s.txt"'), preferred.index('"lang/%s.txt"'))
+        self.assertLess(custom.index('"lang/%s.txt"'), custom.index('"%s/lang/%s.txt"'))
+        self.assertIn("query.get('customLang') !== '1'", web)
+        self.assertIn("env.CIV2_PREFER_SITE_LANG = '1'", web)
+        self.assertIn("env.CIV2_LANG_TRACE = '1'", web)
+        self.assertIn('CIV2_LANG_TRACE source=%s unit1=%s', native)
+        self.assertEqual(i18n.count("{cache: 'no-cache'}"), 2)
+
     def test_both_chinese_versions_are_separate(self):
         self.assertEqual(self.trad["openciv2.language.name"], "繁體中文")
         self.assertNotEqual(self.trad["openciv2.web.intro"], self.simp["openciv2.web.intro"])

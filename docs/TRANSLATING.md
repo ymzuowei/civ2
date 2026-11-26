@@ -362,3 +362,8 @@ with context managers, avoiding the prior nonfatal
 ### CIV2-L023 (2026-11-26): Civilian Engineers original Chinese term
 
 The source-owned zh-Hans/zh-Hant corpora now use `工程师`/`工程師` consistently for the Civ2 unit `Engineers` in rules.unit.1, game help, Civilopedia and related hints, replacing inconsistent `工兵` references. Historical Chinese Civ2 game guides support the name but no byte-authenticated official full Chinese language pack was obtained. Do not substitute modern Civilization VI Military Engineers terms or silently retranslate Settlers and other unsettled unit names. See [review log](ZH-HANS-LOCALIZATION.md). Retain all non-Chinese locale blobs byte-exact, preserve all placeholders and ID keys, and run `tests/zh_hans_test.py` and all other normal local D: build checks. This change is translation-only and must not affect `Engineers` rules ID, save format or gameplay.
+
+
+### T023 Web language version policy
+
+The browser revalidates the small language index and translation files on page reload. The Web host prefers current site-provided language files over imported same-name translations; `?customLang=1` restores explicit player override and desktop defaults are unchanged. Missing site translations retain the local fallback. `?langTrace=1` emits only source class and unit-1 terminology classification, never paths, imported text or saves. This mitigates stale language overrides, not proof of the Owner's original active-unit root cause. No SAV, RULES.TXT or IndexedDB mutation. Exact source CI and a fresh D:-local build with active-unit status verification remain required.

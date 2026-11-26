@@ -57,7 +57,7 @@ export const language = () => current;
 // among them); [] if none.
 let listP = null;
 export function languages() {
-    return listP || (listP = fetch('lang/index.json').then((r) => (r.ok ? r.json() : []), () => []).catch(() => []));
+    return listP || (listP = fetch('lang/index.json', {cache: 'no-cache'}).then((r) => (r.ok ? r.json() : []), () => []).catch(() => []));
 }
 
 // Among the site's languages, the one a code asks for ("pt-BR": pt-BR,
@@ -89,7 +89,7 @@ export function langFile(code) {
     if (!code || code === 'en')
         return Promise.resolve(null);
     if (!fileCache.has(code))
-        fileCache.set(code, fetch('lang/' + code + '.txt').then((r) => (r.ok ? r.arrayBuffer() : null))
+        fileCache.set(code, fetch('lang/' + code + '.txt', {cache: 'no-cache'}).then((r) => (r.ok ? r.arrayBuffer() : null))
             .then((b) => (b ? new Uint8Array(b) : null), () => null));
     return fileCache.get(code);
 }

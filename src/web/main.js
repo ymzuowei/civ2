@@ -923,6 +923,10 @@ async function play(store) {
     // (the platform's log: ?log, in the console)
     // (Auto, the system's language: English)
     const env = {CIV2_DATA: DATA, CIV2_SYSTEM_LANG: 'en'};
+    if (query.get('customLang') !== '1')
+        env.CIV2_PREFER_SITE_LANG = '1';
+    if (query.get('langTrace') === '1')
+        env.CIV2_LANG_TRACE = '1';
     // If the user's browser denied the Play gesture, do not give the AVI a
     // permanently suspended audio clock. The existing native no-sound
     // fallback keeps the *movie* running on wall time (no silent movie skip).

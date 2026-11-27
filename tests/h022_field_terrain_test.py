@@ -19,9 +19,14 @@ class FieldTerrainTests(unittest.TestCase):
         self.assertIn("hd_art && (terrain == TERRAIN_GRASSLAND || terrain == TERRAIN_PLAINS)",helper)
         self.assertLess(helper.index("hd_field_overlay(sprite,opacity,"),helper.index("sprite->draw("))
         self.assertLess(helper.index("sprite->draw("),helper.index("hd_field_overlay(NULL,255,0xffffffu)"))
-        self.assertIn("terrain == TERRAIN_GRASSLAND ? 0xd0ffe8u : 0xffe0b8u",helper)
-        self.assertEqual(src.count("terrain2,191);"),2)
-        self.assertEqual(src.count("terrain2,166);"),1)
+        self.assertIn("bool farmland",helper)
+        self.assertIn("? (farmland ? 0xf0ffc0u : 0xd0ffe8u) : 0xffe0b8u",helper)
+        self.assertIn("hd_field_overlay(sprite,opacity,rgb)",helper)
+        self.assertEqual(src.count("terrain2,191,true);"),2)
+        self.assertEqual(src.count("terrain2,166,false);"),1)
+        self.assertIn("farmland_sprite,(RECT *)farmland_rect,surface,screen_x,screen_y,terrain2,191,true);",src)
+        self.assertIn("farmland_sprite,(RECT *)farm_rect,surface,screen_x,screen_y,terrain2,191,true);",src)
+        self.assertIn("land_improvement_sprites[0],(RECT *)irrig_rect,surface,screen_x,screen_y,terrain2,166,false);",src)
 
     def test_premultiplied_channels_and_scoped_hd_only_path(self):
         src = (ROOT / "src/platform/hd.c").read_text(encoding="utf-8")
@@ -47,9 +52,9 @@ class FieldTerrainTests(unittest.TestCase):
         self.assertEqual(composite((0,0,0,0),a,166),a)
 
     def test_field_rgb_distinction_without_alpha_or_texture_replacement(self):
-        grass, plains = (208,255,232),(255,224,184)
+        grass_irrig, grass_farm, plains = (208,255,232),(240,255,192),(255,224,184)
         pixel, base = (255,150,150,100),(120,140,80)
-        for opacity in (166,191):
+        for opacity,grass in ((166,grass_irrig),(191,grass_farm)):
             g,p = composite(pixel,base,opacity,grass), composite(pixel,base,opacity,plains)
             self.assertGreater(g[1]-g[0],p[1]-p[0])
             for rgb in (grass,plains):
@@ -58,6 +63,17 @@ class FieldTerrainTests(unittest.TestCase):
                 for alpha in (0,1,64,128,255):
                     result = scaled((alpha,alpha,alpha//2,alpha),opacity,rgb)
                     self.assertTrue(all(0 <= c <= result[0] for c in result[1:]))
+
+    def test_grassland_farmland_warms_without_replacing_green_identity(self):
+        irrig, farm, plains = (208,255,232),(240,255,192),(255,224,184)
+        pixel, base = (255,150,150,100),(120,140,80)
+        # Isolate the color change at identical opacity and source pixels.
+        old, new = composite(pixel,base,191,irrig), composite(pixel,base,191,farm)
+        self.assertGreater(new[0],old[0])
+        self.assertEqual(new[1],old[1])
+        self.assertLess(new[2],old[2])
+        self.assertGreater(new[1]-new[0],composite(pixel,base,191,plains)[1]-composite(pixel,base,191,plains)[0])
+        self.assertEqual(scaled(pixel,191,farm)[0],scaled(pixel,191,irrig)[0])
 
 if __name__ == "__main__":
     unittest.main()

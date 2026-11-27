@@ -65,9 +65,10 @@ int hd_sprite_as(const void *sprite, unsigned handle, const char *key, int conta
    hd_bits_shown or to show enlarged). */
 enum { HD_SPRITES_GREY = 1, HD_SPRITES_OFF = 2 };
 void hd_sprite_mode(int mode);
-/* HD-only field layer opacity for the matching sprite during one draw.
-   NULL, 255 restores normal rendering; no changes to classic pixels. */
-void hd_field_overlay(const void *sprite, unsigned int opacity);
+/* HD-only field layer opacity and per-channel RGB scales (0xRRGGBB)
+   for the matching sprite during one draw. NULL,255,0xffffff restores
+   normal rendering; no changes to classic pixels. */
+void hd_field_overlay(const void *sprite, unsigned int opacity, unsigned int rgb_scale);
 /* The sprite (its data handle) is drawn from a picture of the pack. */
 int hd_sprite_pictured(const void *sprite, unsigned handle);
 /* The game's pixels in the rectangle: into the plane, enlarged where they

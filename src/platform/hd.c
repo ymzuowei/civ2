@@ -568,9 +568,12 @@ static void commit_rect(Bitmap *b, int l, int t, int r, int bot)
    physical rectangle; tint: in that colour (0xRRGGBB), -1 as they are;
    pixels scaled (nearest) when pw x ph is not w x h. */
 static void paint_opacity(Bitmap *b, const uint32_t *px, int pw, int ph, int x, int y, int w, int h, int l, int t, int r,
-                          int bot, int64_t tint, unsigned int opacity)
+                          int bot, int64_t tint, unsigned int opacity, unsigned int rgb_scale)
 {
     int d = hd_density, pitch = b->w * d, i, j;
+    const unsigned int red_scale = opacity * ((rgb_scale >> 16) & 255) / 255;
+    const unsigned int green_scale = opacity * ((rgb_scale >> 8) & 255) / 255;
+    const unsigned int blue_scale = opacity * (rgb_scale & 255) / 255;
     if (l < x) l = x;
     if (t < y) t = y;
     if (r > x + w) r = x + w;
@@ -591,10 +594,10 @@ static void paint_opacity(Bitmap *b, const uint32_t *px, int pw, int ph, int x, 
                     (((uint32_t)(tint >> 8) & 255) * a / 255) << 8 | ((uint32_t)tint & 255) * a / 255;
             /* H022: scale every premultiplied channel, not alpha alone.
                Cached picture bytes remain unchanged. */
-            if (opacity != 255) {
+            if (opacity != 255 || rgb_scale != 0xffffffu) {
                 a = a * opacity / 255;
-                s = a << 24 | (((s >> 16) & 255) * opacity / 255) << 16 |
-                    (((s >> 8) & 255) * opacity / 255) << 8 | ((s & 255) * opacity / 255);
+                s = a << 24 | (((s >> 16) & 255) * red_scale / 255) << 16 |
+                    (((s >> 8) & 255) * green_scale / 255) << 8 | ((s & 255) * blue_scale / 255);
             }
             if (a == 255) {
                 out[i] = s | 0xff000000u;
@@ -611,7 +614,7 @@ static void paint_opacity(Bitmap *b, const uint32_t *px, int pw, int ph, int x, 
 static void paint(Bitmap *b, const uint32_t *px, int pw, int ph, int x, int y, int w, int h, int l, int t, int r,
                   int bot, int64_t tint)
 {
-    paint_opacity(b, px, pw, ph, x, y, w, h, l, t, r, bot, tint, 255);
+    paint_opacity(b, px, pw, ph, x, y, w, h, l, t, r, bot, tint, 255, 0xffffffu);
 }
 
 /* Copies the plane's rectangle (sw x sh at sx, sy of src) to dst's at x, y
@@ -1323,10 +1326,12 @@ static int sprite_mode;         /* hd_sprite_mode */
 /* H022: one explicitly scoped sprite, no image copies or cache entries. */
 static const void *field_sprite;
 static unsigned int field_opacity = 255;
-void hd_field_overlay(const void *sprite, unsigned int opacity)
+static unsigned int field_rgb_scale = 0xffffffu;
+void hd_field_overlay(const void *sprite, unsigned int opacity, unsigned int rgb_scale)
 {
     field_sprite = sprite;
     field_opacity = opacity > 255 ? 255 : opacity;
+    field_rgb_scale = rgb_scale & 0xffffffu;
 }
 
 static Spr *lookup(const void *s, unsigned handle)
@@ -1563,9 +1568,10 @@ void hd_sprite_end(const void *s, unsigned handle, void *bits, int x, int y, int
         if (pw > 0 && ph > 0 && (px = picture(id, pw, ph, p->opaque, NULL))) {
             if (sprite_mode == HD_SPRITES_GREY && tint < 0 && (grey = greyed(px, pw * ph)))
                 px = grey;
-            if (hd_art && s == field_sprite && field_opacity != 255)
+            if (hd_art && s == field_sprite && (field_opacity != 255 || field_rgb_scale != 0xffffffu))
                 paint_opacity(b, px, pw, ph, px0, py0, pw, ph, clip[0] * d, clip[1] * d,
-                              clip[2] * d, clip[3] * d, tint, field_opacity);
+                              clip[2] * d, clip[3] * d, tint, field_opacity,
+                              sprite_mode == HD_SPRITES_GREY || tint >= 0 ? 0xffffffu : field_rgb_scale);
             else
                 paint(b, px, pw, ph, px0, py0, pw, ph, clip[0] * d, clip[1] * d, clip[2] * d, clip[3] * d, tint);
             free(grey);

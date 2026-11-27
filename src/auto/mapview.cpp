@@ -1549,9 +1549,13 @@ static void draw_field_overlay(Sprite *sprite, RECT *rect, DibSurface *surface,
                                int x, int y, uint terrain, unsigned int opacity)
 {
   const bool adjust = hd_art && (terrain == TERRAIN_GRASSLAND || terrain == TERRAIN_PLAINS);
-  if (adjust) hd_field_overlay(sprite,opacity);
+  if (adjust) {
+    /* Keep field texture; grassland leans green, plains warm ochre.
+       RGB scales only reduce premultiplied channels, preserving alpha. */
+    hd_field_overlay(sprite,opacity,terrain == TERRAIN_GRASSLAND ? 0xd0ffe8u : 0xffe0b8u);
+  }
   sprite->draw(rect,surface,x,y);
-  if (adjust) hd_field_overlay(NULL,255);
+  if (adjust) hd_field_overlay(NULL,255,0xffffffu);
 }
 
 /* Part of MapView::draw_tile_terrain (0047a8c9): a land tile: the base terrain dithered with

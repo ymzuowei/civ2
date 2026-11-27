@@ -3,7 +3,7 @@
 //   tools/toolchain/node/bin/node src/web/test/unit.mjs
 import assert from 'node:assert/strict';
 import {vkOf, Wheel, desktopScale, desktopUiScale, initialDesktopGeometry, argbToRgba, liveDesktopResize, canvasFitSize, displayModeFromSearch, enqueueInput, audioContextCanSchedule, queuedAudioBytes} from '../host.js';
-import {MemFS, makeWasi, normalize} from '../wasi.js';
+import {MemFS, makeWasi, normalize, createAssetTrace} from '../wasi.js';
 import {createAudioVolume, audioLabels} from '../audio_volume.js';
 import {TOOLBAR_KEY, createToolbarCollapse, toolbarLabels} from '../toolbar.js';
 import {TERRAIN_ROWS, guideRows, guideLabels, specialTile, improvementTile, hdKey} from '../terrain_guide.js';
@@ -493,6 +493,53 @@ assert.equal(wasi.fd_close(v.getUint32(2000, true)), 0);
 assert.equal(new TextDecoder().decode(fs.get('/civ2/20261121/_AUTO.SAV')), 'saved!');
 // The folder remains addressable after a manual save.
 assert.deepEqual(fs.list('/civ2/20261121').map(([name]) => name), ['_AUTO.SAV']);
+
+// T015: exact WASI observation semantics on synthetic files only.
+const assetFS = new MemFS();
+assetFS.put('/civ2/RULES.TXT', new Uint8Array([1, 2, 3]));
+assetFS.put('/civ2/private-name.SAV', new Uint8Array([9]));
+assetFS.put('/civ2/private-campaign/RULES.TXT', new Uint8Array([8]));
+assetFS.putSource('/civ2/Video/OPENING.AVI', 2, () => { throw Error('synthetic I/O'); });
+assetFS.assetTrace = createAssetTrace();
+const assetWasi = makeWasi(assetFS, [], {}, () => mem, () => {});
+const assetOpen = (name, flags = 0, rights = 2n) =>
+    assetWasi.path_open(3, 0, 1000, str(1000, name), flags, rights, 0n, 0, 2000);
+assert.equal(assetWasi.path_filestat_get(3, 0, 1000, str(1000, 'civ2/RULES.TXT'), 5000), 0);
+assert.equal(assetOpen('civ2/RULES.TXT'), 0);
+let assetFd = v.getUint32(2000, true);
+v.setUint32(3000, 4000, true); v.setUint32(3004, 3, true);
+assert.equal(assetWasi.fd_read(assetFd, 3000, 1, 3010), 0);
+assert.equal(assetWasi.fd_read(assetFd, 3000, 1, 3010), 0); // EOF
+assert.equal(v.getUint32(3010, true), 0);
+assert.equal(assetWasi.fd_close(assetFd), 0);
+assert.equal(assetOpen('civ2/TILES.DLL'), 44);
+assert.equal(assetWasi.path_filestat_get(3, 0, 1000, str(1000, 'civ2/TILES.DLL'), 5000), 44);
+assert.equal(assetOpen('civ2/Video/OPENING.AVI'), 0);
+assetFd = v.getUint32(2000, true);
+assert.equal(assetWasi.fd_read(assetFd, 3000, 1, 3010), 29);
+assert.equal(assetWasi.fd_close(assetFd), 0);
+for (const name of ['civ2/private-name.SAV', 'civ2/private-campaign/RULES.TXT']) {
+    assert.equal(assetOpen(name), 0);
+    assetFd = v.getUint32(2000, true);
+    assert.equal(assetWasi.fd_read(assetFd, 3000, 1, 3010), 0);
+    assert.equal(assetWasi.fd_close(assetFd), 0);
+}
+assert.equal(assetOpen('civ2/RULES.TXT', 0, 66n), 0); // read-write: not a read-only observation
+assetFd = v.getUint32(2000, true);
+assert.equal(assetWasi.fd_read(assetFd, 3000, 1, 3010), 0);
+assert.equal(assetWasi.fd_close(assetFd), 0);
+const traceCounts = assetFS.assetTrace.snapshot().counts;
+assert.deepEqual(traceCounts['game:rules.txt'], {statHit: 1, statMiss: 0, openHit: 1, openMiss: 0, positiveRead: 1});
+assert.deepEqual(traceCounts['game:tiles.dll'], {statHit: 0, statMiss: 1, openHit: 0, openMiss: 1, positiveRead: 0});
+assert.equal(traceCounts['game:video/opening.avi'].positiveRead, 0);
+assert.equal(Object.keys(traceCounts).length, 3);
+assert.equal(JSON.stringify(traceCounts).includes('private'), false);
+traceCounts['game:rules.txt'].positiveRead = 0;
+assert.equal(assetFS.assetTrace.snapshot().counts['game:rules.txt'].positiveRead, 1);
+for (let i = 0; i < 1000; i++) assetFS.assetTrace.record('/civ2/custom-' + i + '.txt', 'openMiss');
+assert.equal(Object.keys(assetFS.assetTrace.snapshot().counts).length, 4);
+assert.equal(assetFS.assetTrace.snapshot().counts['game:other-txt'].openMiss, 1000);
+assert.equal(fs.assetTrace, undefined); // original tests cover disabled behavior
 
 // exit
 assert.throws(() => wasi.proc_exit(3), (e) => e.code === 3);

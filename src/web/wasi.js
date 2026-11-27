@@ -84,9 +84,76 @@ export class MemFS {
     }
 }
 
+// T015: a fixed, privacy-safe observation vocabulary. No arbitrary paths,
+// payloads, file sizes, save names, storage, console or network reporting.
+const assetProbes = new Set(['rules.txt', 'civ2art.dll', 'tiles.dll',
+    'terrain1.gif', 'terrain2.gif', 'civ2.exe']);
+const assetKinds = new Set(['dll', 'exe', 'txt', 'gif', 'bmp', 'pcx', 'avi',
+    'wav', 'ogg', 'mid', 'flc', 'fli', 'ico', 'cur', 'pack']);
+const assetEvents = new Set(['statHit', 'statMiss', 'openHit', 'openMiss', 'positiveRead']);
+
+function assetClass(path) {
+    const p = path.toLowerCase();
+    const parts = p.split('/');
+    if (parts[0] !== '' || parts.length < 3)
+        return null;
+    const [_, root, name, child] = parts;
+    // Only root game assets or one recognized media directory. Never
+    // expose scenario, campaign, custom directory or arbitrary filenames.
+    if (root === 'civ2') {
+        if (parts.length === 3 && assetProbes.has(name))
+            return 'game:' + name;
+        if (p === '/civ2/video/opening.avi')
+            return 'game:video/opening.avi';
+        if (parts.length !== 3 &&
+            !(parts.length === 4 && ['video', 'sound', 'music'].includes(name)))
+            return null;
+        const ext = (child || name).split('.').pop();
+        return assetKinds.has(ext) && (child || name).includes('.') ?
+            'game:other-' + ext : null;
+    }
+    if (root === 'data') {
+        if (p === '/data/hd/atlas-hd.pack')
+            return 'site:hd-atlas';
+        if (parts.length === 3 && ['fonts_win.bin', 'fonts_win_aa.bin'].includes(name))
+            return 'site:base-font';
+        if (parts.length === 4 && ['text', 'lang', 'fonts'].includes(name))
+            return 'site:' + name;
+    }
+    return null;
+}
+
+// A fixed finite vocabulary bounds memory independent of gameplay time.
+// Counters saturate rather than losing integer precision. The snapshot is
+// detached from mutable counters and is never persisted or sent anywhere.
+export function createAssetTrace() {
+    const counts = new Map();
+    return {
+        record(path, event) {
+            if (!assetEvents.has(event))
+                return;
+            const key = assetClass(path);
+            if (!key)
+                return;
+            let row = counts.get(key);
+            if (!row) {
+                row = {statHit: 0, statMiss: 0, openHit: 0, openMiss: 0, positiveRead: 0};
+                counts.set(key, row);
+            }
+            row[event] = Math.min(Number.MAX_SAFE_INTEGER, row[event] + 1);
+        },
+        snapshot() {
+            return {schema: 1, scope: 'OBSERVED_WASI_OPERATIONS_NOT_REQUIRED_ASSETS',
+                counts: Object.fromEntries([...counts.entries()].sort(([a], [b]) =>
+                    a < b ? -1 : a > b ? 1 : 0).map(([key, row]) => [key, {...row}]))};
+        }
+    };
+}
+
 // The WASI imports over fs; env: {NAME: value}; args: strings.  memory()
 // returns the module's memory (known once it is instantiated).
 export function makeWasi(fs, args, env, memory, log = (fd, s) => (fd === 2 ? console.warn : console.log)(s)) {
+    const trace = fs.assetTrace; // absent in ordinary gameplay and setup
     const enc = new TextEncoder(), dec = new TextDecoder();
     const envs = Object.entries(env).map(([k, v]) => k + '=' + v);
     // descriptors: 0-2 the console, 3 the root ("/"), then files and directories
@@ -223,9 +290,12 @@ export function makeWasi(fs, args, env, memory, log = (fd, s) => (fd === 2 ? con
                 return 0;
             }
             const f = fs.files.get(p);
-            if (!f)
+            if (!f) {
+                if (trace) trace.record(p, 'statMiss');
                 return W.NOENT;
+            }
             putStat(buf, false, f.size, f.mtime);
+            if (trace) trace.record(p, 'statHit');
             return 0;
         },
         path_open(dirfd, dirflags, path, len, oflags, rights, inheriting, fdflags, out) {
@@ -240,6 +310,8 @@ export function makeWasi(fs, args, env, memory, log = (fd, s) => (fd === 2 ? con
                 return 0;
             }
             const creat = oflags & 1, directory = oflags & 2, excl = oflags & 4, trunc = oflags & 8;
+            const observedRead = trace && !creat && !directory && !excl && !trunc &&
+                (rights & 2n) !== 0n && (rights & 64n) === 0n;
             if (directory || (!creat && fs.dirs.has(p))) {
                 if (!fs.dirs.has(p))
                     return fs.files.has(p) ? W.NOTDIR : W.NOENT;
@@ -255,8 +327,10 @@ export function makeWasi(fs, args, env, memory, log = (fd, s) => (fd === 2 ? con
             if (file && creat && excl)
                 return W.EXIST;
             if (!file) {
-                if (!creat)
+                if (!creat) {
+                    if (observedRead) trace.record(p, 'openMiss');
                     return W.NOENT;
+                }
                 if (!fs.dirs.has(parent(p)))
                     return W.NOENT;
                 file = {data: new Uint8Array(0), size: 0, mtime: Date.now()};
@@ -275,6 +349,10 @@ export function makeWasi(fs, args, env, memory, log = (fd, s) => (fd === 2 ? con
             if (fd < 0)
                 return W.MFILE;
             dv().setUint32(out, fd, true);
+            if (observedRead) {
+                fds[fd].assetRead = true;
+                trace.record(p, 'openHit');
+            }
             return 0;
         },
         fd_close(fd) {
@@ -315,6 +393,8 @@ export function makeWasi(fs, args, env, memory, log = (fd, s) => (fd === 2 ? con
                 }
             }
             dv().setUint32(done, total, true);
+            if (trace && f.assetRead && total > 0)
+                trace.record(f.path, 'positiveRead');
             return 0;
         },
         fd_write(fd, iov, n, done) {

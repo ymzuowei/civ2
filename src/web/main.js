@@ -1,7 +1,7 @@
 // The page: the player's game files (chosen once, kept in IndexedDB), then
 // the game (host.js) on the canvas.
 
-import {MemFS} from './wasi.js';
+import {MemFS, createAssetTrace} from './wasi.js';
 import {GRAPHICS_PREFERENCE_KEY, resolveGraphicsPreference, graphicsFromQuery, hdArg} from './graphics_choice.js';
 import {runGame} from './host.js';
 import {createAudioVolume, audioLabels} from './audio_volume.js';
@@ -949,6 +949,14 @@ async function play(store) {
     const councilTrace = new URLSearchParams(location.search).get('councilTrace') === '1';
     const memoryTrace = new URLSearchParams(location.search).get('memoryTrace') === '1';
     const perfTrace = new URLSearchParams(location.search).get('perfTrace') === '1';
+    // Local-only, explicit opt-in; attach only to the gameplay filesystem.
+    // The setup importer and IndexedDB persistence remain unchanged.
+    if (new URLSearchParams(location.search).get('assetTrace') === '1') {
+        fs.assetTrace = createAssetTrace();
+        window.civ2AssetTrace = () => fs.assetTrace.snapshot();
+    } else {
+        window.civ2AssetTrace = null;
+    }
     if (introDiagnose)
         env.CIV2_LOG_VIDEO = '1';
     if (councilTrace)

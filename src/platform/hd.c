@@ -1614,20 +1614,60 @@ int hd_picture_size(const char *key, int *w, int *h)
     return 1;
 }
 
-/* T015: only the explicitly reviewed INTRO.DLL whole-picture range.
- * No PE handle, resource ID global, sprite capture, or original image read.
- * The caller initializes the ordinary indexed surface and retains fallback.
- * Reject alpha or dimension mismatches rather than inventing a background. */
+/* T015: only the reviewed INTRO.DLL whole-picture range.
+ * Keep the premultiplied alpha plane and use the normal HD transfer path,
+ * just as hd_resource_loaded does. No fake PE, global module identity or
+ * original GIF read on success. Neutral backing is experimental. */
+enum IntroResult {
+    INTRO_DIRECT, INTRO_HD_OFF, INTRO_BAD_ID, INTRO_KEY_MISSING,
+    INTRO_SIZE_MISMATCH, INTRO_SURFACE, INTRO_PLANE, INTRO_DECODE,
+    INTRO_RESULT_COUNT
+};
+
+static void intro_report(int image_id, enum IntroResult result)
+{
+    static unsigned reported[INTRO_RESULT_COUNT];
+    static const char *const reasons[] = {
+        "DIRECT", "HD_OFF", "BAD_ID", "KEY_MISSING", "SIZE_MISMATCH",
+        "SURFACE", "PLANE", "DECODE"
+    };
+    unsigned slot = image_id >= 1 && image_id <= 13 ? (unsigned)image_id : 0;
+    if (reported[result] & (1u << slot))
+        return;
+    reported[result] |= 1u << slot;
+    if (result == INTRO_DIRECT)
+        plat_log("CIV2_T015_INTRO_ATLAS_DIRECT id=%u\n", slot + 900);
+    else
+        plat_log("CIV2_T015_INTRO_ATLAS_FALLBACK id=%u reason=%s\n", slot + 900, reasons[result]);
+}
+
+void hd_intro_surface_failed(int image_id)
+{
+    intro_report(image_id, INTRO_SURFACE);
+}
+
 static int intro_picture_id(int image_id, int w, int h)
 {
     char key[64];
     int id;
-    if (!hd_on || !hd_art || image_id < 1 || image_id > 13 || w <= 0 || h <= 0)
+    if (!hd_on || !hd_art) {
+        intro_report(image_id, INTRO_HD_OFF);
         return 0;
+    }
+    if (image_id < 1 || image_id > 13) {
+        intro_report(image_id, INTRO_BAD_ID);
+        return 0;
+    }
     snprintf(key, sizeof key, "resource/intro.dll/gifs/%d", image_id + 900);
     id = find(key);
-    if (!id || entries[id - 1].w != (unsigned)w || entries[id - 1].h != (unsigned)h)
+    if (!id) {
+        intro_report(image_id, INTRO_KEY_MISSING);
         return 0;
+    }
+    if (w <= 0 || h <= 0 || entries[id - 1].w != (unsigned)w || entries[id - 1].h != (unsigned)h) {
+        intro_report(image_id, INTRO_SIZE_MISMATCH);
+        return 0;
+    }
     return id;
 }
 
@@ -1641,20 +1681,31 @@ int hd_intro_picture(void *bits, int image_id, int w, int h)
     Bitmap *b = bmp_of_bits(bits);
     int id = intro_picture_id(image_id, w, h), solid = 0, d = hd_density;
     const uint32_t *px;
-    static unsigned reported;
-    if (!id || !b || b->bpp != 8 || b->h != h || b->w < w || b->w - w > 3 ||
-        d < 1 || d > 4 || !plane(b))
+    if (!id)
         return 0;
+    if (!b || b->bpp != 8 || b->h != h || b->w < w || b->w - w > 3 ||
+        d < 1 || d > 4) {
+        intro_report(image_id, INTRO_SURFACE);
+        return 0;
+    }
+    if (!plane(b)) {
+        intro_report(image_id, INTRO_PLANE);
+        return 0;
+    }
     px = picture(id, w * d, h * d, 0, &solid);
-    if (!px || !solid)
+    if (!px) {
+        intro_report(image_id, INTRO_DECODE);
         return 0;
+    }
+    reloaded(b);
+    /* This helper is a clipped raw pixel copy, not an alpha blend.
+     * Preserve all premultiplied pixels including fully transparent ones.
+     * transfer() subsequently blends the source onto the destination. */
     paint_solid_picture(b, px, w * d, h * d, 0, 0);
+    b->hd_alpha = !solid;
     commit_rect(b, 0, 0, b->w, b->h);
     b->hd_own = 1;
-    if (!(reported & (1u << image_id))) {
-        reported |= 1u << image_id;
-        plat_log("CIV2_T015_INTRO_ATLAS_DIRECT id=%d\n", image_id + 900);
-    }
+    intro_report(image_id, INTRO_DIRECT);
     return 1;
 }
 

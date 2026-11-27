@@ -3408,24 +3408,34 @@ void __cdecl setup_picwnd_load_image(i32 width,i32 height)
   palette.init();
   ON_SCOPE_EXIT(palette.destroy());
   win_flush_pending_msgs();
-  // T015: explicit experimental provider for setup side pictures only.
-  // Keep the original module lifecycle, RNG/palette setup and classic fallback.
+  // T015: keep the original temporary surface and the shared HD blit.
+  // The independent source has neutral palette-index-0 backing, not the
+  // original GIF's indexed pixels; transparent areas must be compared in UAT.
   const char *intro_atlas = getenv("CIV2_T015_INTRO_ATLAS");
   const int image_id = setup_picwnd_state.image_id;
-  if (intro_atlas && strcmp(intro_atlas,"1") == 0 && hd_art &&
-      image_id >= 1 && image_id <= 13 && hd_intro_picture_size(image_id,width,height)) {
-    DibSurface *dest = (DibSurface *)&setup_picwnd_state.surface;
-    dest->DibSurface::create(width,height);
-    dest->set_palette(&palette);
-    dest->fill(0);
-    if (hd_intro_picture((void *)dest->bits,image_id,width,height)) {
-      win_flush_pending_msgs();
-      return;
+  int direct = 0;
+  if (intro_atlas && strcmp(intro_atlas,"1") == 0 &&
+      hd_intro_picture_size(image_id,width,height)) {
+    RECT rect;
+    SetRect(&rect,0,0,width,height);
+    if (surface.alloc_dib8(&rect) && surface.bits) {
+      surface.set_palette(&palette);
+      surface.fill(0);
+      direct = hd_intro_picture((void *)surface.bits,image_id,width,height);
+    } else {
+      hd_intro_surface_failed(image_id);
     }
-    // A failed direct attempt never leaves a partial substitute: the
-    // original path below recreates the destination before copying.
   }
-  surface.load_gif_resource(setup_picwnd_state.image_id + 900,10,0xc0,&palette);
+  if (direct) {
+    // Original successful GIF palette.set_rgb calls commit_range/new_version
+    // once. Match that RNG-consuming call only after direct preparation
+    // succeeds; a fallback must not consume it twice. This is call-count
+    // parity, not yet proof of full RNG trace or message-pump equivalence.
+    palette.new_version();
+    surface.set_palette(&palette);
+  } else {
+    surface.load_gif_resource(setup_picwnd_state.image_id + 900,10,0xc0,&palette);
+  }
   win_flush_pending_msgs();
   ((DibSurface *)((i8 *)&setup_picwnd_state.surface))->DibSurface::create(width,height);
   gfx_copy_rect_same_pos(&surface,(DibSurface *)&setup_picwnd_state.surface,0,0,width,height);

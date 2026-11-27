@@ -957,6 +957,8 @@ async function play(store) {
     } else {
         window.civ2AssetTrace = null;
     }
+    if (query.get('introAtlas') === '1')
+        env.CIV2_T015_INTRO_ATLAS = '1';
     if (introDiagnose)
         env.CIV2_LOG_VIDEO = '1';
     if (councilTrace)

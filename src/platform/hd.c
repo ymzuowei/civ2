@@ -1614,6 +1614,50 @@ int hd_picture_size(const char *key, int *w, int *h)
     return 1;
 }
 
+/* T015: only the explicitly reviewed INTRO.DLL whole-picture range.
+ * No PE handle, resource ID global, sprite capture, or original image read.
+ * The caller initializes the ordinary indexed surface and retains fallback.
+ * Reject alpha or dimension mismatches rather than inventing a background. */
+static int intro_picture_id(int image_id, int w, int h)
+{
+    char key[64];
+    int id;
+    if (!hd_on || !hd_art || image_id < 1 || image_id > 13 || w <= 0 || h <= 0)
+        return 0;
+    snprintf(key, sizeof key, "resource/intro.dll/gifs/%d", image_id + 900);
+    id = find(key);
+    if (!id || entries[id - 1].w != (unsigned)w || entries[id - 1].h != (unsigned)h)
+        return 0;
+    return id;
+}
+
+int hd_intro_picture_size(int image_id, int w, int h)
+{
+    return intro_picture_id(image_id, w, h) != 0;
+}
+
+int hd_intro_picture(void *bits, int image_id, int w, int h)
+{
+    Bitmap *b = bmp_of_bits(bits);
+    int id = intro_picture_id(image_id, w, h), solid = 0, d = hd_density;
+    const uint32_t *px;
+    static unsigned reported;
+    if (!id || !b || b->bpp != 8 || b->h != h || b->w < w || b->w - w > 3 ||
+        d < 1 || d > 4 || !plane(b))
+        return 0;
+    px = picture(id, w * d, h * d, 0, &solid);
+    if (!px || !solid)
+        return 0;
+    paint_solid_picture(b, px, w * d, h * d, 0, 0);
+    commit_rect(b, 0, 0, b->w, b->h);
+    b->hd_own = 1;
+    if (!(reported & (1u << image_id))) {
+        reported |= 1u << image_id;
+        plat_log("CIV2_T015_INTRO_ATLAS_DIRECT id=%d\n", image_id + 900);
+    }
+    return 1;
+}
+
 int hd_picture(void *bits, const char *key, double x, double y, double w, double h, int contain)
 {
     Bitmap *b;

@@ -1,6 +1,7 @@
 /* The game, setting up a game: the new-game, scenario, hot-seat, network and play-by-email dialogs: functions translated from the original
  * (tools/gen_c.py, now edited directly), in address order. */
 #include "auto_common.h"
+#include "../platform/hd.h"
 
 /* 00419170 auto */
 i32 __cdecl setup_hotseat_game(void)
@@ -3407,6 +3408,23 @@ void __cdecl setup_picwnd_load_image(i32 width,i32 height)
   palette.init();
   ON_SCOPE_EXIT(palette.destroy());
   win_flush_pending_msgs();
+  // T015: explicit experimental provider for setup side pictures only.
+  // Keep the original module lifecycle, RNG/palette setup and classic fallback.
+  const char *intro_atlas = getenv("CIV2_T015_INTRO_ATLAS");
+  const int image_id = setup_picwnd_state.image_id;
+  if (intro_atlas && strcmp(intro_atlas,"1") == 0 && hd_art &&
+      image_id >= 1 && image_id <= 13 && hd_intro_picture_size(image_id,width,height)) {
+    DibSurface *dest = (DibSurface *)&setup_picwnd_state.surface;
+    dest->DibSurface::create(width,height);
+    dest->set_palette(&palette);
+    dest->fill(0);
+    if (hd_intro_picture((void *)dest->bits,image_id,width,height)) {
+      win_flush_pending_msgs();
+      return;
+    }
+    // A failed direct attempt never leaves a partial substitute: the
+    // original path below recreates the destination before copying.
+  }
   surface.load_gif_resource(setup_picwnd_state.image_id + 900,10,0xc0,&palette);
   win_flush_pending_msgs();
   ((DibSurface *)((i8 *)&setup_picwnd_state.surface))->DibSurface::create(width,height);

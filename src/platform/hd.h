@@ -97,6 +97,9 @@ void hd_copy_end(void *dst_bits, void *src_bits, int dx, int dy, int sx, int sy,
 int hd_picture(void *bits, const char *key, double x, double y, double w, double h, int contain);
 /* The pack's picture's proportions (its size in the game's pixels): 0 none. */
 int hd_picture_size(const char *key, int *w, int *h);
+/* T015 experimental whole opaque setup picture, exact logical dimensions. */
+int hd_intro_picture_size(int image_id, int w, int h);
+int hd_intro_picture(void *bits, int image_id, int w, int h);
 /* A rectangle of colour 0xAARRGGBB (AA the opacity) over the plane. */
 void hd_picture_fill(void *bits, double x, double y, double w, double h, unsigned int argb);
 /* Done: the game's pixels as they are now are shown as the plane has them,

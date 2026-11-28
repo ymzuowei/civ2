@@ -188,9 +188,10 @@ import {createCouncilNativeTrial} from './council_native_trial.js';
 export async function runGame(opts) {
     const {canvas, fs} = opts;
     const councilTrace = !!opts.councilTrace;
-    const councilTrial = createCouncilNativeTrial(opts.councilClip || null);
-    opts.councilClip = null;
-    const councilStats=()=>{if(opts.stats)opts.stats.councilShadow=councilTrial.stats();};
+    let councilTrial;
+    const councilStats=()=>{if(opts.stats&&councilTrial)opts.stats.councilShadow=councilTrial.stats();};
+    councilTrial=createCouncilNativeTrial(opts.councilClip||null,{onChange:councilStats});
+    opts.councilClip=null;
     const closeCouncil=()=>{councilTrial.close();councilStats();};
     councilStats();
     const memoryTrace = !!opts.memoryTrace;
@@ -856,11 +857,10 @@ export async function runGame(opts) {
                 return councilTrial.open(wasm32Bytes(memory, ptr, len)).then(ok => () => {councilStats();return ok?1:0;});
             } catch (_) { councilTrial.close(); return 0; }
         },
-        host_council_frame: (frame, last, ptr, capacity) => {
-            if (!councilTrial.active()) return 0;
-            return councilTrial.prepare(frame >>> 0, last >>> 0).then(ticket => () => {
-                const ok=councilTrial.commit(ticket,memory,ptr>>>0,capacity>>>0);councilStats();return ok?1:0;
-            });
+        host_council_frame: (frame,last,width,height) => {
+            const ok=councilTrial.schedule(frame>>>0,last>>>0,width>>>0,height>>>0);
+            councilStats();
+            return ok?1:0;
         },
         host_opening_video: () => {
             if (typeof opts.openingVideo !== 'function' || openingActive) return 0;

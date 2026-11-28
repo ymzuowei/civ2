@@ -1,52 +1,75 @@
 import assert from 'node:assert/strict';
 import {createCouncilNativeTrial} from '../council_native_trial.js';
-const data=new Uint8Array([1,2,3]), sha='0'.repeat(64);
+const source=new Uint8Array([1,2,3]),payload=new Uint8Array([4,5,6]),sha='0'.repeat(64);
 const clip={scope:'COUNCIL0',shadowOnly:true,verified:true,sourceSha256:sha,derivedSha256:sha,
-    payload:data,table:{nativeStart:0,samples:[{}, {}, {}]}};
-function fixture(input=clip,digest=async()=>new Uint8Array(32).buffer){
-    let opens=0,closes=0,starts=0,commits=0;
+    payload,config:{codedWidth:2,codedHeight:2},
+    table:{nativeStart:0,samples:[{}, {}, {}]}};
+const settle=async()=>{for(let i=0;i<12;i++)await Promise.resolve();};
+function fixture(input=clip,digest=async()=>new Uint8Array(32).buffer,prepare=null){
+    let opens=0,closes=0,starts=0,discards=0;const frames=[];
     const makeBridge=()=>({open(){opens++;return true;},dispose(){closes++;},
-        startRange(){starts++;return true;},async prepare(){return {status:'ready',bytes:4};},
-        commit(){commits++;return true;}});
+        startRange(){starts++;return true;},
+        async prepare(frame){frames.push(frame);return prepare?prepare(frame):{status:'ready',bytes:16};},
+        discard(){discards++;return true;},stats(){return {closed:false};}});
     const trial=createCouncilNativeTrial(input,{makeBridge,digest});
-    return {trial,stats:()=>({opens,closes,starts,commits})};
+    return {trial,stats:()=>({opens,closes,starts,discards,frames:[...frames]})};
 }
 {
     const {trial,stats}=fixture(null);
     assert.equal(trial.available(),false);
-    assert.equal(await trial.open(data),false);
+    assert.equal(await trial.open(source),false);
     assert.equal(stats().opens,0);
 }
 {
     const {trial,stats}=fixture({...clip,sourceSha256:'f'.repeat(64)});
-    assert.equal(await trial.open(data),false);
+    assert.equal(await trial.open(source),false);
     assert.equal(stats().opens,0);
 }
 {
     const {trial,stats}=fixture();
-    assert.equal(await trial.open(data),true);
-    const t=await trial.prepare(0,2);
-    assert.equal(trial.commit(t,null,0,4),true);
-    await trial.prepare(1,2);
+    assert.equal(await trial.open(source),true);
+    assert.equal(trial.schedule(0,2,2,2),true);
+    await settle();
+    assert.deepEqual(stats().frames,[0]);
+    assert.equal(stats().discards,1);
+    assert.equal(trial.stats().frames,1);
+    assert.equal(trial.schedule(1,2,2,2),true);
+    await settle();
+    assert.deepEqual(stats().frames,[0,1]);
     assert.equal(stats().starts,1);
-    const stale=await trial.prepare(2,2);
+    assert.equal(trial.schedule(2,2,3,2),false);
     trial.close();
-    assert.equal(trial.commit(stale,null,0,4),false);
     assert.equal(stats().closes,1);
-    trial.dispose();assert.equal(trial.available(),false);
+    assert.equal(trial.stats().active,0);
+    trial.dispose();assert.equal(trial.stats().sharedClipBytes,0);
 }
 {
     let resolve;
-    const {trial,stats}=fixture(clip,()=>new Promise(r=>{resolve=r;}));
-    const opening=trial.open(data);trial.dispose();resolve(new Uint8Array(32).buffer);
-    assert.equal(await opening,false);assert.equal(stats().opens,0);
+    const {trial,stats}=fixture(clip,async()=>new Uint8Array(32).buffer,
+        frame=>frame===0?new Promise(r=>{resolve=r;}):{status:'ready',bytes:16});
+    assert.equal(await trial.open(source),true);
+    assert.equal(trial.schedule(0,2,2,2),true);
+    assert.equal(trial.schedule(1,2,2,2),true);
+    assert.equal(trial.schedule(2,2,2,2),true);
+    assert.equal(trial.stats().dropped,1);
+    resolve({status:'ready',bytes:16});
+    await settle();
+    assert.deepEqual(stats().frames,[0,2]);
+    assert.equal(trial.stats().frames,2);
+    trial.dispose();
 }
 {
-    const {trial,stats}=fixture();
-    assert.equal(await trial.open(data),true);
-    const t=await trial.prepare(0,2);
-    assert.equal(trial.commit(t,null,0,8),false);
-    assert.equal(trial.active(),false);
-    assert.equal(stats().commits,0);assert.equal(stats().closes,1);
+    let resolve;
+    const {trial}=fixture(clip,async()=>new Uint8Array(32).buffer,
+        ()=>new Promise(r=>{resolve=r;}));
+    assert.equal(await trial.open(source),true);
+    trial.schedule(0,2,2,2);
+    trial.close();
+    resolve({status:'ready',bytes:16});
+    await settle();
+    assert.equal(trial.stats().active,0);
+    assert.equal(trial.stats().sharedClipBytes,3);
+    trial.dispose();
+    assert.equal(trial.stats().sharedClipBytes,0);
 }
 console.log('CIV2_T025_COUNCIL_NATIVE_TRIAL_SOURCE=PASS');

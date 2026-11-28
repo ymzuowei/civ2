@@ -119,7 +119,7 @@ int HOST_API(host_restart)(int now);
 int HOST_API(host_opening_video)(void);
 /* T025 explicit Council0 shadow bridge; 0 leaves legacy rendering unchanged. */
 int HOST_API(host_council_open)(const void *source, uint32_t size);
-int HOST_API(host_council_frame)(uint32_t frame, uint32_t last, void *rgba, uint32_t capacity);
+int HOST_API(host_council_frame)(uint32_t frame, uint32_t last, uint32_t width, uint32_t height);
 void HOST_API(host_council_close)(void);
 #endif
 /* (port_main.c: the program's arguments, for host_restart; not an import) */

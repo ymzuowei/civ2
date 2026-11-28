@@ -71,8 +71,6 @@ typedef struct {
     int nstreams;
 #ifdef __wasm__
     int council_trial;
-    unsigned char *council_rgba;
-    uint32_t council_capacity;
 #endif
 } AviFile;
 
@@ -198,7 +196,6 @@ ULONG WINAPI AVIFileRelease(PAVIFILE pf)
     }
 #ifdef __wasm__
     if (a->council_trial) host_council_close();
-    free(a->council_rgba);
 #endif
     free(a->data);
     free(a);
@@ -227,30 +224,19 @@ HRESULT WINAPI AVIFileGetStream(PAVIFILE pf, PAVISTREAM *ps, DWORD type, LONG n)
 }
 
 #ifdef __wasm__
-/* First engine-connected trial: browser decode and bounded transfer after the
-   legacy visible frame. Do NOT alter the DIB or callbacks. */
+/* Schedule browser decode after the legacy visible frame. This import is
+   synchronous and non-blocking: the original AVI clock/DIB never waits for
+   WebCodecs. Only one bounded decode task is active; newer frames coalesce. */
 void plat_council_shadow_frame(PAVISTREAM ps, uint32_t frame, uint32_t last, int w, int h)
 {
     AviStreamRef *r = obj_get((Handle)ps, OBJ_AVISTREAM);
     AviFile *a = r ? r->file : NULL;
-    uint32_t need;
     if (!a || !a->council_trial) return;
-    if (w <= 0 || w > 1024 || h <= 0 || h > 768) goto fail;
-    need = (uint32_t)w * (uint32_t)h * 4;
-    if (!a->council_rgba) {
-        a->council_rgba = malloc(need);
-        if (!a->council_rgba) goto fail;
-        a->council_capacity = need;
+    if (w <= 0 || w > 1024 || h <= 0 || h > 768 ||
+        host_council_frame(frame, last, (uint32_t)w, (uint32_t)h) != 1) {
+        host_council_close();
+        a->council_trial = 0;
     }
-    if (need != a->council_capacity ||
-        host_council_frame(frame, last, a->council_rgba, need) != 1) goto fail;
-    return;
-fail:
-    host_council_close();
-    a->council_trial = 0;
-    free(a->council_rgba);
-    a->council_rgba = NULL;
-    a->council_capacity = 0;
 }
 #endif
 

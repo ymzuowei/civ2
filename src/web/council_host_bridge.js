@@ -1,6 +1,6 @@
-// Council-specific host bridge prototype, not wired to Native ABI yet.
-// Caller must verify source/derivative identity, actual opacity and geometry.
-// Two-phase prepare/commit: no WASM view held across an async operation.
+// Browser side of the Native Council0 shadow callback.
+// Exact source/derivative identity and decoder support are verified by the local pair loader.
+// Shadow-only: legacy visible composition remains authoritative; no alpha/opacity claim.
 import {createCouncilRange} from "./council_range_provider.js";
 
 export function createCouncilHostBridge({makeRange=createCouncilRange,makeCanvas=()=>document.createElement("canvas")}={}){
@@ -67,23 +67,16 @@ export function createCouncilHostBridge({makeRange=createCouncilRange,makeCanvas
                 return null;
             }finally{if(pending===job)pending=null;}
         },
-        // Called synchronously on the engine's resume path, using CURRENT memory.
-        // Writes only to a caller-owned RGBA scratch buffer, never directly to a DIB.
-        commit(ticket,memory,ptr,capacity){
-            if(!prepared||ticket?.epoch!==generation||ticket?.token!==prepared.token||
-                ticket.status!=="ready")return false;
-            const bytes=prepared.bytes;prepared=null;
-            if(!(memory instanceof WebAssembly.Memory)||!Number.isSafeInteger(ptr)||ptr<0||
-                !Number.isSafeInteger(capacity)||capacity<bytes.byteLength||
-                ptr>memory.buffer.byteLength-bytes.byteLength){
-                rejectToLegacy();return false;
-            }
-            try{new Uint8Array(memory.buffer,ptr,bytes.byteLength).set(bytes);return true;}
-            catch(_){rejectToLegacy();return false;}
+        // Drop the host-side RGBA readback after the shadow decode; no WASM copy.
+        discard(ticket){
+            if(!prepared||ticket?.epoch!==generation||ticket?.token!==prepared.token||ticket.status!=="ready")return false;
+            prepared=null;
+            return true;
         },
         close(){releaseClip();},
         dispose(){disposed=true;releaseClip();},
-        stats(){return {activeRange:range?1:0,pending:pending?1:0,preparedBytes:prepared?.bytes.byteLength??0,
-            clipBytes:clip?.payload.byteLength??0,canvasPixels:canvas?canvas.width*canvas.height:0,disposed};}
+        stats(){const r=range?.stats?.()??null;return {activeRange:range&&!r?.closed?1:0,pending:pending?1:0,
+            preparedBytes:prepared?.bytes.byteLength??0,clipBytes:clip?.payload.byteLength??0,
+            canvasPixels:canvas?canvas.width*canvas.height:0,range:r,disposed};}
     };
 }

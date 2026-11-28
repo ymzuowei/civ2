@@ -889,4 +889,5 @@ assert.equal(createAudioVolume({
 }).musicLevel, 100); // existing master-only installs migrated safely
 }
 
+await import('./opening_native.mjs');
 console.log('src/web unit tests passed');

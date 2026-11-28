@@ -48,6 +48,7 @@ export function createCouncilNativeTrial(input,{makeBridge=createCouncilHostBrid
         commit(value,memory,ptr,capacity){
             if(!value||value.ticket!==epoch||value.owner!==bridge)return false;
             if(value.ready.status==="unchanged")return true;
+            if(value.ready.bytes!==capacity){close();return false;}
             const ok=bridge.commit(value.ready,memory,ptr,capacity);
             if(!ok)close();
             return ok;

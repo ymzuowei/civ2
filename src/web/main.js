@@ -4,6 +4,7 @@
 import {MemFS} from './wasi.js';
 import {GRAPHICS_PREFERENCE_KEY, resolveGraphicsPreference, graphicsFromQuery, hdArg} from './graphics_choice.js';
 import {runGame} from './host.js';
+import {chooseCouncilSource, chooseLocalCouncilShadow} from './council_local_pair.js';
 import {chooseOpeningSource, playNativeOpening} from './opening_native.js';
 import {createAudioVolume, audioLabels} from './audio_volume.js';
 import {createToolbarCollapse, toolbarLabels} from './toolbar.js';
@@ -963,10 +964,15 @@ async function play(store) {
     // (tests, src/web/test/smoke.mjs: files and settings of a replay)
     if (window.civ2Test)
         await window.civ2Test(fs, env);
-    let code;
+    let code, councilClip=null;
     try {
+        // Explicit local test only. No persistence or ordinary startup prompt.
+        if (query.get('councilShadow') === '1' && !window.civ2Test && ['localhost','127.0.0.1'].includes(location.hostname)) {
+            councilClip=await chooseLocalCouncilShadow(chooseCouncilSource(entries));
+            if(councilClip)env.CIV2_T025_COUNCIL_SHADOW='1';
+        }
         window.civ2Stats = {};
-        code = await runGame({wasm: site.wasm, fs, audioContext: introAudio,
+        const gameOptions = {wasm: site.wasm, fs, audioContext: introAudio, councilClip,
                               audioVolume: browserAudio, councilTrace, memoryTrace, perfTrace,
                               openingVideo: openingSource ? geometry => playNativeOpening({source: openingSource, volume: browserAudio, lang: pageLang, geometry, store}) : null,
                               onFrame: () => {
@@ -988,7 +994,9 @@ async function play(store) {
                                   if (!urlLang || now !== urlLang.code)
                                       withLanguage(u, now);
                                   location.replace(u.href);
-                              }});
+                              }};
+        councilClip=null;
+        code=await runGame(gameOptions);
         status(code ? t('web.ended_code', code) : t('web.ended'));
     } catch (e) {
         console.error(e);

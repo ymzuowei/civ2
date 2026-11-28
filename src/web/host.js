@@ -190,6 +190,9 @@ export async function runGame(opts) {
     const councilTrace = !!opts.councilTrace;
     const councilTrial = createCouncilNativeTrial(opts.councilClip || null);
     opts.councilClip = null;
+    const councilStats=()=>{if(opts.stats)opts.stats.councilShadow=councilTrial.stats();};
+    const closeCouncil=()=>{councilTrial.close();councilStats();};
+    councilStats();
     const memoryTrace = !!opts.memoryTrace;
     const perfTrace = !!opts.perfTrace;
     let lastPerfSample = null;
@@ -569,8 +572,8 @@ export async function runGame(opts) {
     // -- the module's imports
     const host = {
         host_init: () => 1,
-        host_quit: () => { councilTrial.close(); },
-        host_council_close: () => { councilTrial.close(); },
+        host_quit: closeCouncil,
+        host_council_close: closeCouncil,
         host_base_path: (buf, size) => {
             if (size)
                 wasm32Bytes(memory, buf, 1)[0] = 0;
@@ -850,13 +853,14 @@ export async function runGame(opts) {
         host_council_open: (ptr, len) => {
             if (!councilTrial.available()) return 0;
             try {
-                return councilTrial.open(wasm32Bytes(memory, ptr, len)).then(ok => () => ok ? 1 : 0);
+                return councilTrial.open(wasm32Bytes(memory, ptr, len)).then(ok => () => {councilStats();return ok?1:0;});
             } catch (_) { councilTrial.close(); return 0; }
         },
         host_council_frame: (frame, last, ptr, capacity) => {
             if (!councilTrial.active()) return 0;
-            return councilTrial.prepare(frame >>> 0, last >>> 0).then(ticket => () =>
-                councilTrial.commit(ticket, memory, ptr >>> 0, capacity >>> 0) ? 1 : 0);
+            return councilTrial.prepare(frame >>> 0, last >>> 0).then(ticket => () => {
+                const ok=councilTrial.commit(ticket,memory,ptr>>>0,capacity>>>0);councilStats();return ok?1:0;
+            });
         },
         host_opening_video: () => {
             if (typeof opts.openingVideo !== 'function' || openingActive) return 0;
@@ -986,7 +990,7 @@ export async function runGame(opts) {
         exports.asyncify_start_rewind(asyncData);
     }
     } finally {
-        councilTrial.dispose();
+        councilTrial.dispose();councilStats();
     }
     host.host_music_stop();
     unsubscribeVolume();

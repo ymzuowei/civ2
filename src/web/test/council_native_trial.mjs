@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {createCouncilNativeTrial} from '../council_native_trial.js';
 const data=new Uint8Array([1,2,3]), sha='0'.repeat(64);
-const clip={scope:'COUNCIL0',opaque:true,verified:true,sourceSha256:sha,derivedSha256:sha,
+const clip={scope:'COUNCIL0',shadowOnly:true,verified:true,sourceSha256:sha,derivedSha256:sha,
     payload:data,table:{nativeStart:0,samples:[{}, {}, {}]}};
 function fixture(input=clip,digest=async()=>new Uint8Array(32).buffer){
     let opens=0,closes=0,starts=0,commits=0;

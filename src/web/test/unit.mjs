@@ -894,3 +894,5 @@ assert.equal(createAudioVolume({
 console.log('src/web unit tests passed');
 
 await import('./council_native_trial.mjs');
+
+await import('./council_local_pair.mjs');

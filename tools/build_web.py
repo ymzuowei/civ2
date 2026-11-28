@@ -71,10 +71,11 @@ SRC = os.path.join(ROOT, 'src', 'web')
 BINARYEN = os.environ.get('BINARYEN') or os.path.join(ROOT, 'tools', 'toolchain', 'binaryen')
 # The imports that may wait (src/web/host.js: blocking)
 ASYNC_IMPORTS = ['host.host_wait_event', 'host.host_poll_event', 'host.host_delay_ms', 'host.host_message_box',
-                 'host.host_restart', 'host.host_opening_video']
+                 'host.host_restart', 'host.host_opening_video', 'host.host_council_open', 'host.host_council_frame']
 PAGE = ['index.html', 'main.js', 'host.js', 'wasi.js', 'wasm32.js', 'store.js', 'zip.js', 'saves.js', 'setup_run.js',
         'setup_worker.js', 'net.js', 'hdpack.js', 'options.js', 'i18n.js', 'locale.js',
-        'graphics_choice.js', 'audio_volume.js', 'toolbar.js', 'terrain_guide.js', 'opening_native.js', 'opening_trial.js']
+        'graphics_choice.js', 'audio_volume.js', 'toolbar.js', 'terrain_guide.js', 'opening_native.js', 'opening_trial.js',
+        'council_frame_provider.js', 'council_range_provider.js', 'council_host_bridge.js', 'council_native_trial.js']
 FONTS = ['fonts_win.bin', 'fonts_win_aa.bin']
 
 SITE_GAME_MARKER = '<meta name="openciv2-bundled-game" content="0">'

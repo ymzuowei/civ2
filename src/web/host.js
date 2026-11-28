@@ -183,9 +183,13 @@ export function queuedAudioBytes(context, d) {
 // relay: the network relay's address, or a function giving it (net.js; none: no network play),
 // onRelayUnreachable(relay): a network game's connection could not reach it}
 // -> the game's exit code
+import {createCouncilNativeTrial} from './council_native_trial.js';
+
 export async function runGame(opts) {
     const {canvas, fs} = opts;
     const councilTrace = !!opts.councilTrace;
+    const councilTrial = createCouncilNativeTrial(opts.councilClip || null);
+    opts.councilClip = null;
     const memoryTrace = !!opts.memoryTrace;
     const perfTrace = !!opts.perfTrace;
     let lastPerfSample = null;
@@ -565,7 +569,8 @@ export async function runGame(opts) {
     // -- the module's imports
     const host = {
         host_init: () => 1,
-        host_quit: () => {},
+        host_quit: () => { councilTrial.close(); },
+        host_council_close: () => { councilTrial.close(); },
         host_base_path: (buf, size) => {
             if (size)
                 wasm32Bytes(memory, buf, 1)[0] = 0;
@@ -842,6 +847,17 @@ export async function runGame(opts) {
         while (performance.now() < end);
     };
     const blocking = {
+        host_council_open: (ptr, len) => {
+            if (!councilTrial.available()) return 0;
+            try {
+                return councilTrial.open(wasm32Bytes(memory, ptr, len)).then(ok => () => ok ? 1 : 0);
+            } catch (_) { councilTrial.close(); return 0; }
+        },
+        host_council_frame: (frame, last, ptr, capacity) => {
+            if (!councilTrial.active()) return 0;
+            return councilTrial.prepare(frame >>> 0, last >>> 0).then(ticket => () =>
+                councilTrial.commit(ticket, memory, ptr >>> 0, capacity >>> 0) ? 1 : 0);
+        },
         host_opening_video: () => {
             if (typeof opts.openingVideo !== 'function' || openingActive) return 0;
             openingActive = true;
@@ -935,6 +951,7 @@ export async function runGame(opts) {
     stats.busyMs = 0;           // time in the game's code
     stats.resumes = 0;          // its stack wound back after a wait
     let councilLongTasks = 0;  // bounded metadata-only diagnostics, opt-in
+    try {
     for (;;) {
         const t = performance.now();
         try {
@@ -967,6 +984,9 @@ export async function runGame(opts) {
         resumeValue = await pending;
         lastYield = performance.now();
         exports.asyncify_start_rewind(asyncData);
+    }
+    } finally {
+        councilTrial.dispose();
     }
     host.host_music_stop();
     unsubscribeVolume();

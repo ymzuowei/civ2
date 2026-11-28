@@ -14,6 +14,9 @@
 #include "plat_files.h"
 #include "../third_party/indeo4/iv41.h"
 #include "hd.h"
+#ifdef __wasm__
+#include "../host/host.h"
+#endif
 
 #ifndef DRV_USER
 #define DRV_USER 0x4000
@@ -66,6 +69,11 @@ typedef struct {
     long size;
     Stream streams[MAX_STREAMS];
     int nstreams;
+#ifdef __wasm__
+    int council_trial;
+    unsigned char *council_rgba;
+    uint32_t council_capacity;
+#endif
 } AviFile;
 
 typedef struct { AviFile *file; int index; } AviStreamRef;
@@ -160,6 +168,15 @@ HRESULT WINAPI AVIFileOpenA(PAVIFILE *pf, LPCSTR name, UINT mode, LPCLSID handle
     }
     fclose(f);
     parse_list(a, 12, a->size, 0, &movi);
+#ifdef __wasm__
+    /* Basename is only a scope gate; the host hashes the exact opened AVI. */
+    if (getenv("CIV2_T025_COUNCIL_SHADOW") && a->size > 0 && a->size <= 128L*1024*1024) {
+        const char *base = name, *p;
+        for (p = name; *p; ++p) if (*p == '/' || *p == '\\') base = p+1;
+        if (!strcasecmp(base, "COUNCIL0.AVI"))
+            a->council_trial = host_council_open(a->data, (uint32_t)a->size) == 1;
+    }
+#endif
     if (council_open_at)
         plat_log("council-trace stage=avi-open bytes=%ld streams=%d duration_ms=%lu\n",
                  a->size, a->nstreams,
@@ -179,6 +196,10 @@ ULONG WINAPI AVIFileRelease(PAVIFILE pf)
         free(a->streams[i].fmt);
         free(a->streams[i].samples);
     }
+#ifdef __wasm__
+    if (a->council_trial) host_council_close();
+    free(a->council_rgba);
+#endif
     free(a->data);
     free(a);
     obj_free((Handle)pf);
@@ -204,6 +225,34 @@ HRESULT WINAPI AVIFileGetStream(PAVIFILE pf, PAVISTREAM *ps, DWORD type, LONG n)
         }
     return AVIERR_NODATA;
 }
+
+#ifdef __wasm__
+/* First engine-connected trial: browser decode and bounded transfer after the
+   legacy visible frame. Do NOT alter the DIB or callbacks. */
+void plat_council_shadow_frame(PAVISTREAM ps, uint32_t frame, uint32_t last, int w, int h)
+{
+    AviStreamRef *r = obj_get((Handle)ps, OBJ_AVISTREAM);
+    AviFile *a = r ? r->file : NULL;
+    uint32_t need;
+    if (!a || !a->council_trial) return;
+    if (w <= 0 || w > 1024 || h <= 0 || h > 768) goto fail;
+    need = (uint32_t)w * (uint32_t)h * 4;
+    if (!a->council_rgba) {
+        a->council_rgba = malloc(need);
+        if (!a->council_rgba) goto fail;
+        a->council_capacity = need;
+    }
+    if (need != a->council_capacity ||
+        host_council_frame(frame, last, a->council_rgba, need) != 1) goto fail;
+    return;
+fail:
+    host_council_close();
+    a->council_trial = 0;
+    free(a->council_rgba);
+    a->council_rgba = NULL;
+    a->council_capacity = 0;
+}
+#endif
 
 static Stream *stream_of(PAVISTREAM ps)
 {

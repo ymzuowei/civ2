@@ -117,6 +117,10 @@ int HOST_API(host_restart)(int now);
 /* Optional browser opening: 0 legacy fallback, 1 ended, 2 user skip. */
 #ifdef __wasm__
 int HOST_API(host_opening_video)(void);
+/* T025 explicit Council0 shadow bridge; 0 leaves legacy rendering unchanged. */
+int HOST_API(host_council_open)(const void *source, uint32_t size);
+int HOST_API(host_council_frame)(uint32_t frame, uint32_t last, void *rgba, uint32_t capacity);
+void HOST_API(host_council_close)(void);
 #endif
 /* (port_main.c: the program's arguments, for host_restart; not an import) */
 void host_save_args(int argc, char **argv);

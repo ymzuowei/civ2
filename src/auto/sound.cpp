@@ -6,6 +6,9 @@
  * Game sources compile as C++; keep the declaration's C linkage so the
  * WASM link resolves the platform function without name mangling. */
 EXTERN_C void plat_log(const char *fmt, ...);
+#ifdef __wasm__
+EXTERN_C void plat_council_shadow_frame(PAVISTREAM stream, uint32_t frame, uint32_t last, int w, int h);
+#endif
 
 /* 00419c8b auto */
 void __cdecl snd_menu_end(void)
@@ -2795,6 +2798,14 @@ int __cdecl avi_decode_frame(AviPlayer *player,int decode_flags)
         wsprintfA(message,str_icdecompressex_returned_ld,result);
         MessageBoxA((HWND)0x0,message,str_get_frame,0);
       }
+#ifdef __wasm__
+      /* Shadow only: retain legacy decoder and visible result. */
+      if (result == 0 && decode_flags == 0 && player->transparent == 0 &&
+          getenv("CIV2_T025_COUNCIL_SHADOW")) {
+        plat_council_shadow_frame(avi_play.video_stream[0],player->cur_frame,
+            player->end_frame,avi_play.frame_width,avi_play.frame_height);
+      }
+#endif
       if ((player->cue_frame != 0) &&
          (player->cue_frame == player->cur_frame)) {
         player->cue_frame = 0;

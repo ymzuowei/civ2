@@ -72,4 +72,25 @@ function fixture(input=clip,digest=async()=>new Uint8Array(32).buffer,prepare=nu
     trial.dispose();
     assert.equal(trial.stats().sharedClipBytes,0);
 }
+// Native visible seek may precede assignment of the new speech end.
+{
+    const {trial,stats}=fixture();
+    assert.equal(await trial.open(source),true);
+    assert.equal(trial.schedule(2,0,2,2),true);
+    await settle();
+    assert.deepEqual(stats().frames,[2]);
+    assert.equal(trial.stats().staleEndHints,1);
+    assert.equal(trial.stats().failures,0);
+    assert.equal(trial.schedule(1,99,2,2),true);
+    await settle();
+    assert.deepEqual(stats().frames,[2,1]);
+    assert.equal(trial.stats().staleEndHints,2);
+    assert.equal(trial.stats().lastFailure,null);
+    assert.equal(trial.schedule(3,3,2,2),false);
+    assert.equal(trial.stats().lastFailure,'FRAME_BOUNDS');
+    trial.close();
+    assert.equal(trial.schedule(0,2,2,2),false);
+    assert.equal(trial.stats().failures,1);
+    trial.dispose();
+}
 console.log('CIV2_T025_COUNCIL_NATIVE_TRIAL_SOURCE=PASS');

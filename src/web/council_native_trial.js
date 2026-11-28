@@ -7,7 +7,9 @@ export function createCouncilNativeTrial(input,{makeBridge=createCouncilHostBrid
     let clip=input,bridge=null,epoch=0,first=null,end=null,previous=null;
     let queued=null,pumping=false;
     input=null;
-    const counters={opens:0,closes:0,scheduled:0,dropped:0,frames:0,unchanged:0,failures:0};
+    const counters={opens:0,closes:0,scheduled:0,dropped:0,frames:0,unchanged:0,failures:0,staleEndHints:0};
+    let lastFailure=null;
+    function fail(code){counters.failures++;lastFailure=code;changed();}
     const changed=()=>{try{onChange();}catch(_){}};
     function close(){
         epoch++;queued=null;
@@ -26,22 +28,22 @@ export function createCouncilNativeTrial(input,{makeBridge=createCouncilHostBrid
     async function open(source){
         close();const ticket=epoch;
         if(!valid()||!(source instanceof Uint8Array)||source.byteLength===0||source.byteLength>128*1024*1024){
-            counters.failures++;changed();return false;
+            fail("OPEN_INPUT");return false;
         }
         try{
             const sourceHash=digest(source);source=null;
             if(hex(await sourceHash)!==clip?.sourceSha256||ticket!==epoch){
-                if(ticket===epoch){counters.failures++;changed();}
+                if(ticket===epoch)fail("SOURCE_HASH");
                 return false;
             }
             if(hex(await digest(clip.payload))!==clip?.derivedSha256||ticket!==epoch){
-                if(ticket===epoch){counters.failures++;changed();}
+                if(ticket===epoch)fail("DERIVED_HASH");
                 return false;
             }
             const owner=makeBridge();
-            if(!owner.open(clip)){owner.dispose();counters.failures++;changed();return false;}
+            if(!owner.open(clip)){owner.dispose();fail("BRIDGE_OPEN");return false;}
             bridge=owner;counters.opens++;changed();return true;
-        }catch(_){if(ticket===epoch){counters.failures++;close();}return false;}
+        }catch(_){if(ticket===epoch){fail("OPEN_EXCEPTION");close();}return false;}
     }
     async function prepare(frame,last,ticket,owner){
         try{
@@ -56,12 +58,12 @@ export function createCouncilNativeTrial(input,{makeBridge=createCouncilHostBrid
             if(ticket!==epoch||owner!==bridge)return null;
             if(!ready)throw Error("FRAME_PREPARE");
             previous=frame;return {owner,ticket,ready};
-        }catch(_){if(ticket===epoch){counters.failures++;close();}return null;}
+        }catch(e){if(ticket===epoch){fail(["FRAME_BOUNDS","RANGE_START","FRAME_PREPARE"].includes(e?.message)?e.message:"PREPARE_EXCEPTION");close();}return null;}
     }
     function discard(value){
         if(!value||value.ticket!==epoch||value.owner!==bridge)return false;
         if(value.ready.status==="unchanged"){counters.unchanged++;changed();return true;}
-        if(!bridge.discard(value.ready)){counters.failures++;close();return false;}
+        if(!bridge.discard(value.ready)){fail("DISCARD");close();return false;}
         counters.frames++;changed();return true;
     }
     async function pump(){
@@ -74,7 +76,7 @@ export function createCouncilNativeTrial(input,{makeBridge=createCouncilHostBrid
                 if(ticket!==epoch||!bridge)break;
                 if(!value||!discard(value))break;
             }
-        }catch(_){if(ticket===epoch){counters.failures++;close();}}
+        }catch(_){if(ticket===epoch){fail("PUMP_EXCEPTION");close();}}
         finally{
             pumping=false;changed();
             if(queued&&bridge)void pump();
@@ -82,10 +84,18 @@ export function createCouncilNativeTrial(input,{makeBridge=createCouncilHostBrid
     }
     function schedule(frame,last,width,height){
         const start=clip?.table?.nativeStart,max=start+clip?.table?.samples?.length-1;
-        if(!bridge||!Number.isSafeInteger(frame)||!Number.isSafeInteger(last)||
-            frame<start||frame>max||last<frame||last>max||
-            width!==clip.config.codedWidth||height!==clip.config.codedHeight){
-            counters.failures++;changed();return false;
+        // Legacy show_frame/seek can run before play_range sets its new end.
+        // A successful visible frame is authoritative; the old end is a hint.
+        // Do not reject a valid frame or expand past verified media bounds.
+        if(!bridge)return false;
+        if(!Number.isSafeInteger(frame)||frame<start||frame>max){
+            fail("FRAME_BOUNDS");return false;
+        }
+        if(width!==clip.config.codedWidth||height!==clip.config.codedHeight){
+            fail("FRAME_GEOMETRY");return false;
+        }
+        if(!Number.isSafeInteger(last)||last<frame||last>max){
+            last=frame;counters.staleEndHints++;
         }
         if(queued)counters.dropped++;
         queued={frame,last};counters.scheduled++;changed();
@@ -95,7 +105,7 @@ export function createCouncilNativeTrial(input,{makeBridge=createCouncilHostBrid
     return {
         available:valid,active:()=>!!bridge,
         open,schedule,close,
-        stats(){return {...counters,active:bridge?1:0,pumping,queued:queued?1:0,
+        stats(){return {...counters,lastFailure,active:bridge?1:0,pumping,queued:queued?1:0,
             sharedClipBytes:clip?.payload.byteLength??0,bridge:bridge?.stats?.()??null};},
         dispose(){close();clip=null;changed();}
     };

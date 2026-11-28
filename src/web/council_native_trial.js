@@ -19,7 +19,9 @@ export function createCouncilNativeTrial(input,{makeBridge=createCouncilHostBrid
         return clip?.scope==="COUNCIL0"&&clip.shadowOnly===true&&clip.verified===true&&
             shaOK(clip.sourceSha256)&&shaOK(clip.derivedSha256)&&clip.payload instanceof Uint8Array&&
             clip.payload.byteLength>0&&clip.payload.byteLength<=128*1024*1024&&
-            Number.isInteger(clip.config?.codedWidth)&&Number.isInteger(clip.config?.codedHeight);
+            Number.isInteger(clip.config?.codedWidth)&&Number.isInteger(clip.config?.codedHeight)&&
+            Number.isSafeInteger(clip.table?.nativeStart)&&clip.table.nativeStart>=0&&
+            Array.isArray(clip.table.samples)&&clip.table.samples.length>0&&clip.table.samples.length<=36000;
     }
     async function open(source){
         close();const ticket=epoch;

@@ -121,12 +121,11 @@ static int throne_hall(ThroneRoomWindow *v)
    framed, in the largest rectangle of the part of the screen whose clicks
    choose it: a click on a piece chooses it (PR #11 drew its pieces in
    boxes at the screen's sides, with a click map of its own). */
-static unsigned char *throne_owner;     /* 640 x 480: the click map's value there, 255 none */
-
-static void throne_choice(ThroneRoomWindow *v, int value, const char *key)
+/* The click map scratch belongs to this render, not the entire game. */
+static void throne_choice(ThroneRoomWindow *v, const unsigned char *throne_owner, int value, const char *key)
 {
     void *bits = (void *)v->throne_surface_wnd.bits;
-    static int heights[641];
+    int heights[641];
     int aw, ah, x, y, bx = 0, by = 0, bw = 0, bh = 0;
     double best = 0, k, pw, ph;
     const double pad = 3, most = 150;
@@ -177,7 +176,8 @@ void hd_throne_room(ThroneRoomWindow *v, int choices)
     int i, r, x, y;
     if (!throne_hall(v))
         return;
-    if (choices && (throne_owner || (throne_owner = (unsigned char *)malloc(640 * 480)))) {
+    unsigned char *throne_owner = choices ? (unsigned char *)malloc(640 * 480) : NULL;
+    if (throne_owner) {
         hd_picture_fill((void *)v->throne_surface_wnd.bits, 0, 0, 640, 480, 0x70000000);
         /* the click map, first region first */
         memset(throne_owner, 255, 640 * 480);
@@ -191,7 +191,7 @@ void hd_throne_room(ThroneRoomWindow *v, int choices)
             for (i = 0; i < 8; i++)
                 if (levels[i] < 4) {
                     snprintf(key, sizeof key, "palace/%s-%d", throne_family[i], levels[i] + 1);
-                    throne_choice(v, i, key);
+                    throne_choice(v, throne_owner, i, key);
                 }
         } else
             for (i = 0; i < 7; i++) {
@@ -200,10 +200,11 @@ void hd_throne_room(ThroneRoomWindow *v, int choices)
                 int piece = i == 5 && (levels[8] & 0x20) ? 4 : i;
                 if (i != 4 && !(levels[8] & (1 << piece))) {
                     snprintf(key, sizeof key, "palace/bonus-%d", piece);
-                    throne_choice(v, 10 + i, key);
+                    throne_choice(v, throne_owner, 10 + i, key);
                 }
             }
     }
+    free(throne_owner);
     hd_picture_done((void *)v->throne_surface_wnd.bits);
 }
 

@@ -4,6 +4,7 @@
 #include "hd_game.h"
 #include "../platform/hd.h"
 void hd_throne_room(ThroneRoomWindow *v, int choices);
+i32 gfx_throne_dissolve_blit(DibSurface *surface,RECT *rect,uint cell_size,int mode);
 
 /* CIV2-R019: opt-in Council trace, identical on native SDL and Web/WASM.
  * Only event ids, frame numbers and timing; no media or speech content. */
@@ -4066,7 +4067,7 @@ void ThroneRoomWindow::run_upgrade()
       draw_click_prompt();
       choosing_item = 1;
       SetRect(&rect,0,0,0x280,0x1e0);
-      gfx_dissolve_blit(&throne_surface_wnd,&rect,8,4);
+      gfx_throne_dissolve_blit(&throne_surface_wnd,&rect,8,4);
       throne_surface_wnd.wnd_blit_surface();
       input_flush_events();
       throne_surface_wnd.window.set_capture();
@@ -4081,7 +4082,7 @@ void ThroneRoomWindow::run_upgrade()
       throne_backbuffer.DibSurface::blit(&throne_surface_wnd,&rect,
                  &rect);
       win_flush_pending_msgs();
-      gfx_dissolve_blit(&throne_surface_wnd,&rect,8,3);
+      gfx_throne_dissolve_blit(&throne_surface_wnd,&rect,8,3);
       throne_surface_wnd.wnd_blit_surface();
       wnd_flush_paint();
       if (throne_complete == 0) {
@@ -4096,7 +4097,7 @@ void ThroneRoomWindow::run_upgrade()
       if (result != 0) {
         snd_play_effect(SND_CHEERS_13,1,0,0);
         SetRect(&rect,0,0,0x280,0x1e0);
-        gfx_dissolve_blit(&throne_surface_wnd,&rect,4,1);
+        gfx_throne_dissolve_blit(&throne_surface_wnd,&rect,4,1);
         draw_click_prompt();
         throne_surface_wnd.wnd_blit_surface();
         choosing_item = 0;

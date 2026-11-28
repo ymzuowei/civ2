@@ -954,6 +954,8 @@ async function play(store) {
     const councilTrace = new URLSearchParams(location.search).get('councilTrace') === '1';
     const memoryTrace = new URLSearchParams(location.search).get('memoryTrace') === '1';
     const perfTrace = new URLSearchParams(location.search).get('perfTrace') === '1';
+    if(query.get('throneBatch')==='1'&&!window.civ2Test&&['localhost','127.0.0.1'].includes(location.hostname))
+        env.CIV2_T025_THRONE_BATCH='1';
     if (introDiagnose)
         env.CIV2_LOG_VIDEO = '1';
     if (councilTrace)

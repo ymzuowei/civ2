@@ -22,6 +22,9 @@ class CouncilShadowIntegration(unittest.TestCase):
         cls.build = read("tools/build_web.py")
         cls.iv41 = read("src/third_party/indeo4/iv41.c")
         cls.ivi = read("src/third_party/indeo4/ivi.c")
+        cls.graphics = read("src/auto/graphics.cpp")
+        cls.reports = read("src/auto/reports.cpp")
+        cls.hd_graphics = read("src/game/hd_graphics.cpp")
 
     def test_shadow_callback_runs_after_original_visible_decode(self):
         body = self.sound.split("int __cdecl avi_decode_frame", 1)[1].split("\n}", 1)[0]
@@ -96,6 +99,18 @@ class CouncilShadowIntegration(unittest.TestCase):
         self.assertIn("council_opaque_inter_header(d)", self.video)
         self.assertIn('getenv("CIV2_T025_COUNCIL_STATE_ONLY")', self.video)
         self.assertIn("query.get('councilStateOnly')==='1'", self.main)
+
+    def test_throne_batch_is_scoped_and_keeps_tile_and_rng_operations(self):
+        body = self.graphics.split("static i32 gfx_dissolve_impl(",1)[1].split("/* 0056b90b auto */",1)[0]
+        self.assertIn("steps & 15u", body)
+        self.assertEqual(body.count("rand_range("),2)
+        self.assertEqual(body.count("wnd_blit_surface_rect(&cell_rect)"),2)
+        self.assertIn("gfx_dissolve_impl(surface,rect,cell_size,mode,0)",body)
+        self.assertIn('!getenv("CIV2_SCRIPT")',body)
+        self.assertEqual(self.reports.count("gfx_throne_dissolve_blit(&throne_surface_wnd"),3)
+        self.assertIn("query.get('throneBatch')==='1'",self.main)
+        self.assertIn("free(throne_owner);",self.hd_graphics)
+        self.assertNotIn("static unsigned char *throne_owner",self.hd_graphics)
 
     def test_owner_local_entry_and_built_module(self):
         self.assertIn("query.get('councilShadow') === '1'", self.main)

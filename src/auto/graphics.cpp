@@ -2836,7 +2836,8 @@ gfx_copy_rect_same_pos(DibSurface *src,DibSurface *dst,i32 x,i32 y,i32 width,
 }
 
 /* 005683c5 auto */
-i32 __cdecl gfx_dissolve_blit(DibSurface *surface,RECT *rect,uint cell_size,int mode)
+EXTERN_C void plat_log(const char *fmt, ...);
+static i32 gfx_dissolve_impl(DibSurface *surface,RECT *rect,uint cell_size,int mode,int batch)
 
 {
   int lo;
@@ -2855,6 +2856,14 @@ i32 __cdecl gfx_dissolve_blit(DibSurface *surface,RECT *rect,uint cell_size,int 
   tagRECT area2;
   tagRECT cell_rect;
   POINT *cells;
+  unsigned polls=0, steps=0;
+  const unsigned long started=batch?timeGetTime():0;
+  // Keep every tile and random draw; only coalesce message pumps in this
+  // explicitly opted-in throne transition. Never batch more than 16 cells.
+  const auto poll = [&]() {
+    if (!batch || (steps & 15u) == 0) { win_flush_pending_msgs(); polls++; }
+    steps++;
+  };
   
   if (rect == 0) {
     lo = (surface)->get_height();
@@ -2879,7 +2888,7 @@ i32 __cdecl gfx_dissolve_blit(DibSurface *surface,RECT *rect,uint cell_size,int 
     case 1:
       for (col = 0; col < cols; col++) {
         for (row = 0; row < rows; row++) {
-          win_flush_pending_msgs();
+          poll();
           cells[(col * rows + row)].x =
                ((cols - col) - 1) * cell_size;
           cells[(col * rows + row)].y = row * cell_size;
@@ -2890,7 +2899,7 @@ i32 __cdecl gfx_dissolve_blit(DibSurface *surface,RECT *rect,uint cell_size,int 
     case 5:
       for (col = 0; col < cols; col++) {
         for (row = 0; row < rows; row++) {
-          win_flush_pending_msgs();
+          poll();
           cells[(col * rows + row)].x = col * cell_size;
           cells[(col * rows + row)].y = row * cell_size;
         }
@@ -2899,7 +2908,7 @@ i32 __cdecl gfx_dissolve_blit(DibSurface *surface,RECT *rect,uint cell_size,int 
     case 3:
       for (row = 0; row < rows; row++) {
         for (col = 0; col < cols; col++) {
-          win_flush_pending_msgs();
+          poll();
           cells[(row * cols + col)].x = col * cell_size;
           cells[(row * cols + col)].y = row * cell_size;
         }
@@ -2908,16 +2917,17 @@ i32 __cdecl gfx_dissolve_blit(DibSurface *surface,RECT *rect,uint cell_size,int 
     case 4:
       for (row = 0; row < rows; row++) {
         for (col = 0; col < cols; col++) {
-          win_flush_pending_msgs();
+          poll();
           cells[(row * cols + col)].x = col * cell_size;
           cells[(row * cols + col)].y =
                ((rows - row) - 1) * cell_size;
         }
       }
     }
+    if (batch) { win_flush_pending_msgs(); polls++; }
     if (mode == 5) {
       while (remaining != 0) {
-        win_flush_pending_msgs();
+        poll();
         pick = rand_range(0,remaining - 1);
         cell_x = cells[pick].x + area2.left;
         cell_y = cells[pick].y + area2.top;
@@ -2940,7 +2950,7 @@ i32 __cdecl gfx_dissolve_blit(DibSurface *surface,RECT *rect,uint cell_size,int 
     }
     else {
       while (remaining != 0) {
-        win_flush_pending_msgs();
+        poll();
         lo = (remaining - 1) - (rows * 0x14) / cell_size;
         if (lo < 1) {
           lo = 0;
@@ -2965,13 +2975,32 @@ i32 __cdecl gfx_dissolve_blit(DibSurface *surface,RECT *rect,uint cell_size,int 
              cells[remaining].y;
       }
     }
+    if (batch) { win_flush_pending_msgs(); polls++; }
     mem = GlobalHandle(cells);
     GlobalUnlock(mem);
     mem = GlobalHandle(cells);
     GlobalFree(mem);
     result = 1;
   }
+  if (batch) plat_log("throne-dissolve mode=%d cell=%u steps=%u polls=%u elapsed_ms=%lu result=%d\n",
+                      mode,cell_size,steps,polls,(unsigned long)(timeGetTime()-started),result);
   return result;
+}
+
+i32 __cdecl gfx_dissolve_blit(DibSurface *surface,RECT *rect,uint cell_size,int mode)
+{
+    return gfx_dissolve_impl(surface,rect,cell_size,mode,0);
+}
+
+// Called only at the three throne upgrade transitions. Replay/native default
+// remains untouched, and a nested transition owns its own local poll counter.
+i32 gfx_throne_dissolve_blit(DibSurface *surface,RECT *rect,uint cell_size,int mode)
+{
+    int batch=0;
+#ifdef __wasm__
+    batch=getenv("CIV2_T025_THRONE_BATCH") && !getenv("CIV2_SCRIPT");
+#endif
+    return gfx_dissolve_impl(surface,rect,cell_size,mode,batch);
 }
 
 /* 0056b90b auto */

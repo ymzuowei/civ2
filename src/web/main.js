@@ -968,7 +968,7 @@ async function play(store) {
         window.civ2Stats = {};
         code = await runGame({wasm: site.wasm, fs, audioContext: introAudio,
                               audioVolume: browserAudio, councilTrace, memoryTrace, perfTrace,
-                              openingVideo: openingSource ? () => playNativeOpening({source: openingSource, volume: browserAudio, lang: pageLang}) : null,
+                              openingVideo: openingSource ? geometry => playNativeOpening({source: openingSource, volume: browserAudio, lang: pageLang, geometry}) : null,
                               onFrame: () => {
                                   timing.frame = Math.round(performance.now());
                                   $('loading').hidden = true;

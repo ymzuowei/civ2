@@ -27,11 +27,20 @@ export function openingOutcome(result,observed,expected){
     if(!Number.isFinite(observed)||!Number.isFinite(expected)||Math.abs(observed-expected)>0.15)return 0;
     return result?.status==='ended'?1:result?.status==='user-skip'?2:0;
 }
-export async function playNativeOpening({source,volume,lang}){
+// Match the native AVI's doubled logical size, not canvas backing pixels (HD density).
+export function openingRect(g,w=320,h=120){
+    const r=g?.rect;
+    if(!r||![r.left,r.top,r.width,r.height,g.width,g.height,w,h].every(Number.isFinite)||
+       [r.width,r.height,g.width,g.height,w,h].some(n=>n<=0))return null;
+    const scale=Math.min(r.width/g.width,r.height/g.height);
+    const width=Math.min(w*2*scale,r.width,r.height*w/h),height=width*h/w;
+    return {left:r.left+(r.width-width)/2,top:r.top+(r.height-height)/2,width,height};
+}
+export async function playNativeOpening({source,volume,lang,geometry}){
     const chinese=/^zh/i.test(lang||'');
     const words=chinese?['实验性开场动画','选择本地配对 JSON 和 MP4 文件','播放','跳过','使用原版 AVI','验证失败，选择原版或重试']:
         ['Experimental opening','Select local pairing JSON and MP4','Play','Skip','Use original AVI','Verification failed; retry or use original'];
-    let dialog,trial,unsubscribe=()=>{},timer,done=false,finish,observed=null,started=false,finished=false;
+    let dialog,trial,unsubscribe=()=>{},timer,done=false,finish,observed=null,started=false,finished=false,resize=()=>{},observer;
     const result=new Promise(r=>{finish=r;});
     const close=(code)=>{if(!done){done=true;finish(code);}};
     const abandon=()=>{trial?.cancel();close(0);};
@@ -40,14 +49,22 @@ export async function playNativeOpening({source,volume,lang}){
         dialog=document.createElement('dialog');
         dialog.style.cssText='color:white;background:black;border:0;padding:16px;max-width:95vw;max-height:95vh;text-align:center';
         const make=(tag,text)=>{const e=document.createElement(tag);if(text)e.textContent=text;dialog.append(e);return e;};
-        make('h2',words[0]);
+        const heading=make('h2',words[0]);
         const status=make('p',words[1]);
         const meta=make('input'),media=make('input');
         for(const input of [meta,media]){input.type='file';input.style.display='block';input.style.margin='8px auto';}
         meta.accept='.json,application/json';media.accept='.mp4,video/mp4';
-        const video=make('video');video.playsInline=true;video.style.cssText='display:block;width:640px;max-width:85vw;height:auto;background:black;margin:auto';
+        const video=make('video');video.playsInline=true;video.style.cssText='display:none;background:black;object-fit:contain';video.setAttribute('aria-label',words[3]);
         const play=make('button',words[2]),skip=make('button',words[3]),legacy=make('button',words[4]);
-        play.disabled=true;skip.disabled=true;
+        play.disabled=true;skip.hidden=true;
+        resize=()=>{
+            if(!started)return;
+            const r=openingRect(geometry?.(),video.videoWidth||320,video.videoHeight||120);
+            if(!r)return;
+            Object.assign(video.style,{position:'fixed',left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});
+            globalThis.civ2OpeningGeometry={width:r.width,height:r.height,logicalWidth:geometry().width,logicalHeight:geometry().height};
+        };
+        video.addEventListener('loadedmetadata',resize);
         let pair=null,revision=0;
         const change=async()=>{
             const rev=++revision;pair=null;play.disabled=true;
@@ -62,11 +79,16 @@ export async function playNativeOpening({source,volume,lang}){
         const gain=()=>{video.volume=Math.max(0,Math.min(1,(volume?.gain??1)*(volume?.effectsGain??1)));};
         gain();unsubscribe=volume?.subscribe(gain)||(()=>{});
         legacy.onclick=abandon;
-        dialog.addEventListener('cancel',e=>{e.preventDefault();abandon();});
+        dialog.addEventListener('cancel',e=>{e.preventDefault();if(started)trial?.skipFromUser();else abandon();});
+        dialog.addEventListener('click',e=>{if(started&&(e.target===dialog||e.target===video))trial?.skipFromUser();});
         video.addEventListener('playing',()=>{observed=video.duration;});
         play.onclick=()=>{
             if(done||started||!pair)return;
-            started=true;clearTimeout(timer);meta.disabled=media.disabled=play.disabled=true;skip.disabled=false;
+            started=true;clearTimeout(timer);
+            for(const e of [heading,status,meta,media,play,skip,legacy])e.hidden=true;
+            dialog.style.cssText='position:fixed;inset:0;margin:0;padding:0;border:0;width:100vw;height:100vh;max-width:none;max-height:none;background:black;overflow:hidden';
+            video.style.display='block';resize();
+            dialog.focus();
             try{
                 trial=createOpeningTrial({video,blob:pair.blob});
                 trial.startFromGesture().then(r=>{
@@ -78,7 +100,11 @@ export async function playNativeOpening({source,volume,lang}){
             }catch{abandon();}
         };
         skip.onclick=()=>trial?.skipFromUser();
-        video.onclick=()=>trial?.skipFromUser();
+        window.addEventListener('resize',resize);
+        window.addEventListener('civ2-display-change',resize);
+        document.addEventListener('fullscreenchange',resize);
+        const canvas=document.getElementById('screen');
+        if(canvas&&globalThis.ResizeObserver){observer=new ResizeObserver(resize);observer.observe(canvas);}
         document.body.append(dialog);dialog.showModal();legacy.focus();
         window.addEventListener('pagehide',abandon,{once:true});
         timer=setTimeout(abandon,180000);
@@ -86,6 +112,8 @@ export async function playNativeOpening({source,volume,lang}){
     }catch{return 0;}
     finally{
         clearTimeout(timer);if(!finished)trial?.cancel();unsubscribe();
-        window.removeEventListener('pagehide',abandon);dialog?.remove();
+        window.removeEventListener('pagehide',abandon);
+        window.removeEventListener('resize',resize);window.removeEventListener('civ2-display-change',resize);
+        document.removeEventListener('fullscreenchange',resize);observer?.disconnect();dialog?.remove();
     }
 }

@@ -850,7 +850,7 @@ export async function runGame(opts) {
                 held.clear();
             };
             discardInput();
-            return Promise.resolve().then(() => opts.openingVideo()).catch(() => 0).then(result => () => {
+            return Promise.resolve().then(() => opts.openingVideo(() => ({rect: canvas.getBoundingClientRect(), width: screenW, height: screenH}))).catch(() => 0).then(result => () => {
                 discardInput(); openingActive = false; canvas.focus();
                 return result === 1 || result === 2 ? result : 0;
             });

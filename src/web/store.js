@@ -80,6 +80,12 @@ export async function openStore(onBlocked) {
             t.objectStore(META).put(v, k);
             return done(t);
         },
+        // T025: remove exactly one optional metadata record; never clear game files.
+        async removeMeta(k) {
+            const t = db.transaction(META, 'readwrite');
+            t.objectStore(META).delete(k);
+            return done(t);
+        },
         async get(k) {
             return req(tx('readonly').get(k));
         },

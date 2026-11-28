@@ -81,8 +81,11 @@ static void media_trial_close(AviFile *a)
     if (a == media_trial_owner) { host_council_close(); media_trial_owner = NULL; }
     a->council_trial = 0;
 }
-static int trial_wonder_name(const char *base)
+static int trial_extra_name(const char *base)
 {
+    if (!strcasecmp(base,"ANARCHY0.AVI") || !strcasecmp(base,"ANARCHY1.AVI") ||
+        !strcasecmp(base,"ANARCHY2.AVI") || !strcasecmp(base,"LAUNCH.AVI") ||
+        !strcasecmp(base,"WINWIN.AVI")) return 1;
     return strlen(base)==12 && !strncasecmp(base,"WONDER",6) &&
            base[6]>='0' && base[6]<='2' && base[7]>='0' && base[7]<='9' &&
            (base[6]!='2' || base[7]<='7') && !strcasecmp(base+8,".AVI");
@@ -195,7 +198,7 @@ HRESULT WINAPI AVIFileOpenA(PAVIFILE *pf, LPCSTR name, UINT mode, LPCLSID handle
             (era && !strcmp(era, "auto") &&
              (!strcasecmp(base, "COUNCIL0.AVI") || !strcasecmp(base, "COUNCIL1.AVI") ||
               !strcasecmp(base, "COUNCIL2.AVI"))) ||
-            (getenv("CIV2_T025_WONDERS") && trial_wonder_name(base))) {
+            (getenv("CIV2_T025_EXTENDED_MEDIA") && trial_extra_name(base))) {
             a->council_trial = host_council_open(a->data, (uint32_t)a->size) == 1;
             if (a->council_trial) media_trial_owner = a;
         }

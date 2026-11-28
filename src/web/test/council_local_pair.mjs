@@ -73,6 +73,12 @@ assert.equal(chooseCouncilSource([['COUNCIL3.AVI',{data:source}]],3),null);
     assert.equal(reads,3);
     assert.equal((await p.council.load(sha,2)).scope,'WONDER27');assert.equal(reads,4);
     p.council.dispose();
+    for(const id of ['ANARCHY0','ANARCHY1','ANARCHY2','LAUNCH','WINWIN']){
+        const x={...w,clipId:id,scope:'OWNER_LOCAL_'+id+'_SHADOW_ONLY'};
+        const q=await readLazyMediaPack(pack([x]),source,{...options,extended:true});
+        assert.equal((await q.council.load(sha,2)).scope,id);q.council.dispose();
+    }
+    await assert.rejects(readLazyMediaPack(pack([{...w,clipId:'HRLDCHI',scope:'OWNER_LOCAL_HRLDCHI_SHADOW_ONLY'}]),source,{...options,extended:true}),/PACK_LAYOUT/);
     await assert.rejects(readLazyMediaPack(pack([{...w,clipId:'WONDER28'}]),source,{...options,extended:true}),/PACK_LAYOUT/);
     await assert.rejects(readLazyMediaPack(pack([{...w,opacityProof:null}]),source,{...options,extended:true}),/PACK_LAYOUT/);
     await assert.rejects(readLazyMediaPack(blob,source,options),/PACK_MAGIC/);

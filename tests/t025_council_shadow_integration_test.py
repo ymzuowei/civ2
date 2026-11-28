@@ -49,7 +49,9 @@ class CouncilShadowIntegration(unittest.TestCase):
         self.assertIn("if (a->council_trial) media_trial_close(a);", self.video)
         self.assertIn("!media_trial_owner &&", self.video)
         self.assertIn("a == media_trial_owner", self.video)
-        self.assertIn("trial_wonder_name(base)", self.video)
+        self.assertIn("trial_extra_name(base)", self.video)
+        for name in ("ANARCHY0.AVI","ANARCHY1.AVI","ANARCHY2.AVI","LAUNCH.AVI","WINWIN.AVI"):
+            self.assertIn(name,self.video)
         self.assertIn("IV41_PACKET_HEADER_OPAQUE_V1", self.pair)
         self.assertIn("host_council_frame: (frame,last,width,height)", self.host)
         self.assertIn("councilTrial.schedule(frame>>>0,last>>>0,width>>>0,height>>>0)", self.host)

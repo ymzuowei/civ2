@@ -19,10 +19,10 @@ export async function verifyCouncilShadowPair(source,payload,m,{subtle=globalThi
     const sourceHash=hex(await subtle.digest('SHA-256',source));
     return verifyCouncilPayload(sourceHash,payload,m,{subtle,supported,era});
 }
-const wonderId=id=>typeof id==='string'&&/^WONDER(?:0[0-9]|1[0-9]|2[0-7])$/.test(id);
+const extraId=id=>typeof id==='string'&&/^(?:WONDER(?:0[0-9]|1[0-9]|2[0-7])|ANARCHY[012]|LAUNCH|WINWIN)$/.test(id);
 async function verifyCouncilPayload(sourceHash,payload,m,{subtle,supported,era,id='COUNCIL'+era}){
     if(!subtle||!(payload instanceof Uint8Array)||!payload.length||payload.length>MAX||
-       (!(validEra(era)&&id==='COUNCIL'+era)&&!(wonderId(id)&&m?.opacityProof==='IV41_PACKET_HEADER_OPAQUE_V1'))||
+       (!(validEra(era)&&id==='COUNCIL'+era)&&!(extraId(id)&&m?.opacityProof==='IV41_PACKET_HEADER_OPAQUE_V1'))||
        m?.scope!==('OWNER_LOCAL_'+id+'_SHADOW_ONLY')||m.schema!==1||
        !Number.isSafeInteger(m.sourceBytes)||m.sourceBytes<1||m.sourceBytes>MAX||
        m.derivedBytes!==payload.length||!sha(m.sourceSha256)||!sha(m.derivedSha256))throw Error('PAIR_IDENTITY');
@@ -134,11 +134,11 @@ export async function readLazyMediaPack(file,openingSource,{subtle=globalThis.cr
         directory.set(meta.sourceSha256,{meta,era,id:'COUNCIL'+era,offset,n});offset+=n;
     }
     if(extended){
-        if(!Array.isArray(m.extras)||m.extras.length>28)throw Error('PACK_LAYOUT');
+        if(!Array.isArray(m.extras)||m.extras.length>33)throw Error('PACK_LAYOUT');
         const ids=new Set();
         for(const meta of m.extras){
             const id=meta?.clipId,n=meta?.derivedBytes;
-            if(!wonderId(id)||ids.has(id)||meta.schema!==1||meta.scope!=='OWNER_LOCAL_'+id+'_SHADOW_ONLY'||
+            if(!extraId(id)||ids.has(id)||meta.schema!==1||meta.scope!=='OWNER_LOCAL_'+id+'_SHADOW_ONLY'||
                meta.opacityProof!=='IV41_PACKET_HEADER_OPAQUE_V1'||!Number.isSafeInteger(n)||n<1||n>MAX||
                !sha(meta.sourceSha256)||!sha(meta.derivedSha256)||!Number.isSafeInteger(meta.sourceBytes)||
                meta.sourceBytes<1||meta.sourceBytes>MAX||directory.has(meta.sourceSha256))throw Error('PACK_LAYOUT');
@@ -163,8 +163,8 @@ export async function chooseLocalMediaPack(openingSource,councilSource,lang,era,
     const dialog=document.createElement('dialog');
     const add=(tag,words)=>{const e=document.createElement(tag);if(words)e.textContent=words;dialog.append(e);return e;};
     add('h2',zh?'游戏动画素材包':'Game animation pack');
-    add('p',zh?(auto?(extended?'选择包含开场、三个时代议会及奇迹动画的素材包。游戏按需加载，不上传或保存。':'选择包含开场和三个时代议会的素材包。游戏自动选择时代，不上传或保存。'):'一次选择开场及 COUNCIL'+era+' 议会动画素材包（.civ2media）。文件仅在本次游戏使用，不上传或保存。'):
-        (auto?(extended?'Select an opening, three-era Council and wonders pack. Local on-demand playback only.':'Select an opening and three-era Council pack. Era selected automatically; no upload or storage.'):'Select one .civ2media pack containing opening and COUNCIL'+era+'. Local session only; no upload or storage.'));
+    add('p',zh?(auto?(extended?'选择包含开场、议会及其他已验证动画的素材包。游戏按需加载，不上传或保存。':'选择包含开场和三个时代议会的素材包。游戏自动选择时代，不上传或保存。'):'一次选择开场及 COUNCIL'+era+' 议会动画素材包（.civ2media）。文件仅在本次游戏使用，不上传或保存。'):
+        (auto?(extended?'Select the verified extended animation pack. Local on-demand playback only.':'Select an opening and three-era Council pack. Era selected automatically; no upload or storage.'):'Select one .civ2media pack containing opening and COUNCIL'+era+'. Local session only; no upload or storage.'));
     const file=add('input');file.type='file';file.accept='.civ2media';file.style.display='block';file.style.margin='12px 0';
     const status=add('p',''),go=add('button',zh?'验证并开始':'Verify and start'),skip=add('button',zh?'使用原版动画':'Use original animations');
     let done=false,busy=false,resolve;

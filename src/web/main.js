@@ -980,7 +980,7 @@ async function play(store) {
                 openingPair=pack?.opening??null;councilClip=pack?.council??null;
                 if(!openingPair)delete env.CIV2_T025_OPENING_NATIVE;
             }else councilClip=await chooseLocalCouncilShadow(councilSource,pageLang,Number(councilEra),councilRender);
-            if(councilClip){env.CIV2_T025_COUNCIL_SHADOW='1';env.CIV2_T025_COUNCIL_ERA=councilEra;if(query.get('mediaPack')==='3')env.CIV2_T025_WONDERS='1';if(councilRender){env.CIV2_T025_COUNCIL_RENDER='1';if(query.get('councilStateOnly')==='1')env.CIV2_T025_COUNCIL_STATE_ONLY='1';}}
+            if(councilClip){env.CIV2_T025_COUNCIL_SHADOW='1';env.CIV2_T025_COUNCIL_ERA=councilEra;if(query.get('mediaPack')==='3')env.CIV2_T025_EXTENDED_MEDIA='1';if(councilRender){env.CIV2_T025_COUNCIL_RENDER='1';if(query.get('councilStateOnly')==='1')env.CIV2_T025_COUNCIL_STATE_ONLY='1';}}
         }
         window.civ2Stats = {};
         const gameOptions = {wasm: site.wasm, fs, audioContext: introAudio, councilClip, councilRender:!!councilClip&&councilRender,

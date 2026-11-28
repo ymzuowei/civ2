@@ -828,6 +828,8 @@ for (const n of [0, 1, 55, 56, 63, 64, 65, 119, 120, 1000]) {
     assert.equal(Buffer.from(sha256js(b)).toString('hex'), createHash('sha256').update(b).digest('hex'));
 }
 
+await import('./opening_native.mjs');
+
 {
 // CIV2-T008: one persisted browser preference for effects, music and AVI.
 const prefs = new Map();
@@ -889,5 +891,4 @@ assert.equal(createAudioVolume({
 }).musicLevel, 100); // existing master-only installs migrated safely
 }
 
-await import('./opening_native.mjs');
 console.log('src/web unit tests passed');

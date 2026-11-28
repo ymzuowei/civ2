@@ -18,6 +18,9 @@ Iv41 *iv41_open(int width, int height);
 /* One compressed frame; 1 and the picture in *out (valid until the next
  * call) if a frame came out. */
 int iv41_decode(Iv41 *d, const void *data, int size, Iv41Frame *out);
+/* 2: state updated, opaque output intentionally elided; width/height only.
+ * 1: normal decoded picture; 0: no picture/error. Never skips reference decode. */
+int iv41_decode_opaque_state(Iv41 *d, const void *data, int size, int width, int height, Iv41Frame *out);
 void iv41_close(Iv41 *d);
 
 #endif

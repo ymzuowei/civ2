@@ -20,6 +20,8 @@ class CouncilShadowIntegration(unittest.TestCase):
         cls.main = read("src/web/main.js")
         cls.pair = read("src/web/council_local_pair.js")
         cls.build = read("tools/build_web.py")
+        cls.iv41 = read("src/third_party/indeo4/iv41.c")
+        cls.ivi = read("src/third_party/indeo4/ivi.c")
 
     def test_shadow_callback_runs_after_original_visible_decode(self):
         body = self.sound.split("int __cdecl avi_decode_frame", 1)[1].split("\n}", 1)[0]
@@ -66,7 +68,7 @@ class CouncilShadowIntegration(unittest.TestCase):
 
     def test_visible_trial_exact_frame_and_original_opacity_gate(self):
         self.assertIn("fr->mask || fr->has_transparency", self.video)
-        self.assertIn("host_council_take(render_frame, (uint32_t)fr->width, (uint32_t)fr->height, c->render_pixels", self.video)
+        self.assertIn("host_council_take(render_frame, (uint32_t)width, (uint32_t)height, c->render_pixels", self.video)
         self.assertIn("draw_frame_rgb(c, fr, d, c->render_pixels)", self.video)
         self.assertIn("free(c->render_pixels)", self.video)
         self.assertIn("plat_council_render_begin(", self.sound)
@@ -74,6 +76,22 @@ class CouncilShadowIntegration(unittest.TestCase):
         self.assertIn("slot.frame!==frame", self.trial)
         self.assertIn("slot=null", self.trial)
         self.assertIn("query.get('councilRender')==='1'", self.main)
+
+    def test_state_only_preserves_reference_decode_and_explicit_gate(self):
+        body = self.ivi.split("int ff_ivi_decode_frame(",1)[1]
+        elide = body.index("ctx->civ2_output_elided = 1")
+        self.assertLess(body.index("ctx->switch_buffers(ctx)"), elide)
+        self.assertLess(body.index("result = decode_band("), elide)
+        self.assertLess(body.index("ff_set_dimensions("), elide)
+        self.assertLess(elide, body.index("ff_get_buffer("))
+        for token in ("IVI4_FRAMETYPE_INTER", "!ctx->has_transp",
+                      "!ctx->has_b_frames", "!ctx->got_p_frame"):
+            self.assertIn(token, body[:elide])
+        self.assertIn("ctx->civ2_output_width = ctx->civ2_output_height = ctx->civ2_output_elided = 0", self.iv41)
+        self.assertIn("if (decoded == 2) c->council_output_elided++", self.video)
+        self.assertIn("council_opaque_inter_header(d)", self.video)
+        self.assertIn('getenv("CIV2_T025_COUNCIL_STATE_ONLY")', self.video)
+        self.assertIn("query.get('councilStateOnly')==='1'", self.main)
 
     def test_owner_local_entry_and_built_module(self):
         self.assertIn("query.get('councilShadow') === '1'", self.main)

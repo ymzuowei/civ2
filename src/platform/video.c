@@ -424,6 +424,7 @@ typedef struct {
     int lut_ok;
     unsigned char *render_pixels; /* one reusable bounded RGBA scratch, freed with codec */
     size_t render_capacity;
+    unsigned long council_output_elided, council_early_take_full, council_early_take_no_picture;
     int32_t *view;              /* where to report the area drawn: x, y, width, height */
 } Codec;
 
@@ -835,23 +836,37 @@ static void draw_frame(Codec *c, const Iv41Frame *fr, const ICDECOMPRESSEX *d)
 #ifdef __wasm__
 /* Original frame must have actually decoded and be opaque. Exact match only.
    No async import or visible override on a cache miss. */
-static int draw_council_ready(Codec *c, const Iv41Frame *fr, const ICDECOMPRESSEX *d)
+static int take_council_ready(Codec *c, int width, int height)
 {
     size_t bytes;
-    if (!render_scope || fr->mask || fr->has_transparency ||
-        fr->width <= 0 || fr->width > 1024 || fr->height <= 0 || fr->height > 768)
+    if (!render_scope || width <= 0 || width > 1024 || height <= 0 || height > 768)
         return 0;
-    bytes = (size_t)fr->width * fr->height * 4;
+    bytes = (size_t)width * height * 4;
     if (c->render_capacity != bytes) {
         unsigned char *p = realloc(c->render_pixels, bytes);
         if (!p) return 0;
         c->render_pixels = p;
         c->render_capacity = bytes;
     }
-    if (host_council_take(render_frame, (uint32_t)fr->width, (uint32_t)fr->height, c->render_pixels, (uint32_t)bytes) != 1)
+    return host_council_take(render_frame, (uint32_t)width, (uint32_t)height, c->render_pixels, (uint32_t)bytes) == 1;
+}
+static int draw_council_ready(Codec *c, const Iv41Frame *fr, const ICDECOMPRESSEX *d)
+{
+    if (fr->mask || fr->has_transparency || !take_council_ready(c, fr->width, fr->height))
         return 0;
     draw_frame_rgb(c, fr, d, c->render_pixels);
     return 1;
+}
+/* Match the vendored Indeo4 little-endian picture header. This is only a
+   cheap prefilter: the real decoder rechecks frame type, opacity, geometry,
+   delayed frames and successful reference-band reconstruction before elision. */
+static int council_opaque_inter_header(const ICDECOMPRESSEX *d)
+{
+    const unsigned char *p = d->lpSrc;
+    uint32_t bits;
+    if (d->lpbiSrc->biSizeImage < 3) return 0;
+    bits = (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16;
+    return (bits & 0x7fffffu) == (0x3fff8u | (2u << 18));
 }
 #endif
 
@@ -924,17 +939,37 @@ LRESULT WINAPI ICSendMessage(HIC h, UINT msg, DWORD_PTR a, DWORD_PTR b)
     case ICM_DECOMPRESSEX: {
         const ICDECOMPRESSEX *d = (const ICDECOMPRESSEX *)a;
         Iv41Frame fr;
+        int decoded, early = 0;
         if (!c->dec || !d || !d->lpbiSrc || !d->lpSrc)
             return ICERR_ERROR;
-        if (!iv41_decode(c->dec, d->lpSrc, (int)d->lpbiSrc->biSizeImage, &fr))
-            return ICERR_OK;            /* a frame that only updates the decoder's state */
+#ifdef __wasm__
+        if (render_scope && getenv("CIV2_T025_COUNCIL_STATE_ONLY") &&
+            !(d->dwFlags & ICDECOMPRESS_PREROLL) && d->lpDst && d->lpbiDst &&
+            council_opaque_inter_header(d) &&
+            take_council_ready(c, c->width, c->height))
+            early = 1;
+#endif
+        if (early)
+            decoded = iv41_decode_opaque_state(c->dec, d->lpSrc, (int)d->lpbiSrc->biSizeImage,
+                                               c->width, c->height, &fr);
+        else
+            decoded = iv41_decode(c->dec, d->lpSrc, (int)d->lpbiSrc->biSizeImage, &fr);
+        if (!decoded) {
+            if (early) c->council_early_take_no_picture++;
+            return ICERR_OK;            /* preserve legacy no-picture behavior */
+        }
+        if (decoded == 2) c->council_output_elided++;
+        else if (early) c->council_early_take_full++;
         if (getenv("CIV2_LOG_VIDEO"))
             plat_log("video: frame %dx%d -> dst %ldx%ld/%d at %p (%d,%d %dx%d) flags %lx\n", fr.width, fr.height,
                      (long)d->lpbiDst->biWidth, (long)d->lpbiDst->biHeight, d->lpbiDst->biBitCount, d->lpDst, d->xDst,
                      d->yDst, d->dxDst, d->dyDst, (unsigned long)d->dwFlags);
         if (!(d->dwFlags & ICDECOMPRESS_PREROLL) && d->lpDst && d->lpbiDst) {
 #ifdef __wasm__
-            if (!draw_council_ready(c, &fr, d))
+            if (early && (decoded == 2 ||
+                (!fr.mask && !fr.has_transparency && fr.width == c->width && fr.height == c->height)))
+                draw_frame_rgb(c, &fr, d, c->render_pixels);
+            else if (early || !draw_council_ready(c, &fr, d))
 #endif
                 draw_frame(c, &fr, d);
             if (c->view) {              /* the game copies this area to the screen */
@@ -963,6 +998,9 @@ LRESULT WINAPI ICClose(HIC h)
 { API_TRACE();
     Codec *c = obj_get((Handle)(uintptr_t)h, OBJ_CODEC);
     if (c) {
+        if (c->council_output_elided || c->council_early_take_full || c->council_early_take_no_picture)
+            plat_log("council-state-only elided=%lu full=%lu no_picture=%lu\n",
+                     c->council_output_elided, c->council_early_take_full, c->council_early_take_no_picture);
         iv41_close(c->dec);
         free(c->render_pixels);
         free(c);

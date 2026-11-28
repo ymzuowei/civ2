@@ -971,7 +971,7 @@ async function play(store) {
         // Explicit local test only. No persistence or ordinary startup prompt.
         if (query.get('councilShadow') === '1' && /^[012]$/.test(councilEra) && !window.civ2Test && ['localhost','127.0.0.1'].includes(location.hostname)) {
             councilClip=await chooseLocalCouncilShadow(chooseCouncilSource(entries,Number(councilEra)),pageLang,Number(councilEra),councilRender);
-            if(councilClip){env.CIV2_T025_COUNCIL_SHADOW='1';env.CIV2_T025_COUNCIL_ERA=councilEra;if(councilRender)env.CIV2_T025_COUNCIL_RENDER='1';}
+            if(councilClip){env.CIV2_T025_COUNCIL_SHADOW='1';env.CIV2_T025_COUNCIL_ERA=councilEra;if(councilRender){env.CIV2_T025_COUNCIL_RENDER='1';if(query.get('councilStateOnly')==='1')env.CIV2_T025_COUNCIL_STATE_ONLY='1';}}
         }
         window.civ2Stats = {};
         const gameOptions = {wasm: site.wasm, fs, audioContext: introAudio, councilClip, councilRender:!!councilClip&&councilRender,

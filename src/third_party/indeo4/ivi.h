@@ -217,6 +217,8 @@ typedef struct IVI45DecContext {
     uint32_t        frame_num;
     int             frame_type;
     int             prev_frame_type; ///< frame type of the previous frame
+    /* Civ2: optional opaque P-frame output elision, not reference decode elision. */
+    int             civ2_output_width, civ2_output_height, civ2_output_elided;
     uint32_t        data_size;       ///< size of the frame data in bytes from picture header
     int             is_scalable;
     const uint8_t   *frame_data;     ///< input frame data pointer

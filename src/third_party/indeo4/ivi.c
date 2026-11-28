@@ -1145,6 +1145,19 @@ int ff_ivi_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     if (result < 0)
         return result;
 
+    /* Only after all bands and buffer switches succeeded. No output
+       allocation/recomposition when a matching modern opaque frame is ready.
+       Never elide I/B/null/transparent frames or a delayed P-frame sequence. */
+    if (ctx->is_indeo4 && ctx->frame_type == IVI4_FRAMETYPE_INTER &&
+        !ctx->has_transp && !ctx->has_b_frames && !ctx->got_p_frame &&
+        ctx->civ2_output_width == avctx->width &&
+        ctx->civ2_output_height == avctx->height &&
+        ctx->civ2_output_width > 0 && ctx->civ2_output_height > 0) {
+        ctx->civ2_output_elided = 1;
+        *got_frame = 0;
+        return buf_size;
+    }
+
     if ((result = ff_get_buffer(avctx, frame, 0)) < 0)
         return result;
 

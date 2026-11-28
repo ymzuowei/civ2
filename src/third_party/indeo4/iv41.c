@@ -94,10 +94,13 @@ Iv41 *iv41_open(int width, int height)
     return d;
 }
 
-int iv41_decode(Iv41 *d, const void *data, int size, Iv41Frame *out)
+static int decode_with_output_policy(Iv41 *d, const void *data, int size,
+                                     int width, int height, Iv41Frame *out)
 {
     AVPacket pkt;
-    int got = 0;
+    IVI45DecContext *ctx = d->avctx.priv_data;
+    int got = 0, result, elided;
+    memset(out, 0, sizeof *out);
     if (size + AV_INPUT_BUFFER_PADDING_SIZE > d->pkt_cap) {
         free(d->pkt);
         d->pkt_cap = size + AV_INPUT_BUFFER_PADDING_SIZE;
@@ -112,7 +115,20 @@ int iv41_decode(Iv41 *d, const void *data, int size, Iv41Frame *out)
     pkt.data = d->pkt;
     pkt.size = size;
     av_frame_unref(d->frame);
-    if (ff_indeo4_decoder.decode(&d->avctx, d->frame, &got, &pkt) < 0 || !got)
+    ctx->civ2_output_width = width;
+    ctx->civ2_output_height = height;
+    ctx->civ2_output_elided = 0;
+    result = ff_indeo4_decoder.decode(&d->avctx, d->frame, &got, &pkt);
+    elided = ctx->civ2_output_elided;
+    ctx->civ2_output_width = ctx->civ2_output_height = ctx->civ2_output_elided = 0;
+    if (result < 0)
+        return 0;
+    if (elided) {
+        out->width = width;
+        out->height = height;
+        return 2;
+    }
+    if (!got)
         return 0;
     out->width = d->frame->width;
     out->height = d->frame->height;
@@ -128,6 +144,16 @@ int iv41_decode(Iv41 *d, const void *data, int size, Iv41Frame *out)
                     ctx->transp_h == out->height ? ctx->transp_mask : NULL;
     }
     return 1;
+}
+
+int iv41_decode(Iv41 *d, const void *data, int size, Iv41Frame *out)
+{
+    return decode_with_output_policy(d, data, size, 0, 0, out);
+}
+
+int iv41_decode_opaque_state(Iv41 *d, const void *data, int size, int width, int height, Iv41Frame *out)
+{
+    return decode_with_output_policy(d, data, size, width, height, out);
 }
 
 void iv41_close(Iv41 *d)

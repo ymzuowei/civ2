@@ -73,6 +73,12 @@ export function createCouncilHostBridge({makeRange=createCouncilRange,makeCanvas
             prepared=null;
             return true;
         },
+        // Transfer ownership of one exact prepared RGBA array to the trial.
+        // No WASM view is retained; caller can hold at most one frame.
+        takePrepared(ticket){
+            if(!prepared||ticket?.epoch!==generation||ticket?.token!==prepared.token||ticket.status!=="ready")return null;
+            const bytes=prepared.bytes;prepared=null;return bytes;
+        },
         close(){releaseClip();},
         dispose(){disposed=true;releaseClip();},
         stats(){const r=range?.stats?.()??null;return {activeRange:range&&!r?.closed?1:0,pending:pending?1:0,

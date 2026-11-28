@@ -61,6 +61,17 @@ class CouncilShadowIntegration(unittest.TestCase):
             self.assertIn(token, self.bridge)
         self.assertIn("dispose(){close();clip=null;changed();}", self.trial)
 
+    def test_visible_trial_exact_frame_and_original_opacity_gate(self):
+        self.assertIn("fr->mask || fr->has_transparency", self.video)
+        self.assertIn("host_council_take(render_frame, c->render_pixels", self.video)
+        self.assertIn("draw_frame_rgb(c, fr, d, c->render_pixels)", self.video)
+        self.assertIn("free(c->render_pixels)", self.video)
+        self.assertIn("plat_council_render_begin(", self.sound)
+        self.assertIn("plat_council_render_end();", self.sound)
+        self.assertIn("slot.frame!==frame", self.trial)
+        self.assertIn("slot=null", self.trial)
+        self.assertIn("query.get('councilRender')==='1'", self.main)
+
     def test_owner_local_entry_and_built_module(self):
         self.assertIn("query.get('councilShadow') === '1'", self.main)
         self.assertIn("['localhost','127.0.0.1'].includes(location.hostname)", self.main)

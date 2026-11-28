@@ -57,4 +57,15 @@ function makeRange(){
     assert.equal(bridge.stats().canvasPixels,0);
     bridge.dispose();
 }
+{
+    const bridge=createCouncilHostBridge({makeRange,makeCanvas});
+    assert.equal(bridge.open({scope:'COUNCIL0',shadowOnly:true,verified:true,payload,
+        table:{nativeStart:0,samples:[{}]},config:{codedWidth:2,codedHeight:2}}),true);
+    assert.equal(bridge.startRange(0,0),true);
+    const ticket=await bridge.prepare(0);
+    assert.equal(bridge.takePrepared(ticket).byteLength,16);
+    assert.equal(bridge.takePrepared(ticket),null);
+    assert.equal(bridge.stats().preparedBytes,0);
+    bridge.dispose();
+}
 console.log('CIV2_T025_COUNCIL_HOST_BRIDGE_LIFECYCLE=PASS');

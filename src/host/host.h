@@ -121,6 +121,8 @@ int HOST_API(host_opening_video)(void);
 int HOST_API(host_council_open)(const void *source, uint32_t size);
 int HOST_API(host_council_frame)(uint32_t frame, uint32_t last, uint32_t width, uint32_t height);
 void HOST_API(host_council_close)(void);
+/* Synchronous exact-frame copy only, 0 means keep legacy drawing. */
+int HOST_API(host_council_take)(uint32_t frame, void *rgba, uint32_t bytes);
 #endif
 /* (port_main.c: the program's arguments, for host_restart; not an import) */
 void host_save_args(int argc, char **argv);

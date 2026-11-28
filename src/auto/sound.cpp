@@ -8,6 +8,8 @@
 EXTERN_C void plat_log(const char *fmt, ...);
 #ifdef __wasm__
 EXTERN_C void plat_council_shadow_frame(PAVISTREAM stream, uint32_t frame, uint32_t last, int w, int h);
+EXTERN_C void plat_council_render_begin(PAVISTREAM stream, uint32_t frame, int eligible);
+EXTERN_C void plat_council_render_end(void);
 #endif
 
 /* 00419c8b auto */
@@ -2772,6 +2774,10 @@ int __cdecl avi_decode_frame(AviPlayer *player,int decode_flags)
                             avi_play.frame_buffer_size,&bytes_read,0);
     if (result == 0) {
       player->src_format.size_image = bytes_read;
+#ifdef __wasm__
+      plat_council_render_begin(avi_play.video_stream[0], player->cur_frame,
+          decode_flags == 0 && player->transparent == 0);
+#endif
       if (player->double_size == 0) {
         y_dst = 0;
         x_dst = 0;
@@ -2794,6 +2800,9 @@ int __cdecl avi_decode_frame(AviPlayer *player,int decode_flags)
         player->dst_format.height = player->dst_format.height >> 1;
         player->dst_format.width = player->dst_format.width >> 1;
       }
+#ifdef __wasm__
+      plat_council_render_end();
+#endif
       if ((result != 0) && (result != 1)) {
         wsprintfA(message,str_icdecompressex_returned_ld,result);
         MessageBoxA((HWND)0x0,message,str_get_frame,0);

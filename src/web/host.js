@@ -190,7 +190,7 @@ export async function runGame(opts) {
     const councilTrace = !!opts.councilTrace;
     let councilTrial;
     const councilStats=()=>{if(opts.stats&&councilTrial)opts.stats.councilShadow=councilTrial.stats();};
-    councilTrial=createCouncilNativeTrial(opts.councilClip||null,{onChange:councilStats});
+    councilTrial=createCouncilNativeTrial(opts.councilClip||null,{onChange:councilStats,render:opts.councilRender===true});
     opts.councilClip=null;
     const closeCouncil=()=>{councilTrial.close();councilStats();};
     councilStats();
@@ -575,6 +575,10 @@ export async function runGame(opts) {
         host_init: () => 1,
         host_quit: closeCouncil,
         host_council_close: closeCouncil,
+        host_council_take: (frame,ptr,len) => {
+            try{return councilTrial.take(frame>>>0,wasm32Bytes(memory,ptr,len))?1:0;}
+            catch(_){return 0;}
+        },
         host_base_path: (buf, size) => {
             if (size)
                 wasm32Bytes(memory, buf, 1)[0] = 0;

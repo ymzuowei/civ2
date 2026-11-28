@@ -3,16 +3,16 @@ import {createCouncilHostBridge} from './council_host_bridge.js';
 const shaOK=x=>typeof x==="string"&&/^[a-f0-9]{64}$/.test(x);
 const hex=x=>Array.from(new Uint8Array(x),b=>b.toString(16).padStart(2,"0")).join("");
 export function createCouncilNativeTrial(input,{makeBridge=createCouncilHostBridge,
-    digest=x=>crypto.subtle.digest("SHA-256",x),onChange=()=>{}}={}){
+    digest=x=>crypto.subtle.digest("SHA-256",x),onChange=()=>{},render=false}={}){
     let clip=input,bridge=null,epoch=0,first=null,end=null,previous=null;
-    let queued=null,pumping=false;
+    let queued=null,pumping=false,slot=null;
     input=null;
-    const counters={opens:0,closes:0,scheduled:0,dropped:0,frames:0,unchanged:0,failures:0,staleEndHints:0};
+    const counters={opens:0,closes:0,scheduled:0,dropped:0,frames:0,unchanged:0,failures:0,staleEndHints:0,cancelled:0,renderHits:0,renderMisses:0,renderRejected:0};
     let lastFailure=null;
     function fail(code){counters.failures++;lastFailure=code;changed();}
     const changed=()=>{try{onChange();}catch(_){}};
     function close(){
-        epoch++;queued=null;
+        epoch++;if(queued)counters.cancelled++;queued=null;slot=null;
         if(bridge){bridge.dispose();counters.closes++;}
         bridge=null;first=end=previous=null;
         changed();
@@ -60,10 +60,16 @@ export function createCouncilNativeTrial(input,{makeBridge=createCouncilHostBrid
             previous=frame;return {owner,ticket,ready};
         }catch(e){if(ticket===epoch){fail(["FRAME_BOUNDS","RANGE_START","FRAME_PREPARE"].includes(e?.message)?e.message:"PREPARE_EXCEPTION");close();}return null;}
     }
-    function discard(value){
+    function discard(value,job){
         if(!value||value.ticket!==epoch||value.owner!==bridge)return false;
         if(value.ready.status==="unchanged"){counters.unchanged++;changed();return true;}
-        if(!bridge.discard(value.ready)){fail("DISCARD");close();return false;}
+        if(render){
+            const bytes=bridge.takePrepared(value.ready);
+            if(!(bytes instanceof Uint8ClampedArray)||bytes.byteLength!==clip.config.codedWidth*clip.config.codedHeight*4){
+                fail("RENDER_READBACK");close();return false;
+            }
+            slot={frame:job.frame,bytes};
+        }else if(!bridge.discard(value.ready)){fail("DISCARD");close();return false;}
         counters.frames++;changed();return true;
     }
     async function pump(){
@@ -73,8 +79,8 @@ export function createCouncilNativeTrial(input,{makeBridge=createCouncilHostBrid
             while(queued&&ticket===epoch&&bridge){
                 const job=queued;queued=null;
                 const value=await prepare(job.frame,job.last,ticket,bridge);
-                if(ticket!==epoch||!bridge)break;
-                if(!value||!discard(value))break;
+                if(ticket!==epoch||!bridge){counters.cancelled++;break;}
+                if(!value||!discard(value,job))break;
             }
         }catch(_){if(ticket===epoch){fail("PUMP_EXCEPTION");close();}}
         finally{
@@ -97,15 +103,33 @@ export function createCouncilNativeTrial(input,{makeBridge=createCouncilHostBrid
         if(!Number.isSafeInteger(last)||last<frame||last>max){
             last=frame;counters.staleEndHints++;
         }
+        if(render){
+            // Look one frame ahead. A seek or late native tick can miss;
+            // never display an older or future frame in its place.
+            frame=frame<last?frame+1:frame;
+            if(slot&&slot.frame!==frame)slot=null;
+        }
         if(queued)counters.dropped++;
         queued={frame,last};counters.scheduled++;changed();
         if(!pumping)void pump();
         return true;
     }
+    function take(frame,destination){
+        if(!render||!bridge)return false;
+        if(!slot||slot.frame!==frame){counters.renderMisses++;changed();return false;}
+        const bytes=slot.bytes;slot=null;
+        if(!(destination instanceof Uint8Array)||destination.byteLength!==bytes.byteLength){
+            counters.renderRejected++;changed();return false;
+        }
+        // All alpha must be opaque; native additionally checks original Indeo mask.
+        for(let i=3;i<bytes.length;i+=4)if(bytes[i]!==255){counters.renderRejected++;changed();return false;}
+        destination.set(bytes);counters.renderHits++;changed();return true;
+    }
     return {
         available:valid,active:()=>!!bridge,
-        open,schedule,close,
+        open,schedule,take,close,
         stats(){return {...counters,lastFailure,active:bridge?1:0,pumping,queued:queued?1:0,
+            render,readyFrame:slot?.frame??null,readyBytes:slot?.bytes.byteLength??0,
             sharedClipBytes:clip?.payload.byteLength??0,bridge:bridge?.stats?.()??null};},
         dispose(){close();clip=null;changed();}
     };

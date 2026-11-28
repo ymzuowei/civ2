@@ -240,6 +240,20 @@ void plat_council_shadow_frame(PAVISTREAM ps, uint32_t frame, uint32_t last, int
 }
 #endif
 
+#ifdef __wasm__
+/* Synchronous scope around exactly one legacy decode; no retained AVI pointer. */
+static int render_scope;
+static uint32_t render_frame;
+void plat_council_render_begin(PAVISTREAM ps, uint32_t frame, int eligible)
+{
+    AviStreamRef *r = obj_get((Handle)ps, OBJ_AVISTREAM);
+    render_scope = eligible && r && r->file && r->file->council_trial &&
+        getenv("CIV2_T025_COUNCIL_RENDER") && !getenv("CIV2_TEST_VIDEO_KEY");
+    render_frame = frame;
+}
+void plat_council_render_end(void) { render_scope = 0; }
+#endif
+
 static Stream *stream_of(PAVISTREAM ps)
 {
     AviStreamRef *r = obj_get((Handle)ps, OBJ_AVISTREAM);
@@ -401,6 +415,8 @@ typedef struct {
     RGBQUAD pal[256];
     unsigned char lut[32768];   /* RGB 5:5:5 -> palette index */
     int lut_ok;
+    unsigned char *render_pixels; /* one reusable bounded RGBA scratch, freed with codec */
+    size_t render_capacity;
     int32_t *view;              /* where to report the area drawn: x, y, width, height */
 } Codec;
 
@@ -636,7 +652,7 @@ static int clamp8(int v) { return v < 0 ? 0 : v > 255 ? 255 : v; }
 
 /* Draw the decoded frame into the destination DIB (8, 16, 24 or 32 bits;
  * bottom-up unless the height is negative), scaling the source rectangle. */
-static void draw_frame(Codec *c, const Iv41Frame *fr, const ICDECOMPRESSEX *d)
+static void draw_frame_rgb(Codec *c, const Iv41Frame *fr, const ICDECOMPRESSEX *d, const unsigned char *rgba)
 {
     static const int bayer[4][4] = {{-24, 8, -16, 16}, {20, -8, 28, 0}, {-12, 20, -20, 12}, {24, 0, 16, -4}};
     BITMAPINFOHEADER *bi = d->lpbiDst;
@@ -690,6 +706,10 @@ static void draw_frame(Codec *c, const Iv41Frame *fr, const ICDECOMPRESSEX *d)
                         px = 0xff000000u | (uint32_t)clamp8((Y + 409 * V + 128) >> 8) << 16 |
                              (uint32_t)clamp8((Y - 100 * U - 208 * V + 128) >> 8) << 8 |
                              (uint32_t)clamp8((Y + 516 * U + 128) >> 8);
+                    }
+                    if (rgba) {
+                        const unsigned char *p = rgba + ((size_t)y * fr->width + x) * 4;
+                        px = 0xff000000u | (uint32_t)p[0] << 16 | (uint32_t)p[1] << 8 | p[2];
                     }
                     sm.rgb[(size_t)y * fr->width + x] = px;
                 }
@@ -760,6 +780,10 @@ static void draw_frame(Codec *c, const Iv41Frame *fr, const ICDECOMPRESSEX *d)
             r = clamp8((Y + 409 * V + 128) >> 8);
             g = clamp8((Y - 100 * U - 208 * V + 128) >> 8);
             b = clamp8((Y + 516 * U + 128) >> 8);
+            if (rgba) {
+                const unsigned char *p = rgba + ((size_t)sy * fr->width + sx) * 4;
+                r = p[0]; g = p[1]; b = p[2];
+            }
             switch (bpp) {
             case 8: {
                 int e = bayer[ty & 3][tx & 3];
@@ -794,6 +818,33 @@ static void draw_frame(Codec *c, const Iv41Frame *fr, const ICDECOMPRESSEX *d)
     free(sm.col);
     free(sm.cov);
 }
+
+static void draw_frame(Codec *c, const Iv41Frame *fr, const ICDECOMPRESSEX *d)
+{
+    draw_frame_rgb(c, fr, d, NULL);
+}
+#ifdef __wasm__
+/* Original frame must have actually decoded and be opaque. Exact match only.
+   No async import or visible override on a cache miss. */
+static int draw_council_ready(Codec *c, const Iv41Frame *fr, const ICDECOMPRESSEX *d)
+{
+    size_t bytes;
+    if (!render_scope || fr->mask || fr->has_transparency ||
+        fr->width <= 0 || fr->width > 1024 || fr->height <= 0 || fr->height > 768)
+        return 0;
+    bytes = (size_t)fr->width * fr->height * 4;
+    if (c->render_capacity != bytes) {
+        unsigned char *p = realloc(c->render_pixels, bytes);
+        if (!p) return 0;
+        c->render_pixels = p;
+        c->render_capacity = bytes;
+    }
+    if (host_council_take(render_frame, c->render_pixels, (uint32_t)bytes) != 1)
+        return 0;
+    draw_frame_rgb(c, fr, d, c->render_pixels);
+    return 1;
+}
+#endif
 
 HIC WINAPI ICLocate(DWORD type, DWORD handler, LPBITMAPINFOHEADER in, LPBITMAPINFOHEADER out, WORD mode)
 { API_TRACE();
@@ -873,7 +924,10 @@ LRESULT WINAPI ICSendMessage(HIC h, UINT msg, DWORD_PTR a, DWORD_PTR b)
                      (long)d->lpbiDst->biWidth, (long)d->lpbiDst->biHeight, d->lpbiDst->biBitCount, d->lpDst, d->xDst,
                      d->yDst, d->dxDst, d->dyDst, (unsigned long)d->dwFlags);
         if (!(d->dwFlags & ICDECOMPRESS_PREROLL) && d->lpDst && d->lpbiDst) {
-            draw_frame(c, &fr, d);
+#ifdef __wasm__
+            if (!draw_council_ready(c, &fr, d))
+#endif
+                draw_frame(c, &fr, d);
             if (c->view) {              /* the game copies this area to the screen */
                 c->view[0] = d->xDst;
                 c->view[1] = d->yDst;
@@ -901,6 +955,7 @@ LRESULT WINAPI ICClose(HIC h)
     Codec *c = obj_get((Handle)(uintptr_t)h, OBJ_CODEC);
     if (c) {
         iv41_close(c->dec);
+        free(c->render_pixels);
         free(c);
         obj_free((Handle)(uintptr_t)h);
     }

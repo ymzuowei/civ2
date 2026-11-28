@@ -116,6 +116,7 @@ u32 HOST(opening_video)(Host *h) { (void)h; return 0; }
 u32 HOST(council_open)(Host *h, u32 source, u32 size) { (void)h; (void)source; (void)size; return 0; }
 u32 HOST(council_frame)(Host *h, u32 frame, u32 last, u32 rgba, u32 capacity) { (void)h; (void)frame; (void)last; (void)rgba; (void)capacity; return 0; }
 void HOST(council_close)(Host *h) { (void)h; }
+u32 HOST(council_take)(Host *h, u32 frame, u32 rgba, u32 bytes) { (void)h; (void)frame; (void)rgba; (void)bytes; return 0; }
 u32 HOST(user_dir)(Host *h, u32 buf, u32 size)
 {
     char p[4096];

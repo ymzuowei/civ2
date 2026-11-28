@@ -65,6 +65,8 @@ class CouncilShadowIntegration(unittest.TestCase):
         self.assertIn("query.get('councilShadow') === '1'", self.main)
         self.assertIn("['localhost','127.0.0.1'].includes(location.hostname)", self.main)
         self.assertIn("verifyCouncilShadowPair", self.pair)
+        self.assertIn("配对清单 JSON", self.pair)
+        self.assertIn("Transcoded MP4", self.pair)
         self.assertIn("'council_local_pair.js'", self.build)
 
 

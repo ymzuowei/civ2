@@ -968,7 +968,7 @@ async function play(store) {
     try {
         // Explicit local test only. No persistence or ordinary startup prompt.
         if (query.get('councilShadow') === '1' && !window.civ2Test && ['localhost','127.0.0.1'].includes(location.hostname)) {
-            councilClip=await chooseLocalCouncilShadow(chooseCouncilSource(entries));
+            councilClip=await chooseLocalCouncilShadow(chooseCouncilSource(entries),pageLang);
             if(councilClip)env.CIV2_T025_COUNCIL_SHADOW='1';
         }
         window.civ2Stats = {};

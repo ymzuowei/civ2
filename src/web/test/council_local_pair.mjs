@@ -6,6 +6,7 @@ const manifest={scope:'OWNER_LOCAL_COUNCIL0_SHADOW_ONLY',schema:1,sourceBytes:2,
     config:{codec:'avc1.42001e',codedWidth:2,codedHeight:2,description:[1,66,0,30,255,225,0]}};
 const options={subtle:{digest:async()=>new Uint8Array(32).buffer},supported:async()=>({supported:true})};
 assert.equal(chooseCouncilSource([['VIDEO/COUNCIL0.AVI',{data:source}]]),source);
+assert.equal(chooseCouncilSource([['COUNCIL0.AVI',{data:source}]]),source);
 assert.equal(chooseCouncilSource([['VIDEO/COUNCIL0.AVI',{data:source}],['video/council0.avi',{data:source}]]),null);
 const clip=await verifyCouncilShadowPair(source,payload,manifest,options);
 assert.equal(clip.shadowOnly,true);assert.equal(clip.opaque,undefined);assert.equal(clip.payload,payload);

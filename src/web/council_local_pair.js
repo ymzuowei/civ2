@@ -4,7 +4,7 @@ const MAX=128*1024*1024, META=4*1024*1024;
 const hex=x=>Array.from(new Uint8Array(x),b=>b.toString(16).padStart(2,'0')).join('');
 const sha=x=>typeof x==='string'&&/^[a-f0-9]{64}$/.test(x);
 export function chooseCouncilSource(entries){
-    const matches=entries.filter(([name])=>/(?:^|\/)video\/council0\.avi$/i.test(name.replace(/\\/g,'/')));
+    const matches=entries.filter(([name])=>/(?:^|\/)council0\.avi$/i.test(name.replace(/\\/g,'/')));
     const bytes=matches.length===1?matches[0][1]?.data:null;
     return bytes instanceof Uint8Array&&bytes.byteLength>0&&bytes.byteLength<=MAX?bytes:null;
 }
@@ -34,15 +34,22 @@ export async function verifyCouncilShadowPair(source,payload,m,{subtle=globalThi
     return {scope:'COUNCIL0',shadowOnly:true,verified:true,sourceSha256:m.sourceSha256,
         derivedSha256:m.derivedSha256,payload,table:t,config};
 }
-export async function chooseLocalCouncilShadow(source){
+export async function chooseLocalCouncilShadow(source,lang='en'){
+    const zh=/^zh/i.test(lang||'');
     if(!source||!globalThis.crypto?.subtle||typeof VideoDecoder!=='function'||
        typeof document.createElement('dialog').showModal!=='function')return null;
     const dialog=document.createElement('dialog');
     const add=(tag,text)=>{const e=document.createElement(tag);if(text)e.textContent=text;dialog.append(e);return e;};
-    add('h2','Council0 — local shadow test');
-    add('p','Select the local JSON and MP4. The original animation remains visible. No files are remembered.');
-    const meta=add('input'),media=add('input'),status=add('p',''),go=add('button','Verify and start'),skip=add('button','Use original only');
+    add('h2',zh?'议会顾问动画 — 本地影子测试':'Council0 — local shadow test');
+    add('p',zh?'选择配对清单 JSON 和转码 MP4。原版动画继续负责显示；所选文件不会被保存。':'Select the pair manifest JSON and transcoded MP4. The original animation remains visible; selected files are not saved.');
+    const meta=document.createElement('input'),media=document.createElement('input');
     for(const e of [meta,media])e.type='file';
+    const metaLabel=add('label',zh?'配对清单 JSON':'Pair manifest JSON');
+    const mediaLabel=add('label',zh?'转码 MP4':'Transcoded MP4');
+    for(const label of [metaLabel,mediaLabel]){label.style.display='block';label.style.margin='10px 0';}
+    for(const input of [meta,media]){input.style.display='block';input.style.margin='6px 0';}
+    metaLabel.append(meta);mediaLabel.append(media);
+    const status=add('p',''),go=add('button',zh?'验证并开始':'Verify and start'),skip=add('button',zh?'仅使用原版动画':'Use original only');
     meta.accept='.json,application/json';media.accept='.mp4,video/mp4';
     let done=false,busy=false,resolve;
     const result=new Promise(r=>{resolve=r;});
@@ -54,7 +61,7 @@ export async function chooseLocalCouncilShadow(source){
     go.onclick=async()=>{
         if(done||busy)return;
         const m=meta.files[0],v=media.files[0];
-        if(!m||!v||m.size<1||m.size>META||v.size<1||v.size>MAX){status.textContent='Select a valid pair.';return;}
+        if(!m||!v||m.size<1||m.size>META||v.size<1||v.size>MAX){status.textContent=zh?'请选择有效的 JSON 和 MP4 文件。':'Select a valid JSON and MP4 pair.';return;}
         busy=true;go.disabled=meta.disabled=media.disabled=true;
         try{
             const manifest=JSON.parse(await m.text());
@@ -63,7 +70,7 @@ export async function chooseLocalCouncilShadow(source){
             if(done)return;
             const clip=await verifyCouncilShadowPair(source,payload,manifest);
             if(!done)finish(clip);
-        }catch{if(!done)status.textContent='Verification failed. Retry or use original.';}
+        }catch{if(!done)status.textContent=zh?'验证失败。请重试，或使用原版动画。':'Verification failed. Retry or use the original animation.';}
         finally{busy=false;if(!done)go.disabled=meta.disabled=media.disabled=false;}
     };
     try{document.body.append(dialog);dialog.showModal();return await result;}

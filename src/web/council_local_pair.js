@@ -1,5 +1,6 @@
 // Owner-local, one session only. No network, storage or object URLs.
 import {planCouncilSeek} from './council_frame_provider.js';
+import {verifyOpeningPair} from './opening_native.js';
 const MAX=128*1024*1024, META=4*1024*1024;
 const hex=x=>Array.from(new Uint8Array(x),b=>b.toString(16).padStart(2,'0')).join('');
 const sha=x=>typeof x==='string'&&/^[a-f0-9]{64}$/.test(x);
@@ -79,5 +80,58 @@ export async function chooseLocalCouncilShadow(source,lang='en',era=0,render=fal
     try{document.body.append(dialog);dialog.showModal();return await result;}
     catch{return null;}
     finally{done=true;source=null;meta.value=media.value='';go.onclick=skip.onclick=null;
+        dialog.removeEventListener('cancel',cancel);window.removeEventListener('pagehide',cancel);dialog.remove();}
+}
+
+// One local file, two independent verified streams. Never read the whole
+// package into an ArrayBuffer; each bounded payload is read exactly once.
+export async function readLocalMediaPack(file,openingSource,councilSource,era,
+    {subtle=globalThis.crypto?.subtle,supported=c=>VideoDecoder.isConfigSupported(c)}={}){
+    if(!validEra(era)||!file||file.size<13||file.size>12+META+2*MAX)throw Error('PACK_SIZE');
+    const prefix=new Uint8Array(await file.slice(0,12).arrayBuffer());
+    if(new TextDecoder().decode(prefix.subarray(0,8))!=='CIV2M01\n')throw Error('PACK_MAGIC');
+    const len=new DataView(prefix.buffer).getUint32(8,true);
+    if(len<1||len>META||12+len>=file.size)throw Error('PACK_HEADER');
+    const m=JSON.parse(await file.slice(12,12+len).text());
+    const o=m?.opening,c=m?.council,os=o?.derived_bytes,cs=c?.derivedBytes;
+    if(m?.schema!==1||!Number.isSafeInteger(os)||os<1||os>MAX||
+       !Number.isSafeInteger(cs)||cs<1||cs>MAX||12+len+os+cs!==file.size)
+        throw Error('PACK_LAYOUT');
+    const start=12+len;
+    const opening=await verifyOpeningPair(openingSource,new Uint8Array(await file.slice(start,start+os).arrayBuffer()),o,subtle);
+    const council=await verifyCouncilShadowPair(councilSource,new Uint8Array(await file.slice(start+os).arrayBuffer()),c,{era,subtle,supported});
+    return {opening,council};
+}
+export async function chooseLocalMediaPack(openingSource,councilSource,lang,era){
+    if(!openingSource||!councilSource||!globalThis.crypto?.subtle||
+       typeof VideoDecoder!=='function'||typeof document.createElement('dialog').showModal!=='function')return null;
+    const zh=/^zh/i.test(lang||'');
+    const dialog=document.createElement('dialog');
+    const add=(tag,words)=>{const e=document.createElement(tag);if(words)e.textContent=words;dialog.append(e);return e;};
+    add('h2',zh?'游戏动画素材包':'Game animation pack');
+    add('p',zh?'一次选择开场及 COUNCIL'+era+' 议会动画素材包（.civ2media）。文件仅在本次游戏使用，不上传或保存。':
+        'Select one .civ2media pack containing opening and COUNCIL'+era+'. Local session only; no upload or storage.');
+    const file=add('input');file.type='file';file.accept='.civ2media';file.style.display='block';file.style.margin='12px 0';
+    const status=add('p',''),go=add('button',zh?'验证并开始':'Verify and start'),skip=add('button',zh?'使用原版动画':'Use original animations');
+    let done=false,busy=false,resolve;
+    const result=new Promise(r=>{resolve=r;});
+    const finish=v=>{if(!done){done=true;resolve(v);}};
+    const cancel=e=>{e?.preventDefault();finish(null);};
+    dialog.addEventListener('cancel',cancel);window.addEventListener('pagehide',cancel);
+    skip.onclick=()=>finish(null);
+    go.onclick=async()=>{
+        if(done||busy)return;
+        const selected=file.files[0];
+        if(!selected){status.textContent=zh?'请选择素材包。':'Select a pack.';return;}
+        busy=true;go.disabled=file.disabled=true;
+        try{
+            const pair=await readLocalMediaPack(selected,openingSource,councilSource,era);
+            if(!done)finish(pair);
+        }catch{if(!done)status.textContent=zh?'素材包不匹配或验证失败。请选择对应时代的完整素材包，或使用原版动画。':'Pack mismatch or verification failed. Choose the matching era pack or use originals.';}
+        finally{busy=false;if(!done)go.disabled=file.disabled=false;}
+    };
+    try{document.body.append(dialog);dialog.showModal();return await result;}
+    catch{return null;}
+    finally{done=true;openingSource=councilSource=null;file.value='';go.onclick=skip.onclick=null;
         dialog.removeEventListener('cancel',cancel);window.removeEventListener('pagehide',cancel);dialog.remove();}
 }

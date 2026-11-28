@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {chooseCouncilSource,verifyCouncilShadowPair} from '../council_local_pair.js';
+import {chooseCouncilSource,verifyCouncilShadowPair,readLocalMediaPack} from '../council_local_pair.js';
 const source=new Uint8Array([1,2]),payload=new Uint8Array([3,4]),sha='0'.repeat(64);
 const manifest={scope:'OWNER_LOCAL_COUNCIL0_SHADOW_ONLY',schema:1,sourceBytes:2,derivedBytes:2,
     sourceSha256:sha,derivedSha256:sha,table:{nativeStart:0,samples:[{ptsUs:0,durationUs:66667,offset:0,size:2,key:true}]},
@@ -23,4 +23,16 @@ for(const era of [1,2]){
 }
 assert.equal(chooseCouncilSource([['ANARCHY0.AVI',{data:source}]],0),null);
 assert.equal(chooseCouncilSource([['COUNCIL3.AVI',{data:source}]],3),null);
+{
+    const header=new TextEncoder().encode(JSON.stringify({schema:1,opening:{
+        scope:'OWNER_LOCAL_OPENING_ONLY',schema:1,source_bytes:2,derived_bytes:2,
+        source_sha256:sha,derived_sha256:sha,duration_s:2},council:manifest}));
+    const prefix=new Uint8Array(12);prefix.set(new TextEncoder().encode('CIV2M01\n'));
+    new DataView(prefix.buffer).setUint32(8,header.length,true);
+    const file=new Blob([prefix,header,payload,payload]);
+    const p=await readLocalMediaPack(file,source,source,0,options);
+    assert.equal(p.opening.duration,2);assert.equal(p.council.scope,'COUNCIL0');
+    await assert.rejects(readLocalMediaPack(file,source,source,2,options),/PAIR_IDENTITY/);
+    await assert.rejects(readLocalMediaPack(new Blob([file,payload]),source,source,0,options),/PACK_LAYOUT/);
+}
 console.log('CIV2_T025_COUNCIL_LOCAL_PAIR_SOURCE=PASS');

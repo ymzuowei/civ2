@@ -55,7 +55,7 @@ export function openingRect(g,w=320,h=120){
     const width=Math.min(w*2*scale,r.width,r.height*w/h),height=width*h/w;
     return {left:r.left+(r.width-width)/2,top:r.top+(r.height-height)/2,width,height};
 }
-export async function playNativeOpening({source,volume,lang,geometry,store}){
+export async function playNativeOpening({source,volume,lang,geometry,store,prepared=null}){
     const chinese=/^zh/i.test(lang||'');
     const words=chinese?['实验性开场动画','选择本地配对 JSON 和 MP4 文件','播放','跳过','使用原版 AVI','验证失败，选择原版或重试']:
         ['Experimental opening','Select local pairing JSON and MP4','Play','Skip','Use original AVI','Verification failed; retry or use original'];
@@ -87,7 +87,8 @@ export async function playNativeOpening({source,volume,lang,geometry,store}){
             globalThis.civ2OpeningGeometry={width:r.width,height:r.height,logicalWidth:geometry().width,logicalHeight:geometry().height};
         };
         video.addEventListener('loadedmetadata',resize);
-        let pair=null,selected=null,revision=0,busy=false;
+        const bundled=!!prepared;
+        let pair=prepared,selected=null,revision=0,busy=false;prepared=null;
         const actions=()=>{play.disabled=busy||!pair;remember.disabled=busy||!store||!selected;forget.disabled=busy||!store;meta.disabled=media.disabled=busy;};
         const change=async()=>{
             const rev=++revision;pair=null;selected=null;actions();
@@ -146,7 +147,11 @@ export async function playNativeOpening({source,volume,lang,geometry,store}){
         document.body.append(dialog);dialog.showModal();legacy.focus();
         window.addEventListener('pagehide',abandon,{once:true});
         timer=setTimeout(abandon,180000);
-        if(store){
+        if(bundled){
+            // Verified by the single package picker; keep the existing Play gesture.
+            for(const e of [meta,media,remember,forget])e.hidden=true;
+            status.textContent=chinese?'素材包已验证，点击播放。':'Pack verified; click Play.';actions();
+        }else if(store){
             const rev=revision;
             readOpeningCache(store,source).then(c=>{
                 if(done||started||busy||rev!==revision)return;

@@ -4,7 +4,7 @@
 import {MemFS} from './wasi.js';
 import {GRAPHICS_PREFERENCE_KEY, resolveGraphicsPreference, graphicsFromQuery, hdArg} from './graphics_choice.js';
 import {runGame} from './host.js';
-import {chooseCouncilSource, chooseLocalCouncilShadow} from './council_local_pair.js';
+import {chooseCouncilSource, chooseLocalCouncilShadow, chooseLocalMediaPack} from './council_local_pair.js';
 import {chooseOpeningSource, playNativeOpening} from './opening_native.js';
 import {createAudioVolume, audioLabels} from './audio_volume.js';
 import {createToolbarCollapse, toolbarLabels} from './toolbar.js';
@@ -964,19 +964,30 @@ async function play(store) {
     // (tests, src/web/test/smoke.mjs: files and settings of a replay)
     if (window.civ2Test)
         await window.civ2Test(fs, env);
-    let code, councilClip=null;
+    let code, councilClip=null, openingPair=null;
+    let bundled=false;
     const councilRender=query.get('councilRender')==='1';
     const councilEra=query.get('councilEra')??'0';
     try {
         // Explicit local test only. No persistence or ordinary startup prompt.
         if (query.get('councilShadow') === '1' && /^[012]$/.test(councilEra) && !window.civ2Test && ['localhost','127.0.0.1'].includes(location.hostname)) {
-            councilClip=await chooseLocalCouncilShadow(chooseCouncilSource(entries,Number(councilEra)),pageLang,Number(councilEra),councilRender);
+            const councilSource=chooseCouncilSource(entries,Number(councilEra));
+            if(openingSource&&query.get('mediaPack')==='1'){
+                bundled=true;
+                const pack=await chooseLocalMediaPack(openingSource,councilSource,pageLang,Number(councilEra));
+                openingPair=pack?.opening??null;councilClip=pack?.council??null;
+                if(!openingPair)delete env.CIV2_T025_OPENING_NATIVE;
+            }else councilClip=await chooseLocalCouncilShadow(councilSource,pageLang,Number(councilEra),councilRender);
             if(councilClip){env.CIV2_T025_COUNCIL_SHADOW='1';env.CIV2_T025_COUNCIL_ERA=councilEra;if(councilRender){env.CIV2_T025_COUNCIL_RENDER='1';if(query.get('councilStateOnly')==='1')env.CIV2_T025_COUNCIL_STATE_ONLY='1';}}
         }
         window.civ2Stats = {};
         const gameOptions = {wasm: site.wasm, fs, audioContext: introAudio, councilClip, councilRender:!!councilClip&&councilRender,
                               audioVolume: browserAudio, councilTrace, memoryTrace, perfTrace,
-                              openingVideo: openingSource ? geometry => playNativeOpening({source: openingSource, volume: browserAudio, lang: pageLang, geometry, store}) : null,
+                              openingVideo: openingSource && (!bundled||openingPair) ? geometry => {
+                                  const prepared=openingPair;openingPair=null;
+                                  if(bundled&&!prepared)return 0;
+                                  return playNativeOpening({source: openingSource, volume: browserAudio, lang: pageLang, geometry, store:bundled?null:store, prepared});
+                              } : null,
                               onFrame: () => {
                                   timing.frame = Math.round(performance.now());
                                   $('loading').hidden = true;
@@ -1004,6 +1015,7 @@ async function play(store) {
         console.error(e);
         status(t('web.stopped', e.message));
     }
+    openingPair=null;councilClip=null;
     await window.civ2Flush();
     if (introAudio)
         await introAudio.close().catch(() => {});

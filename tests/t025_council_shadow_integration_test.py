@@ -59,7 +59,7 @@ class CouncilShadowIntegration(unittest.TestCase):
         for token in ("old?.close()", "prepared=null", "canvas.width=0",
                       "canvas.height=0", "discard(ticket)"):
             self.assertIn(token, self.bridge)
-        self.assertIn("dispose(){close();clip=null;}", self.trial)
+        self.assertIn("dispose(){close();clip=null;changed();}", self.trial)
 
     def test_owner_local_entry_and_built_module(self):
         self.assertIn("query.get('councilShadow') === '1'", self.main)

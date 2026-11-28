@@ -4,6 +4,7 @@
 import {MemFS} from './wasi.js';
 import {GRAPHICS_PREFERENCE_KEY, resolveGraphicsPreference, graphicsFromQuery, hdArg} from './graphics_choice.js';
 import {runGame} from './host.js';
+import {chooseOpeningSource, playNativeOpening} from './opening_native.js';
 import {createAudioVolume, audioLabels} from './audio_volume.js';
 import {createToolbarCollapse, toolbarLabels} from './toolbar.js';
 import {installTerrainGuide} from './terrain_guide.js';
@@ -945,6 +946,9 @@ async function play(store) {
     // set this for missing media or explicit ?intro=skip.
     if (hdMovieOptIn)
         env.CIV2_BROWSER_HD_OPENING = '1';
+    const openingSource = query.get('openingNative') === '1' && introNeedsGesture && introAudio && !window.civ2Test
+        ? chooseOpeningSource(entries) : null;
+    if (openingSource) env.CIV2_T025_OPENING_NATIVE = '1';
     const introDiagnose = new URLSearchParams(location.search).get('intro') === 'diagnose';
     const councilTrace = new URLSearchParams(location.search).get('councilTrace') === '1';
     const memoryTrace = new URLSearchParams(location.search).get('memoryTrace') === '1';
@@ -964,6 +968,7 @@ async function play(store) {
         window.civ2Stats = {};
         code = await runGame({wasm: site.wasm, fs, audioContext: introAudio,
                               audioVolume: browserAudio, councilTrace, memoryTrace, perfTrace,
+                              openingVideo: openingSource ? () => playNativeOpening({source: openingSource, volume: browserAudio, lang: pageLang}) : null,
                               onFrame: () => {
                                   timing.frame = Math.round(performance.now());
                                   $('loading').hidden = true;

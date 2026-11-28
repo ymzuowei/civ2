@@ -110,6 +110,8 @@ void HOST(present_hd)(Host *h, u32 pixels, u32 stride, u32 density)
 { (void)h; host_present_hd(MEM(pixels), (int)stride, (int)density); }
 void HOST(minimize)(Host *h) { (void)h; host_minimize(); }
 u32 HOST(restart)(Host *h, u32 now) { (void)h; return (u32)host_restart((int)now); }
+/* wasm2c desktop never opts into browser-native opening. */
+u32 HOST(opening_video)(Host *h) { (void)h; return 0; }
 u32 HOST(user_dir)(Host *h, u32 buf, u32 size)
 {
     char p[4096];

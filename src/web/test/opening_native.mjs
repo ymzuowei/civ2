@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {webcrypto,createHash} from 'node:crypto';
+import {chooseOpeningSource,verifyOpeningPair,openingOutcome} from '../opening_native.js';
+const source=new Uint8Array([1,2,3]),derived=new Uint8Array([4,5]);
+const hash=x=>createHash('sha256').update(x).digest('hex');
+const m={schema:1,scope:'OWNER_LOCAL_OPENING_ONLY',source_sha256:hash(source),derived_sha256:hash(derived),source_bytes:3,derived_bytes:2,duration_s:92};
+assert.equal(chooseOpeningSource([['VIDEO/OPENING.AVI',{data:source}]]),source);
+assert.equal(chooseOpeningSource([['VIDEO/OPENING.AVI',{data:source}],['video/opening.avi',{data:source}]]),null);
+assert.equal((await verifyOpeningPair(source,derived,m,webcrypto.subtle)).blob.size,2);
+await assert.rejects(verifyOpeningPair(source,new Uint8Array([4,6]),m,webcrypto.subtle),/OPENING_DIGEST/);
+await assert.rejects(verifyOpeningPair(source,derived,{...m,duration_s:200},webcrypto.subtle),/OPENING_PAIR/);
+assert.equal(openingOutcome({status:'ended'},92,92),1);
+assert.equal(openingOutcome({status:'user-skip'},92,92),2);
+assert.equal(openingOutcome({status:'fallback'},92,92),0);
+assert.equal(openingOutcome({status:'ended'},91,92),0);
+console.log('CIV2_T025_OPENING_NATIVE_UNIT=PASS');

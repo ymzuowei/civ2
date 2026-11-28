@@ -213,9 +213,12 @@ export async function runGame(opts) {
 
     // -- input: events queued for the game; a wait resolved by the next one
     const queue = [];
+    let openingActive = false;
+    const openingInput = type => [EV.KEYDOWN, EV.KEYUP, EV.CHAR, EV.MOTION, EV.BUTTONDOWN, EV.BUTTONUP, EV.WHEEL, EV.COMMAND].includes(type);
     const inputTiming = {count: 0, total: 0, max: 0, coalesced: 0, queueHigh: 0};
     let waiter = null;
     const push = (type, vk = 0, x = 0, y = 0, button = 0, coalesceHover = false) => {
+        if (openingActive && openingInput(type)) return;
         const event = [type, vk, x, y, button];
         // Preserve all down/up/drag/keyboard boundaries and their order.
         // When no buttons are held, intermediate hover coordinates are
@@ -334,7 +337,7 @@ export async function runGame(opts) {
     }, {passive: false});
     const held = new Set();
     const key = (e, down) => {
-        if (e.metaKey || dialogOpen)
+        if (e.metaKey || dialogOpen || openingActive)
             return;         // the system's (Command) shortcuts; the message box's own keys
         // a letter beyond ASCII (the keyboard layout's: ĉ, é ...): the
         // character, not its key (the game maps it into its code page)
@@ -839,6 +842,19 @@ export async function runGame(opts) {
         while (performance.now() < end);
     };
     const blocking = {
+        host_opening_video: () => {
+            if (typeof opts.openingVideo !== 'function' || openingActive) return 0;
+            openingActive = true;
+            const discardInput = () => {
+                for (let i = queue.length - 1; i >= 0; i--) if (openingInput(queue[i])) queue.splice(i, 1);
+                held.clear();
+            };
+            discardInput();
+            return Promise.resolve().then(() => opts.openingVideo()).catch(() => 0).then(result => () => {
+                discardInput(); openingActive = false; canvas.focus();
+                return result === 1 || result === 2 ? result : 0;
+            });
+        },
         host_poll_event: (out) => {
             if (queue.length)
                 return take(out);

@@ -2,6 +2,9 @@
  * (tools/gen_c.py, now edited directly), in address order. */
 #include "auto_common.h"
 #include "../platform/hd.h"
+#ifdef __wasm__
+extern "C" int __attribute__((import_module("host"), import_name("host_opening_video"))) host_opening_video(void);
+#endif
 
 /* 0041325d auto */
 void __cdecl eot_blink_timer_tick(void)
@@ -997,6 +1000,27 @@ void __cdecl intro_play_opening_video(void)
       player.palette.new_version();
       found = 0;
     }
+#ifdef __wasm__
+    /* T025: explicit browser-only candidate. Preserve the native startup
+       site, DLL discovery and explicit skip precedence; any other result
+       takes the original AVI path. This uses the existing skip-path palette
+       increment, not a claim of normal-playback RNG equivalence. */
+    const char *modern_opening = getenv("CIV2_T025_OPENING_NATIVE");
+    if (found != 0 && modern_opening && modern_opening[0] == '1' && !modern_opening[1] &&
+        game.multiplayer <= 2) {
+      int outcome = host_opening_video();
+      if (outcome == 1 || outcome == 2) {
+        player.palette.new_version();
+        intro.video_player = 0;
+        if (outcome == 1) {
+          intro.theme_started = 1;
+          snd_play_effect(SND_MENULOOP,0,1,0);
+        }
+        dll.dll_handle_free();
+        return;
+      }
+    }
+#endif
     if (found != 0) {
       ((WndBase *)&host_wnd)->create_with_cmd_proc((const char *)&str_empty_82,0x800,0,0,screen_rect2.right,screen_rect2.bottom + 5,(GamePalette *)&game_palette_block.game_palette);
       ((WndBase *)&host_wnd)->set_bg_color(0);

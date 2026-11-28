@@ -114,6 +114,10 @@ void HOST_API(host_minimize)(void);
  * browser); 0 it cannot be.  now 1: does it, and does not return (0: it
  * could not). */
 int HOST_API(host_restart)(int now);
+/* Optional browser opening: 0 legacy fallback, 1 ended, 2 user skip. */
+#ifdef __wasm__
+int HOST_API(host_opening_video)(void);
+#endif
 /* (port_main.c: the program's arguments, for host_restart; not an import) */
 void host_save_args(int argc, char **argv);
 /* The user's own OpenCiv2 folder (no trailing separator; made where

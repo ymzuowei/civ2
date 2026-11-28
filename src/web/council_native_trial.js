@@ -22,7 +22,7 @@ export function createCouncilNativeTrial(input,{makeBridge=createCouncilHostBrid
         changed();
     }
     function valid(){
-        return /^COUNCIL[012]$/.test(clip?.scope||"")&&clip.shadowOnly===true&&clip.verified===true&&
+        return /^(?:COUNCIL[012]|WONDER(?:0[0-9]|1[0-9]|2[0-7]))$/.test(clip?.scope||"")&&clip.shadowOnly===true&&clip.verified===true&&
             shaOK(clip.sourceSha256)&&shaOK(clip.derivedSha256)&&clip.payload instanceof Uint8Array&&
             clip.payload.byteLength>0&&clip.payload.byteLength<=128*1024*1024&&
             Number.isInteger(clip.config?.codedWidth)&&Number.isInteger(clip.config?.codedHeight)&&

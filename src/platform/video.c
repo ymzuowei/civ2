@@ -73,6 +73,21 @@ typedef struct {
     int council_trial;
 #endif
 } AviFile;
+#ifdef __wasm__
+/* Only one AVI may own the browser bridge, including nested modal movies. */
+static AviFile *media_trial_owner;
+static void media_trial_close(AviFile *a)
+{
+    if (a == media_trial_owner) { host_council_close(); media_trial_owner = NULL; }
+    a->council_trial = 0;
+}
+static int trial_wonder_name(const char *base)
+{
+    return strlen(base)==12 && !strncasecmp(base,"WONDER",6) &&
+           base[6]>='0' && base[6]<='2' && base[7]>='0' && base[7]<='9' &&
+           (base[6]!='2' || base[7]<='7') && !strcasecmp(base+8,".AVI");
+}
+#endif
 
 typedef struct { AviFile *file; int index; } AviStreamRef;
 
@@ -168,7 +183,7 @@ HRESULT WINAPI AVIFileOpenA(PAVIFILE *pf, LPCSTR name, UINT mode, LPCLSID handle
     parse_list(a, 12, a->size, 0, &movi);
 #ifdef __wasm__
     /* Basename is only a scope gate; the host hashes the exact opened AVI. */
-    if (getenv("CIV2_T025_COUNCIL_SHADOW") && a->size > 0 && a->size <= 128L*1024*1024) {
+    if (!media_trial_owner && getenv("CIV2_T025_COUNCIL_SHADOW") && a->size > 0 && a->size <= 128L*1024*1024) {
         const char *base = name, *p;
         for (p = name; *p; ++p) if (*p == '/' || *p == '\\') base = p+1;
         const char *era = getenv("CIV2_T025_COUNCIL_ERA");
@@ -179,8 +194,11 @@ HRESULT WINAPI AVIFileOpenA(PAVIFILE *pf, LPCSTR name, UINT mode, LPCLSID handle
         if ((selected && !strcasecmp(base, selected)) ||
             (era && !strcmp(era, "auto") &&
              (!strcasecmp(base, "COUNCIL0.AVI") || !strcasecmp(base, "COUNCIL1.AVI") ||
-              !strcasecmp(base, "COUNCIL2.AVI"))))
+              !strcasecmp(base, "COUNCIL2.AVI"))) ||
+            (getenv("CIV2_T025_WONDERS") && trial_wonder_name(base))) {
             a->council_trial = host_council_open(a->data, (uint32_t)a->size) == 1;
+            if (a->council_trial) media_trial_owner = a;
+        }
     }
 #endif
     if (council_open_at)
@@ -203,7 +221,7 @@ ULONG WINAPI AVIFileRelease(PAVIFILE pf)
         free(a->streams[i].samples);
     }
 #ifdef __wasm__
-    if (a->council_trial) host_council_close();
+    if (a->council_trial) media_trial_close(a);
 #endif
     free(a->data);
     free(a);
@@ -242,8 +260,7 @@ void plat_council_shadow_frame(PAVISTREAM ps, uint32_t frame, uint32_t last, int
     if (!a || !a->council_trial) return;
     if (w <= 0 || w > 1024 || h <= 0 || h > 768 ||
         host_council_frame(frame, last, (uint32_t)w, (uint32_t)h) != 1) {
-        host_council_close();
-        a->council_trial = 0;
+        media_trial_close(a);
     }
 }
 #endif

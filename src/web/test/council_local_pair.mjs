@@ -58,4 +58,23 @@ assert.equal(chooseCouncilSource([['COUNCIL3.AVI',{data:source}]],3),null);
     p.council.dispose();
     assert.equal(await p.council.load(hashes[0],2),null);
 }
+{
+    const councils=['1','2','3'].map((h,era)=>({...manifest,scope:'OWNER_LOCAL_COUNCIL'+era+'_SHADOW_ONLY',sourceSha256:h.repeat(64)}));
+    const w={...manifest,scope:'OWNER_LOCAL_WONDER27_SHADOW_ONLY',clipId:'WONDER27',opacityProof:'IV41_PACKET_HEADER_OPAQUE_V1'};
+    const opening={scope:'OWNER_LOCAL_OPENING_ONLY',schema:1,source_bytes:2,derived_bytes:2,source_sha256:sha,derived_sha256:sha,duration_s:2};
+    function pack(extras){
+        const h=new TextEncoder().encode(JSON.stringify({schema:3,opening,councils,extras}));
+        const prefix=new Uint8Array(12);prefix.set(new TextEncoder().encode('CIV2M03\n'));
+        new DataView(prefix.buffer).setUint32(8,h.length,true);
+        return new Blob([prefix,h,payload,payload,payload,payload,...extras.map(()=>payload)]);
+    }
+    let reads=0;const blob=pack([w]),file={size:blob.size,slice(...args){reads++;return blob.slice(...args);}};
+    const p=await readLazyMediaPack(file,source,{...options,extended:true});
+    assert.equal(reads,3);
+    assert.equal((await p.council.load(sha,2)).scope,'WONDER27');assert.equal(reads,4);
+    p.council.dispose();
+    await assert.rejects(readLazyMediaPack(pack([{...w,clipId:'WONDER28'}]),source,{...options,extended:true}),/PACK_LAYOUT/);
+    await assert.rejects(readLazyMediaPack(pack([{...w,opacityProof:null}]),source,{...options,extended:true}),/PACK_LAYOUT/);
+    await assert.rejects(readLazyMediaPack(blob,source,options),/PACK_MAGIC/);
+}
 console.log('CIV2_T025_COUNCIL_LOCAL_PAIR_SOURCE=PASS');

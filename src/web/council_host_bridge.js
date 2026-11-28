@@ -27,7 +27,7 @@ export function createCouncilHostBridge({makeRange=createCouncilRange,makeCanvas
             if(disposed||pending)return false;
             releaseClip();
             const c=value?.config;
-            if(value?.scope!=="COUNCIL0"||value.verified!==true||(value.opaque!==true&&value.shadowOnly!==true)||
+            if(!/^COUNCIL[012]$/.test(value?.scope||"")||value.verified!==true||(value.opaque!==true&&value.shadowOnly!==true)||
                 !(value.payload instanceof Uint8Array)||!value.payload.byteLength||
                 value.payload.byteLength>128*1024*1024||!value.table||
                 !Number.isInteger(c?.codedWidth)||!Number.isInteger(c?.codedHeight)||

@@ -18,7 +18,7 @@ export function createCouncilNativeTrial(input,{makeBridge=createCouncilHostBrid
         changed();
     }
     function valid(){
-        return clip?.scope==="COUNCIL0"&&clip.shadowOnly===true&&clip.verified===true&&
+        return /^COUNCIL[012]$/.test(clip?.scope||"")&&clip.shadowOnly===true&&clip.verified===true&&
             shaOK(clip.sourceSha256)&&shaOK(clip.derivedSha256)&&clip.payload instanceof Uint8Array&&
             clip.payload.byteLength>0&&clip.payload.byteLength<=128*1024*1024&&
             Number.isInteger(clip.config?.codedWidth)&&Number.isInteger(clip.config?.codedHeight)&&
@@ -130,7 +130,7 @@ export function createCouncilNativeTrial(input,{makeBridge=createCouncilHostBrid
         available:valid,active:()=>!!bridge,
         open,schedule,take,close,
         stats(){return {...counters,lastFailure,active:bridge?1:0,pumping,queued:queued?1:0,
-            render,readyFrame:slot?.frame??null,readyBytes:slot?.bytes.byteLength??0,
+            render,era:clip?.scope??null,readyFrame:slot?.frame??null,readyBytes:slot?.bytes.byteLength??0,
             sharedClipBytes:clip?.payload.byteLength??0,bridge:bridge?.stats?.()??null};},
         dispose(){close();clip=null;changed();}
     };

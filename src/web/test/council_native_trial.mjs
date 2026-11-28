@@ -136,4 +136,11 @@ function fixture(input=clip,digest=async()=>new Uint8Array(32).buffer,prepare=nu
     assert.equal(trial.stats().renderRejected,2);
     trial.dispose();
 }
+for(const era of [1,2]){
+    const {trial}=fixture({...clip,scope:'COUNCIL'+era});
+    assert.equal(await trial.open(source),true);
+    assert.equal(trial.stats().era,'COUNCIL'+era);
+    trial.dispose();
+    assert.equal(trial.stats().sharedClipBytes,0);
+}
 console.log('CIV2_T025_COUNCIL_NATIVE_TRIAL_SOURCE=PASS');

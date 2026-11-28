@@ -13,4 +13,14 @@ assert.equal(clip.shadowOnly,true);assert.equal(clip.opaque,undefined);assert.eq
 await assert.rejects(verifyCouncilShadowPair(source,payload,{...manifest,sourceBytes:1},options),/PAIR_IDENTITY/);
 await assert.rejects(verifyCouncilShadowPair(source,payload,{...manifest,derivedSha256:'f'.repeat(64)},options),/PAIR_DIGEST/);
 await assert.rejects(verifyCouncilShadowPair(source,payload,manifest,{...options,supported:async()=>({supported:false})}),/DECODER_UNSUPPORTED/);
+for(const era of [1,2]){
+    const matching={...manifest,scope:'OWNER_LOCAL_COUNCIL'+era+'_SHADOW_ONLY'};
+    assert.equal(chooseCouncilSource([['video/council0.avi',{data:payload}],['VIDEO/COUNCIL'+era+'.AVI',{data:source}]],era),source);
+    assert.equal(chooseCouncilSource([['COUNCIL0.AVI',{data:source}]],era),null);
+    const c=await verifyCouncilShadowPair(source,payload,matching,{...options,era});
+    assert.equal(c.scope,'COUNCIL'+era);
+    await assert.rejects(verifyCouncilShadowPair(source,payload,manifest,{...options,era}),/PAIR_IDENTITY/);
+}
+assert.equal(chooseCouncilSource([['ANARCHY0.AVI',{data:source}]],0),null);
+assert.equal(chooseCouncilSource([['COUNCIL3.AVI',{data:source}]],3),null);
 console.log('CIV2_T025_COUNCIL_LOCAL_PAIR_SOURCE=PASS');

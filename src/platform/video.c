@@ -171,7 +171,12 @@ HRESULT WINAPI AVIFileOpenA(PAVIFILE *pf, LPCSTR name, UINT mode, LPCLSID handle
     if (getenv("CIV2_T025_COUNCIL_SHADOW") && a->size > 0 && a->size <= 128L*1024*1024) {
         const char *base = name, *p;
         for (p = name; *p; ++p) if (*p == '/' || *p == '\\') base = p+1;
-        if (!strcasecmp(base, "COUNCIL0.AVI"))
+        const char *era = getenv("CIV2_T025_COUNCIL_ERA");
+        /* One selected era per game session; other eras and anarchy stay legacy. */
+        const char *selected = !era || !strcmp(era, "0") ? "COUNCIL0.AVI" :
+                               !strcmp(era, "1") ? "COUNCIL1.AVI" :
+                               !strcmp(era, "2") ? "COUNCIL2.AVI" : NULL;
+        if (selected && !strcasecmp(base, selected))
             a->council_trial = host_council_open(a->data, (uint32_t)a->size) == 1;
     }
 #endif
@@ -699,19 +704,22 @@ static void draw_frame_rgb(Codec *c, const Iv41Frame *fr, const ICDECOMPRESSEX *
         if (sm.x0 <= sm.x1 && sm.y0 <= sm.y1 && (sm.rgb = malloc((size_t)fr->width * fr->height * 4)))
             for (y = sm.y0; y <= sm.y1; y++)
                 for (x = sm.x0; x <= sm.x1; x++) {
-                    int Y = fr->y[y * fr->y_stride + x], U = fr->u[(y >> 2) * fr->uv_stride + (x >> 2)] - 128,
-                        V = fr->v[(y >> 2) * fr->uv_stride + (x >> 2)] - 128;
                     uint32_t px = 0;
-                    if (!(fr->mask ? fr->mask[y * fr->width + x] :
-                          (fr->has_transparency || test_key) && Y <= 16 && U >= -2 && U <= 2 && V >= -2 && V <= 2)) {
-                        Y = 298 * (Y - 16);
-                        px = 0xff000000u | (uint32_t)clamp8((Y + 409 * V + 128) >> 8) << 16 |
-                             (uint32_t)clamp8((Y - 100 * U - 208 * V + 128) >> 8) << 8 |
-                             (uint32_t)clamp8((Y + 516 * U + 128) >> 8);
-                    }
                     if (rgba) {
+                        /* The caller already proved original and modern opacity.
+                           Do not convert the unused legacy YUV on a modern hit. */
                         const unsigned char *p = rgba + ((size_t)y * fr->width + x) * 4;
                         px = 0xff000000u | (uint32_t)p[0] << 16 | (uint32_t)p[1] << 8 | p[2];
+                    } else {
+                        int Y = fr->y[y * fr->y_stride + x], U = fr->u[(y >> 2) * fr->uv_stride + (x >> 2)] - 128,
+                            V = fr->v[(y >> 2) * fr->uv_stride + (x >> 2)] - 128;
+                        if (!(fr->mask ? fr->mask[y * fr->width + x] :
+                              (fr->has_transparency || test_key) && Y <= 16 && U >= -2 && U <= 2 && V >= -2 && V <= 2)) {
+                            Y = 298 * (Y - 16);
+                            px = 0xff000000u | (uint32_t)clamp8((Y + 409 * V + 128) >> 8) << 16 |
+                                 (uint32_t)clamp8((Y - 100 * U - 208 * V + 128) >> 8) << 8 |
+                                 (uint32_t)clamp8((Y + 516 * U + 128) >> 8);
+                        }
                     }
                     sm.rgb[(size_t)y * fr->width + x] = px;
                 }
@@ -762,30 +770,29 @@ static void draw_frame_rgb(Codec *c, const Iv41Frame *fr, const ICDECOMPRESSEX *
             }
             if (tx < 0 || tx >= w || sx < 0 || sx >= fr->width)
                 continue;
-            Y = fr->y[sy * fr->y_stride + sx];
-            U = fr->u[(sy >> 2) * fr->uv_stride + (sx >> 2)] - 128;
-            V = fr->v[(sy >> 2) * fr->uv_stride + (sx >> 2)] - 128;
-            /* Transparent areas (the heralds: a figure over the throne room)
-               leave the background the game put there; they are encoded
-               black, which stands for them should a frame's mask be missing. */
-            if (fr->mask ? fr->mask[sy * fr->width + sx] :
-                (fr->has_transparency || test_key) && Y <= 16 && U >= -2 && U <= 2 && V >= -2 && V <= 2) {
-                if (run >= 0 && bm && !smooth)
-                    frame_run(bm, &sm, plane, run, run_end, ty);
-                run = -1;
-                continue;
+            if (rgba) {
+                const unsigned char *p = rgba + ((size_t)sy * fr->width + sx) * 4;
+                r = p[0]; g = p[1]; b = p[2];
+            } else {
+                Y = fr->y[sy * fr->y_stride + sx];
+                U = fr->u[(sy >> 2) * fr->uv_stride + (sx >> 2)] - 128;
+                V = fr->v[(sy >> 2) * fr->uv_stride + (sx >> 2)] - 128;
+                /* Preserve the original transparent/keyed frame behavior. */
+                if (fr->mask ? fr->mask[sy * fr->width + sx] :
+                    (fr->has_transparency || test_key) && Y <= 16 && U >= -2 && U <= 2 && V >= -2 && V <= 2) {
+                    if (run >= 0 && bm && !smooth)
+                        frame_run(bm, &sm, plane, run, run_end, ty);
+                    run = -1;
+                    continue;
+                }
+                Y = 298 * (Y - 16);
+                r = clamp8((Y + 409 * V + 128) >> 8);
+                g = clamp8((Y - 100 * U - 208 * V + 128) >> 8);
+                b = clamp8((Y + 516 * U + 128) >> 8);
             }
             if (run < 0)
                 run = run_end = tx;
             run_end = tx + 1;
-            Y = 298 * (Y - 16);
-            r = clamp8((Y + 409 * V + 128) >> 8);
-            g = clamp8((Y - 100 * U - 208 * V + 128) >> 8);
-            b = clamp8((Y + 516 * U + 128) >> 8);
-            if (rgba) {
-                const unsigned char *p = rgba + ((size_t)sy * fr->width + sx) * 4;
-                r = p[0]; g = p[1]; b = p[2];
-            }
             switch (bpp) {
             case 8: {
                 int e = bayer[ty & 3][tx & 3];

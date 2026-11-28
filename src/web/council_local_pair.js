@@ -3,16 +3,19 @@ import {planCouncilSeek} from './council_frame_provider.js';
 const MAX=128*1024*1024, META=4*1024*1024;
 const hex=x=>Array.from(new Uint8Array(x),b=>b.toString(16).padStart(2,'0')).join('');
 const sha=x=>typeof x==='string'&&/^[a-f0-9]{64}$/.test(x);
-export function chooseCouncilSource(entries){
-    const matches=entries.filter(([name])=>/(?:^|\/)council0\.avi$/i.test(name.replace(/\\/g,'/')));
+const validEra=era=>Number.isInteger(era)&&era>=0&&era<=2;
+export function chooseCouncilSource(entries,era=0){
+    if(!validEra(era))return null;
+    const expected='council'+era+'.avi';
+    const matches=entries.filter(([name])=>name.replace(/\\/g,'/').split('/').pop().toLowerCase()===expected);
     const bytes=matches.length===1?matches[0][1]?.data:null;
     return bytes instanceof Uint8Array&&bytes.byteLength>0&&bytes.byteLength<=MAX?bytes:null;
 }
 export async function verifyCouncilShadowPair(source,payload,m,{subtle=globalThis.crypto?.subtle,
-    supported=c=>VideoDecoder.isConfigSupported(c)}={}){
+    supported=c=>VideoDecoder.isConfigSupported(c),era=0}={}){
     if(!subtle||!(source instanceof Uint8Array)||!(payload instanceof Uint8Array)||
        !source.length||source.length>MAX||!payload.length||payload.length>MAX||
-       m?.scope!=='OWNER_LOCAL_COUNCIL0_SHADOW_ONLY'||m.schema!==1||
+       !validEra(era)||m?.scope!==('OWNER_LOCAL_COUNCIL'+era+'_SHADOW_ONLY')||m.schema!==1||
        m.sourceBytes!==source.length||m.derivedBytes!==payload.length||
        !sha(m.sourceSha256)||!sha(m.derivedSha256))throw Error('PAIR_IDENTITY');
     const c=m.config,t=m.table;
@@ -31,17 +34,17 @@ export async function verifyCouncilShadowPair(source,payload,m,{subtle=globalThi
         description:new Uint8Array(c.description)};
     if(!(await supported(config)).supported)throw Error('DECODER_UNSUPPORTED');
     // No source alpha claim: shadow does not render into game DIB.
-    return {scope:'COUNCIL0',shadowOnly:true,verified:true,sourceSha256:m.sourceSha256,
+    return {scope:'COUNCIL'+era,shadowOnly:true,verified:true,sourceSha256:m.sourceSha256,
         derivedSha256:m.derivedSha256,payload,table:t,config};
 }
-export async function chooseLocalCouncilShadow(source,lang='en'){
+export async function chooseLocalCouncilShadow(source,lang='en',era=0,render=false){
     const zh=/^zh/i.test(lang||'');
-    if(!source||!globalThis.crypto?.subtle||typeof VideoDecoder!=='function'||
+    if(!validEra(era)||!source||!globalThis.crypto?.subtle||typeof VideoDecoder!=='function'||
        typeof document.createElement('dialog').showModal!=='function')return null;
     const dialog=document.createElement('dialog');
     const add=(tag,text)=>{const e=document.createElement(tag);if(text)e.textContent=text;dialog.append(e);return e;};
-    add('h2',zh?'议会顾问动画 — 本地影子测试':'Council0 — local shadow test');
-    add('p',zh?'选择配对清单 JSON 和转码 MP4。原版动画继续负责显示；所选文件不会被保存。':'Select the pair manifest JSON and transcoded MP4. The original animation remains visible; selected files are not saved.');
+    add('h2',(zh?'议会顾问动画 — 本地测试':'Council — local trial')+' (COUNCIL'+era+')');
+    add('p',zh?(render?'选择对应时代的 JSON 和 MP4。精确帧命中时使用新画面，其他情况回退原版；不保存文件。':'选择对应时代的 JSON 和 MP4。原版画面保持不变；不保存文件。'):(render?'Choose the matching era JSON and MP4. Exact frames may replace legacy drawing; misses fall back. Files are not saved.':'Choose the matching era JSON and MP4. Original drawing stays visible; files are not saved.'));
     const meta=document.createElement('input'),media=document.createElement('input');
     for(const e of [meta,media])e.type='file';
     const metaLabel=add('label',zh?'配对清单 JSON':'Pair manifest JSON');
@@ -68,7 +71,7 @@ export async function chooseLocalCouncilShadow(source,lang='en'){
             if(done)return;
             const payload=new Uint8Array(await v.arrayBuffer());
             if(done)return;
-            const clip=await verifyCouncilShadowPair(source,payload,manifest);
+            const clip=await verifyCouncilShadowPair(source,payload,manifest,{era});
             if(!done)finish(clip);
         }catch{if(!done)status.textContent=zh?'验证失败。请重试，或使用原版动画。':'Verification failed. Retry or use the original animation.';}
         finally{busy=false;if(!done)go.disabled=meta.disabled=media.disabled=false;}

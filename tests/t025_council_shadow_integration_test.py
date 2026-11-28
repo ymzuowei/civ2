@@ -32,7 +32,10 @@ class CouncilShadowIntegration(unittest.TestCase):
 
     def test_exact_source_gate_and_nonblocking_native_import(self):
         self.assertIn('memcmp(a->data, "RIFF", 4)', self.video)
-        self.assertIn('!strcasecmp(base, "COUNCIL0.AVI")', self.video)
+        for name in ("COUNCIL0.AVI","COUNCIL1.AVI","COUNCIL2.AVI"):
+            self.assertIn(name, self.video)
+        self.assertIn('getenv("CIV2_T025_COUNCIL_ERA")', self.video)
+        self.assertIn("selected && !strcasecmp(base, selected)", self.video)
         self.assertIn("host_council_open(a->data, (uint32_t)a->size)", self.video)
         self.assertIn("host_council_frame(frame, last, (uint32_t)w, (uint32_t)h)", self.video)
         self.assertIn("int HOST_API(host_council_frame)(uint32_t frame, uint32_t last, uint32_t width, uint32_t height);",

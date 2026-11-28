@@ -4,10 +4,13 @@ const shaOK=x=>typeof x==="string"&&/^[a-f0-9]{64}$/.test(x);
 const hex=x=>Array.from(new Uint8Array(x),b=>b.toString(16).padStart(2,"0")).join("");
 export function createCouncilNativeTrial(input,{makeBridge=createCouncilHostBridge,
     digest=x=>crypto.subtle.digest("SHA-256",x),onChange=()=>{},render=false}={}){
-    let clip=input,bridge=null,epoch=0,first=null,end=null,previous=null;
+    let provider=input?.lazy===true&&typeof input.load==='function'?input:null;
+    let clip=provider?null:input,bridge=null,epoch=0,first=null,end=null,previous=null;
+    let loading=false,lastEra=null;
+    const lazy=!!provider;
     let queued=null,pumping=false,slot=null;
     input=null;
-    const counters={opens:0,closes:0,scheduled:0,dropped:0,frames:0,unchanged:0,failures:0,staleEndHints:0,cancelled:0,renderHits:0,renderMisses:0,renderRejected:0};
+    const counters={opens:0,closes:0,scheduled:0,dropped:0,frames:0,unchanged:0,failures:0,staleEndHints:0,cancelled:0,renderHits:0,renderMisses:0,renderRejected:0,lazyLoads:0,lazyFallbacks:0};
     let lastFailure=null;
     function fail(code){counters.failures++;lastFailure=code;changed();}
     const changed=()=>{try{onChange();}catch(_){}};
@@ -15,6 +18,7 @@ export function createCouncilNativeTrial(input,{makeBridge=createCouncilHostBrid
         epoch++;if(queued)counters.cancelled++;queued=null;slot=null;
         if(bridge){bridge.dispose();counters.closes++;}
         bridge=null;first=end=previous=null;
+        if(lazy)clip=null;
         changed();
     }
     function valid(){
@@ -27,23 +31,35 @@ export function createCouncilNativeTrial(input,{makeBridge=createCouncilHostBrid
     }
     async function open(source){
         close();const ticket=epoch;
-        if(!valid()||!(source instanceof Uint8Array)||source.byteLength===0||source.byteLength>128*1024*1024){
+        if(lazy&&(loading||pumping||!provider)){counters.lazyFallbacks++;changed();return false;}
+        if((!lazy&&!valid())||!(source instanceof Uint8Array)||source.byteLength===0||source.byteLength>128*1024*1024){
             fail("OPEN_INPUT");return false;
         }
         try{
+            const size=source.byteLength;
+            if(lazy){loading=true;changed();}
             const sourceHash=digest(source);source=null;
-            if(hex(await sourceHash)!==clip?.sourceSha256||ticket!==epoch){
-                if(ticket===epoch)fail("SOURCE_HASH");
-                return false;
-            }
-            if(hex(await digest(clip.payload))!==clip?.derivedSha256||ticket!==epoch){
-                if(ticket===epoch)fail("DERIVED_HASH");
-                return false;
+            const hash=hex(await sourceHash);
+            if(ticket!==epoch)return false;
+            if(lazy){
+                const loaded=await provider.load(hash,size);
+                if(ticket!==epoch)return false;
+                if(!loaded){counters.lazyFallbacks++;changed();return false;}
+                clip=loaded;
+                if(!valid()||clip.sourceSha256!==hash){fail("OPEN_INPUT");close();return false;}
+                counters.lazyLoads++;
+            }else{
+                if(hash!==clip?.sourceSha256){fail("SOURCE_HASH");return false;}
+                if(hex(await digest(clip.payload))!==clip?.derivedSha256||ticket!==epoch){
+                    if(ticket===epoch)fail("DERIVED_HASH");
+                    return false;
+                }
             }
             const owner=makeBridge();
-            if(!owner.open(clip)){owner.dispose();fail("BRIDGE_OPEN");return false;}
-            bridge=owner;counters.opens++;changed();return true;
+            if(!owner.open(clip)){owner.dispose();fail("BRIDGE_OPEN");close();return false;}
+            bridge=owner;lastEra=clip.scope;counters.opens++;changed();return true;
         }catch(_){if(ticket===epoch){fail("OPEN_EXCEPTION");close();}return false;}
+        finally{if(lazy){loading=false;changed();}}
     }
     async function prepare(frame,last,ticket,owner){
         try{
@@ -127,11 +143,11 @@ export function createCouncilNativeTrial(input,{makeBridge=createCouncilHostBrid
         destination.set(bytes);counters.renderHits++;changed();return true;
     }
     return {
-        available:valid,active:()=>!!bridge,
+        available:()=>lazy?!!provider:valid(),active:()=>!!bridge,
         open,schedule,take,close,
         stats(){return {...counters,lastFailure,active:bridge?1:0,pumping,queued:queued?1:0,
-            render,era:clip?.scope??null,readyFrame:slot?.frame??null,readyBytes:slot?.bytes.byteLength??0,
+            render,era:clip?.scope??lastEra,lazy,loading,readyFrame:slot?.frame??null,readyBytes:slot?.bytes.byteLength??0,
             sharedClipBytes:clip?.payload.byteLength??0,bridge:bridge?.stats?.()??null};},
-        dispose(){close();clip=null;changed();}
+        dispose(){close();clip=null;provider?.dispose?.();provider=null;changed();}
     };
 }

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {chooseCouncilSource,verifyCouncilShadowPair,readLocalMediaPack} from '../council_local_pair.js';
+import {chooseCouncilSource,verifyCouncilShadowPair,readLocalMediaPack,readLazyMediaPack} from '../council_local_pair.js';
 const source=new Uint8Array([1,2]),payload=new Uint8Array([3,4]),sha='0'.repeat(64);
 const manifest={scope:'OWNER_LOCAL_COUNCIL0_SHADOW_ONLY',schema:1,sourceBytes:2,derivedBytes:2,
     sourceSha256:sha,derivedSha256:sha,table:{nativeStart:0,samples:[{ptsUs:0,durationUs:66667,offset:0,size:2,key:true}]},
@@ -34,5 +34,28 @@ assert.equal(chooseCouncilSource([['COUNCIL3.AVI',{data:source}]],3),null);
     assert.equal(p.opening.duration,2);assert.equal(p.council.scope,'COUNCIL0');
     await assert.rejects(readLocalMediaPack(file,source,source,2,options),/PAIR_IDENTITY/);
     await assert.rejects(readLocalMediaPack(new Blob([file,payload]),source,source,0,options),/PACK_LAYOUT/);
+}
+{
+    const hashes=['1','2','3'].map(x=>x.repeat(64));
+    const councils=hashes.map((h,era)=>({...manifest,scope:'OWNER_LOCAL_COUNCIL'+era+'_SHADOW_ONLY',sourceSha256:h}));
+    const header=new TextEncoder().encode(JSON.stringify({schema:2,opening:{
+        scope:'OWNER_LOCAL_OPENING_ONLY',schema:1,source_bytes:2,derived_bytes:2,
+        source_sha256:sha,derived_sha256:sha,duration_s:2},councils}));
+    const prefix=new Uint8Array(12);prefix.set(new TextEncoder().encode('CIV2M02\n'));
+    new DataView(prefix.buffer).setUint32(8,header.length,true);
+    const blob=new Blob([prefix,header,payload,payload,payload,payload]);
+    let reads=0;
+    const file={size:blob.size,slice(...args){reads++;return blob.slice(...args);}};
+    const p=await readLazyMediaPack(file,source,options);
+    assert.equal(reads,3); // prefix, header, opening only
+    assert.equal(await p.council.load('f'.repeat(64),2),null);
+    assert.equal(reads,3);
+    for(let era=0;era<3;era++){
+        const c=await p.council.load(hashes[era],2);
+        assert.equal(c.scope,'COUNCIL'+era);
+    }
+    assert.equal(reads,6);
+    p.council.dispose();
+    assert.equal(await p.council.load(hashes[0],2),null);
 }
 console.log('CIV2_T025_COUNCIL_LOCAL_PAIR_SOURCE=PASS');

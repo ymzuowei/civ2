@@ -176,7 +176,10 @@ HRESULT WINAPI AVIFileOpenA(PAVIFILE *pf, LPCSTR name, UINT mode, LPCLSID handle
         const char *selected = !era || !strcmp(era, "0") ? "COUNCIL0.AVI" :
                                !strcmp(era, "1") ? "COUNCIL1.AVI" :
                                !strcmp(era, "2") ? "COUNCIL2.AVI" : NULL;
-        if (selected && !strcasecmp(base, selected))
+        if ((selected && !strcasecmp(base, selected)) ||
+            (era && !strcmp(era, "auto") &&
+             (!strcasecmp(base, "COUNCIL0.AVI") || !strcasecmp(base, "COUNCIL1.AVI") ||
+              !strcasecmp(base, "COUNCIL2.AVI"))))
             a->council_trial = host_council_open(a->data, (uint32_t)a->size) == 1;
     }
 #endif

@@ -967,14 +967,14 @@ async function play(store) {
     let code, councilClip=null, openingPair=null;
     let bundled=false;
     const councilRender=query.get('councilRender')==='1';
-    const councilEra=query.get('councilEra')??'0';
+    const councilEra=query.get('councilEra')??(query.get('mediaPack')==='2'?'auto':'0');
     try {
         // Explicit local test only. No persistence or ordinary startup prompt.
-        if (query.get('councilShadow') === '1' && /^[012]$/.test(councilEra) && !window.civ2Test && ['localhost','127.0.0.1'].includes(location.hostname)) {
+        if (query.get('councilShadow') === '1' && (/^[012]$/.test(councilEra)||(councilEra==='auto'&&query.get('mediaPack')==='2')) && !window.civ2Test && ['localhost','127.0.0.1'].includes(location.hostname)) {
             const councilSource=chooseCouncilSource(entries,Number(councilEra));
-            if(openingSource&&query.get('mediaPack')==='1'){
+            if(openingSource&&['1','2'].includes(query.get('mediaPack'))){
                 bundled=true;
-                const pack=await chooseLocalMediaPack(openingSource,councilSource,pageLang,Number(councilEra));
+                const pack=await chooseLocalMediaPack(openingSource,councilSource,pageLang,Number(councilEra),councilEra==='auto');
                 openingPair=pack?.opening??null;councilClip=pack?.council??null;
                 if(!openingPair)delete env.CIV2_T025_OPENING_NATIVE;
             }else councilClip=await chooseLocalCouncilShadow(councilSource,pageLang,Number(councilEra),councilRender);

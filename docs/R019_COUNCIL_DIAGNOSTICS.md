@@ -130,3 +130,8 @@ Explicit loopback visible trial plus councilStateOnly=1. For a ready exact moder
 ### Combined local media pack
 
 Owner requests one import and one gameplay UAT, not independent opening/Council pickers. Explicit mediaPack=1 with both existing opt-in flags selects one bounded binary .civ2media package (magic CIV2M01, LE header length, two embedded independent manifests, opening MP4 then selected Council MP4). Read slices, never entire package; existing SHA/source/scope/geometry/frame checks remain. Opening uses verified Blob with Play gesture, no second file picker/cache, releases the prepared reference on use or game exit. Council retains only selected era. Cancel uses originals. Original independent test routes remain for diagnostics, no ABI changes or stable default change.
+
+
+### T025 all-era lazy pack V2
+
+Owner accepted combined modern-era 7/7 and visible state elision (493/580 modern takes, elided=14 on one codec close, no errors, 2/2 opens/closes). Add schema2 CIV2M02 pack with opening plus all three Council manifests/payloads in fixed order. Browser reads prefix/header/opening only on import; retain local File handle and bounded manifest directory. Auto mode allows exact three Council basenames, selects clip by SHA256 of opened original AVI and size, verifies derived hash/config/timeline before decoding, releases active compressed clip on close, never overlaps pending reads/pump; stale completion rejected by epoch. Unknown source or busy owner uses legacy; no anarchy or masked assets enabled. No network/persistence, no new ABI; C basename gate requires actual WASM build. V1 remains compatible. Actual cross-era/long-run memory, open latency and performance pending.

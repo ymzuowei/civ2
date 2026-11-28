@@ -64,7 +64,11 @@ class CouncilShadowIntegration(unittest.TestCase):
         for token in ("old?.close()", "prepared=null", "canvas.width=0",
                       "canvas.height=0", "discard(ticket)"):
             self.assertIn(token, self.bridge)
-        self.assertIn("dispose(){close();clip=null;changed();}", self.trial)
+        self.assertIn("dispose(){close();clip=null;provider?.dispose?.();provider=null;changed();}", self.trial)
+        self.assertIn("if(lazy)clip=null", self.trial)
+        self.assertIn("lazy&&(loading||pumping||!provider)", self.trial)
+        self.assertIn("provider.load(hash,size)", self.trial)
+        self.assertIn('!strcmp(era, "auto")', self.video)
 
     def test_visible_trial_exact_frame_and_original_opacity_gate(self):
         self.assertIn("fr->mask || fr->has_transparency", self.video)

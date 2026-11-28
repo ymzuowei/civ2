@@ -143,4 +143,30 @@ for(const era of [1,2]){
     trial.dispose();
     assert.equal(trial.stats().sharedClipBytes,0);
 }
+{
+    let loads=0,disposed=0;
+    const provider={lazy:true,async load(hash,size){loads++;return {...clip,scope:'COUNCIL'+(loads-1)};},dispose(){disposed++;}};
+    const {trial}=fixture(provider);
+    assert.equal(trial.available(),true);
+    for(let era=0;era<3;era++){
+        assert.equal(await trial.open(source),true);
+        assert.equal(trial.stats().era,'COUNCIL'+era);
+        assert.equal(trial.stats().sharedClipBytes,3);
+        trial.close();assert.equal(trial.stats().sharedClipBytes,0);
+    }
+    trial.dispose();assert.equal(disposed,1);assert.equal(trial.available(),false);
+}
+{
+    let resolve;
+    const provider={lazy:true,load:()=>new Promise(r=>{resolve=r;})};
+    const {trial}=fixture(provider);
+    const opening=trial.open(source);await settle();
+    trial.close();
+    assert.equal(await trial.open(source),false); // never overlap reads
+    resolve(clip);
+    assert.equal(await opening,false);
+    assert.equal(trial.stats().sharedClipBytes,0);
+    assert.equal(trial.stats().loading,false);
+    trial.dispose();
+}
 console.log('CIV2_T025_COUNCIL_NATIVE_TRIAL_SOURCE=PASS');

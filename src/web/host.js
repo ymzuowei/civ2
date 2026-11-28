@@ -575,8 +575,8 @@ export async function runGame(opts) {
         host_init: () => 1,
         host_quit: closeCouncil,
         host_council_close: closeCouncil,
-        host_council_take: (frame,ptr,len) => {
-            try{return councilTrial.take(frame>>>0,wasm32Bytes(memory,ptr,len))?1:0;}
+        host_council_take: (frame,width,height,ptr,len) => {
+            try{return councilTrial.take(frame>>>0,width>>>0,height>>>0,wasm32Bytes(memory,ptr,len))?1:0;}
             catch(_){return 0;}
         },
         host_base_path: (buf, size) => {

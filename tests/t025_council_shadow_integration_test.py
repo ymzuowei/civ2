@@ -63,7 +63,7 @@ class CouncilShadowIntegration(unittest.TestCase):
 
     def test_visible_trial_exact_frame_and_original_opacity_gate(self):
         self.assertIn("fr->mask || fr->has_transparency", self.video)
-        self.assertIn("host_council_take(render_frame, c->render_pixels", self.video)
+        self.assertIn("host_council_take(render_frame, (uint32_t)fr->width, (uint32_t)fr->height, c->render_pixels", self.video)
         self.assertIn("draw_frame_rgb(c, fr, d, c->render_pixels)", self.video)
         self.assertIn("free(c->render_pixels)", self.video)
         self.assertIn("plat_council_render_begin(", self.sound)

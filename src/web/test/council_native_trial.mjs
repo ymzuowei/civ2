@@ -101,21 +101,39 @@ function fixture(input=clip,digest=async()=>new Uint8Array(32).buffer,prepare=nu
     const trial=createCouncilNativeTrial(clip,{makeBridge:()=>owner,render:true,digest:async()=>new Uint8Array(32).buffer});
     assert.equal(await trial.open(source),true);
     const dst=new Uint8Array(16);
-    assert.equal(trial.take(0,dst),false);
+    assert.equal(trial.take(0,2,2,dst),false);
     assert.equal(trial.schedule(0,2,2,2),true);
     await settle();
     assert.equal(trial.stats().readyFrame,1);
     assert.equal(trial.stats().readyBytes,16);
-    assert.equal(trial.take(2,dst),false);
-    assert.equal(trial.take(1,dst),true);
+    assert.equal(trial.take(2,2,2,dst),false);
+    assert.equal(trial.take(1,2,2,dst),true);
     assert.equal(dst[0],255);
-    assert.equal(trial.take(1,dst),false);
+    assert.equal(trial.take(1,2,2,dst),false);
     assert.equal(trial.stats().readyBytes,0);
     trial.schedule(1,2,2,2);await settle();
     trial.close();
     assert.equal(trial.stats().readyBytes,0);
     assert.equal(trial.stats().renderHits,1);
     assert.equal(trial.stats().renderMisses,3);
+    trial.dispose();
+}
+// Even equal byte counts cannot bypass exact geometry or opaque alpha.
+{
+    const bytes=new Uint8ClampedArray(16).fill(255);
+    const owner={open:()=>true,dispose(){},startRange:()=>true,
+        prepare:async()=>({status:'ready',bytes:16}),takePrepared:()=>bytes.slice()};
+    const trial=createCouncilNativeTrial(clip,{makeBridge:()=>owner,render:true,digest:async()=>new Uint8Array(32).buffer});
+    await trial.open(source);
+    trial.schedule(0,2,2,2);await settle();
+    const dst=new Uint8Array(16);
+    assert.equal(trial.take(1,1,4,dst),false);
+    assert.equal(dst.every(v=>v===0),true);
+    bytes[3]=0;
+    trial.schedule(1,2,2,2);await settle();
+    assert.equal(trial.take(2,2,2,dst),false);
+    assert.equal(dst.every(v=>v===0),true);
+    assert.equal(trial.stats().renderRejected,2);
     trial.dispose();
 }
 console.log('CIV2_T025_COUNCIL_NATIVE_TRIAL_SOURCE=PASS');

@@ -114,11 +114,12 @@ export function createCouncilNativeTrial(input,{makeBridge=createCouncilHostBrid
         if(!pumping)void pump();
         return true;
     }
-    function take(frame,destination){
+    function take(frame,width,height,destination){
         if(!render||!bridge)return false;
         if(!slot||slot.frame!==frame){counters.renderMisses++;changed();return false;}
         const bytes=slot.bytes;slot=null;
-        if(!(destination instanceof Uint8Array)||destination.byteLength!==bytes.byteLength){
+        if(width!==clip.config.codedWidth||height!==clip.config.codedHeight||
+            !(destination instanceof Uint8Array)||destination.byteLength!==bytes.byteLength){
             counters.renderRejected++;changed();return false;
         }
         // All alpha must be opaque; native additionally checks original Indeo mask.

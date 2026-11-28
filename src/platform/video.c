@@ -246,9 +246,11 @@ static int render_scope;
 static uint32_t render_frame;
 void plat_council_render_begin(PAVISTREAM ps, uint32_t frame, int eligible)
 {
-    AviStreamRef *r = obj_get((Handle)ps, OBJ_AVISTREAM);
-    render_scope = eligible && r && r->file && r->file->council_trial &&
-        getenv("CIV2_T025_COUNCIL_RENDER") && !getenv("CIV2_TEST_VIDEO_KEY");
+    AviStreamRef *r;
+    render_scope = 0;
+    if (!eligible || !getenv("CIV2_T025_COUNCIL_RENDER") || getenv("CIV2_TEST_VIDEO_KEY")) return;
+    r = obj_get((Handle)ps, OBJ_AVISTREAM);
+    render_scope = r && r->file && r->file->council_trial;
     render_frame = frame;
 }
 void plat_council_render_end(void) { render_scope = 0; }
@@ -839,7 +841,7 @@ static int draw_council_ready(Codec *c, const Iv41Frame *fr, const ICDECOMPRESSE
         c->render_pixels = p;
         c->render_capacity = bytes;
     }
-    if (host_council_take(render_frame, c->render_pixels, (uint32_t)bytes) != 1)
+    if (host_council_take(render_frame, (uint32_t)fr->width, (uint32_t)fr->height, c->render_pixels, (uint32_t)bytes) != 1)
         return 0;
     draw_frame_rgb(c, fr, d, c->render_pixels);
     return 1;
